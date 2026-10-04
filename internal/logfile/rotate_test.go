@@ -52,3 +52,16 @@ func TestOpenAppends(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// A symlink waiting at the log's name isn't followed.
+func TestOpenRefusesSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "elsewhere")
+	os.WriteFile(target, nil, 0o600)
+	link := filepath.Join(dir, "x.log")
+	os.Symlink(target, link)
+	if r, err := Open(link, 1<<20, 2); err == nil {
+		r.Close()
+		t.Error("opened a log through a symlink")
+	}
+}

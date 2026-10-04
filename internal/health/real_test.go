@@ -69,6 +69,8 @@ exec /usr/bin/python3 -m http.server "$1" --bind 127.0.0.1
 	defer cancel()
 	go m.Run(ctx)
 	waitFor(t, "llama-swap to be healthy", func() bool { return m.Snapshot().Healthy })
+	// No apiKeys in this config: llama-swap answers without a key.
+	waitFor(t, "the probe to find it open", func() bool { return m.Snapshot().Open })
 
 	// Any request for the model makes llama-swap start it.
 	resp, err := http.Get(base + "/upstream/faulty/health")
@@ -142,6 +144,10 @@ func TestRealLlamaSwapWithAPIKey(t *testing.T) {
 	waitFor(t, "the monitor with the key to see llama-swap", func() bool {
 		return with.Snapshot().Healthy && modelState(with, "m") == "stopped"
 	})
+	time.Sleep(500 * time.Millisecond) // for the probe
+	if with.Snapshot().Open {
+		t.Error("with apiKeys set, the probe found llama-swap open")
+	}
 	without := run("")
 	time.Sleep(time.Second) // long enough to connect, were it allowed to
 	if s := without.Snapshot(); s.Healthy || len(s.Models) > 0 || !strings.Contains(s.Problem, "wants an API key") {

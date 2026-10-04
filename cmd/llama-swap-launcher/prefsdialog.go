@@ -85,6 +85,19 @@ func (a *app) editPreferences(tab string) (restart bool) {
 			macos.Alert("These preferences can't be saved", form.Error)
 			continue
 		}
+		// Opening llama-swap to the network without a key is worth a
+		// second look, when this Save is what does it.
+		if opensWithoutKey(old, p) && !macos.Confirm("Open llama-swap to the network without an API key?",
+			"Listening on "+p.ListenAddr()+", llama-swap can be reached from other machines, and with no API key, "+
+				"anyone who can reach it, on this network or any other this Mac joins, can use it: run and unload "+
+				"models, and read its logs. To require a key, add one under Secrets, and list it in llama-swap's "+
+				`config as apiKeys: ["${env.`+prefs.KeyPrefix+`NAME}"].`,
+			"Save Anyway", "Back") {
+			form = edited
+			form.Error = ""
+			form.Tab = "general"
+			continue
+		}
 		// The secrets first: preferences naming one the keychain lacks
 		// would stop llama-swap from starting.
 		if err := saveSecrets(oldSecrets, secrets); err != nil {

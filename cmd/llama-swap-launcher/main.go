@@ -60,13 +60,20 @@ func main() {
 		a.sup.Logf("another instance is already running; exiting")
 		os.Exit(0)
 	case err != nil:
-		a.startupErr = fmt.Errorf("llsl won't be able to reach the app: %w", err)
+		// The socket is also the lock that keeps a second copy of the app
+		// from stopping or doubling the first one's llama-swap. Without it,
+		// nothing is cleaned up or started automatically.
+		a.startupErr = fmt.Errorf("llsl won't be able to reach the app: %w. "+
+			"To be safe, llama-swap isn't started automatically, nor anything left from a previous run stopped: "+
+			"another copy of the app might be running it. Start it from the menu if not", err)
 	default:
 		a.ctl = l
 		go control.Serve(l, a.handle)
 	}
 
-	a.sup.CleanupLeftovers()
+	if a.ctl != nil {
+		a.sup.CleanupLeftovers()
+	}
 
 	// Stop llama-swap on kill or Ctrl-C too, not just on Quit.
 	sigs := make(chan os.Signal, 1)

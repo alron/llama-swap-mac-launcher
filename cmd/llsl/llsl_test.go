@@ -157,3 +157,20 @@ func TestForceFlag(t *testing.T) {
 		t.Errorf("busy: exit %d, want 7", got)
 	}
 }
+
+// Text from elsewhere can't redraw the terminal or forge a line.
+func TestPrintStatusEscapes(t *testing.T) {
+	var out bytes.Buffer
+	printStatus(&out, &control.Status{
+		State:   "ready",
+		Message: "fine\nllama-swap: ready (forged)",
+		Peers:   []control.Peer{{ID: "p", Error: "boom \x1b[2J\x1b[H cleared"}},
+	})
+	got := out.String()
+	if strings.Contains(got, "\x1b") || strings.Contains(got, "\nllama-swap: ready (forged)") {
+		t.Errorf("control characters got through:\n%q", got)
+	}
+	if !strings.Contains(got, `\x1b[2J`) || !strings.Contains(got, `fine\x0allama-swap`) {
+		t.Errorf("not shown escaped:\n%q", got)
+	}
+}

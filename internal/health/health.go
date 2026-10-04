@@ -75,6 +75,10 @@ type Snapshot struct {
 	// InFlight are the requests llama-swap is serving, oldest first. Only
 	// model requests (/v1/…) count, not the app's own.
 	InFlight []Request
+	// Open means llama-swap answered a request that needs an API key when
+	// keys are set, sent without one: its config sets no apiKeys, so anyone
+	// who can reach it can use it. Checked once per connection.
+	Open bool
 }
 
 // Request is a request llama-swap is serving.
@@ -154,6 +158,7 @@ type Monitor struct {
 	mu        sync.Mutex
 	problem   string // see Snapshot.Problem
 	refusal   int    // the last refusal's HTTP status, so each is logged once
+	open      bool   // see Snapshot.Open
 	inflight  map[string]Request
 	speed     map[string]float64 // tokens per second, by model; see Model.TokensPerSecond
 	connected bool
@@ -196,7 +201,7 @@ func (m *Monitor) Changed() <-chan struct{} { return m.changed }
 func (m *Monitor) Snapshot() Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := Snapshot{Healthy: m.connected && m.healthOK, WasHealthy: m.was, Problem: m.problem}
+	s := Snapshot{Healthy: m.connected && m.healthOK, WasHealthy: m.was, Problem: m.problem, Open: m.open}
 	for _, r := range m.inflight {
 		s.InFlight = append(s.InFlight, r)
 	}
@@ -251,6 +256,7 @@ func (m *Monitor) streamEvents(ctx context.Context) bool {
 		return false
 	}
 	m.update(func() { m.connected, m.problem, m.refusal = true, "", 0 })
+	go m.probeOpen(ctx)
 
 	sc := newScanner(resp.Body)
 	for sc.Scan() {
@@ -596,6 +602,27 @@ func (m *Monitor) Unload(ctx context.Context, id string) error {
 // UnloadAll stops every model.
 func (m *Monitor) UnloadAll(ctx context.Context) error {
 	return m.post(ctx, "/api/models/unload")
+}
+
+// probeOpen asks llama-swap, without a key, for something that needs one
+// when its config sets apiKeys (/api/version), and records whether it
+// answered. A llama-swap that does can be used by anyone who reaches it,
+// even when the app has keys: they matter only if its config lists them.
+func (m *Monitor) probeOpen(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.base+"/api/version", nil)
+	if err != nil {
+		return
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, resp.Body) // drained so the connection can be reused
+	_ = resp.Body.Close()                 // nothing left to read
+	open := resp.StatusCode == http.StatusOK
+	m.update(func() { m.open = open })
 }
 
 // refused records why llama-swap refused the event stream, and logs it the

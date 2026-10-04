@@ -91,6 +91,7 @@ func TestValidate(t *testing.T) {
 		{"-config-dir in args", Prefs{Args: []string{"-config-dir", "/x"}}, false},
 		{"TLS in args", Prefs{Args: []string{"-tls-cert-file=/x.pem"}}, false},
 		{"-version in args", Prefs{Args: []string{"-version"}}, false},
+		{"-listen-tailcat in args", Prefs{Args: []string{"-listen-tailcat=:9000"}}, false},
 		{"a value that looks like a flag name", Prefs{Args: []string{"listen"}}, true},
 		{"log modes", Prefs{LlamaSwapLog: LogOff}, true},
 		{"unknown log mode", Prefs{LlamaSwapLog: "syslog"}, false},

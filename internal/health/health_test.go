@@ -485,3 +485,31 @@ func TestNewClientIgnoresProxies(t *testing.T) {
 		t.Error("the monitor's client has a proxy function")
 	}
 }
+
+// Once connected, the monitor asks llama-swap without a key for something
+// that needs one, and records whether it answered.
+func TestProbeOpen(t *testing.T) {
+	for _, keyed := range []bool{false, true} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if keyed && r.Header.Get("Authorization") != "Bearer sk-k" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			if r.URL.Path == "/api/events" {
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+			}
+		}))
+		m := New(srv.URL)
+		m.APIKey = "sk-k"
+		ctx, cancel := context.WithCancel(context.Background())
+		go m.Run(ctx)
+		waitFor(t, "the probe", func() bool { return m.Snapshot().Healthy })
+		time.Sleep(300 * time.Millisecond)
+		if got := m.Snapshot().Open; got == keyed {
+			t.Errorf("llama-swap asking for keys %v: Open = %v", keyed, got)
+		}
+		cancel()
+		srv.Close()
+	}
+}

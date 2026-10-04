@@ -153,10 +153,16 @@ func (a *app) onReady() {
 		if a.logErr != nil {
 			a.problem("A log couldn't be opened", a.logErr)
 		}
+		if exe, err := os.Executable(); err == nil && strings.Contains(exe, "/AppTranslocation/") {
+			a.problem("Move Llama Swap Launcher to Applications", errors.New(
+				"macOS is running it from a temporary copy, as it was opened where it was downloaded. "+
+					"Launch at Login and llsl would point at a place that disappears. Quit, move the app "+
+					"to the Applications folder, and open it from there"))
+		}
 		switch {
 		case err != nil:
 			a.problem("Couldn't read the preferences", err)
-		case a.currentPrefs().AutoStart:
+		case a.currentPrefs().AutoStart && a.ctl != nil: // not without the lock; see main
 			a.startLlamaSwap()
 		}
 	}()
@@ -385,7 +391,11 @@ func (a *app) render() {
 		text += fmt.Sprintf(" (pid %d)", st.Pid)
 	}
 	a.status.SetTitle(text)
-	a.showDetail(message(st, snap))
+	msg := message(st, snap)
+	if msg == "" {
+		msg = openWarning(a.currentPrefs(), st, snap)
+	}
+	a.showDetail(msg)
 	a.mu.Lock()
 	fault := a.lastFault
 	a.mu.Unlock()

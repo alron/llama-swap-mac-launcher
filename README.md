@@ -213,6 +213,9 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
   with that message rather than wait.
 - `version` is the running llama-swap's, as `llama-swap -version` reports
   it; `appVersion` is the app's.
+- `warning`, when llama-swap can be used without an API key and it
+  matters: the app has keys that llama-swap's config doesn't list, or it
+  listens beyond this Mac with none. It doesn't change the exit code.
 - `logFile` is where llama-swap's output goes (`""` when it isn't saved), and
   `launcherLog` the app's own log; they're the same file by default.
 - A failure's reply has `output`: llama-swap's last lines (up to 20).
@@ -236,6 +239,11 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
   running.
 
 ### For scripts and AI agents
+
+**Read [Security](#security) first.** An agent allowed to edit llama-swap's
+config and run `llsl restart` can run any command on this Mac, outside
+whatever sandbox the agent itself runs in, because the app runs what the
+config says.
 
 - **Don't start llama-swap directly** (`llama-swap -config …`) from tmux, a
   script or an agent. It would run without the app's Local Network
@@ -307,9 +315,14 @@ paths in the config work.
 
 ### API keys
 
-If llama-swap listens beyond this Mac (`0.0.0.0`), anyone on your network can
-use it, unload its models, and read its logs, unless its config sets
-`apiKeys`. The app keeps those keys in your login keychain rather than in a
+Without `apiKeys` in its config, llama-swap answers anyone who can reach it:
+they can use its models, unload them, and read its logs. If it listens
+beyond this Mac (`0.0.0.0`, or a LAN address), that's anyone on your network,
+and on any network the Mac joins later. Even on `127.0.0.1` it's more than
+you might think: llama-swap allows requests from any web page by default
+(`Access-Control-Allow-Origin: *`), so a page open in your browser can use
+it too, as can other users of this Mac; its config's `cors` settings can
+narrow that. The app keeps those keys in your login keychain rather than in a
 file, and hands them to llama-swap as environment variables, so your config
 names a variable instead of holding the key:
 
@@ -336,6 +349,12 @@ apiKeys:
   llama-swap as it was.
 - With keys set, **Open llama-swap UI** gets a login prompt from your
   browser: any user name, and one of the keys as the password.
+- **The app checks.** Once llama-swap is ready, it asks it, without a key,
+  for something that needs one. If llama-swap answers, the menu and
+  `llsl status` (`warning`) say so when it matters: the app has keys that
+  llama-swap's config doesn't list (so it ignores them), or llama-swap
+  listens beyond this Mac with no key at all. Saving settings that would
+  open it to the network without a key asks first.
 - `llsl` never needs a key: it asks the app, which sends one.
 - The keychain keeps each key encrypted on disk, and other programs can only
   read it with your permission. While llama-swap runs, the keys are in its
@@ -432,6 +451,35 @@ everything, the config has your hostnames and paths, and the logs can hold
 prompts and replies. Nothing is ever
 sent anywhere by the app.
 
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+What the app trusts, and what it doesn't protect against:
+
+- **Its settings and llama-swap's config decide what it runs.** Anything
+  running as your user can change either, and can reach `llsl`'s control
+  socket, so it can make the app run any program: with the app's Local
+  Network permission, with any file access macOS has granted the app, and
+  with every API key and secret variable in its environment, without a
+  keychain prompt. That's what a launcher is, as with a terminal; the app
+  isn't a sandbox. Other users of the Mac can't: the socket and files are
+  yours alone, and the app refuses other users' connections.
+- **Agents:** for the same reason, an agent allowed to edit llama-swap's
+  config and run `llsl restart` can run any command, outside whatever
+  sandbox the agent runs in. Give an agent that only if you'd let it run
+  commands. `llsl`'s output also carries text from elsewhere (request
+  paths in log lines, a peer's error), which an agent reads as input.
+- **The keychain protects keys at rest:** in files, backups and diagnostics
+  they're never in plain text. While llama-swap runs, they're in its
+  environment, where your own programs can read them.
+- **No encryption on the network.** llama-swap speaks plain HTTP, so API
+  keys and prompts cross the LAN unencrypted. llama-swap's TLS flags aren't
+  supported under the app (its health monitor speaks HTTP), so on an
+  untrusted network, keep llama-swap on `127.0.0.1`.
+- **Keys matter even locally:** see [API keys](#api-keys) for what a
+  llama-swap without them allows, on `127.0.0.1` too.
+
 ## Building from source
 
 Needs Go 1.27 or later and Apple's Command Line Tools. Signing needs a
@@ -450,6 +498,12 @@ Override `SIGN_IDENTITY` (use `-` for an unsigned, ad-hoc build) and
 **Llama Swap Launcher Dev**, with its own preferences, logs and Local Network
 permission. Its `llsl` talks to it rather than to the release app.
 `LLSL_BUNDLE_ID` overrides which app `llsl` talks to.
+
+**Forks and ad-hoc builds should use their own bundle ID** (`make
+BUNDLE_ID=com.example.llama-swap-launcher …`). Under this one, an ad-hoc
+build gets a new identity each time, leaving Local Network entries in System
+Settings that can't be removed, and shares this app's folders, control
+socket and keychain items.
 
 ## How it was made
 

@@ -16,8 +16,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/alron/llama-swap-mac-launcher/internal/control"
 	"github.com/alron/llama-swap-mac-launcher/internal/paths"
@@ -272,7 +274,7 @@ func (c *cli) report(resp control.Response, err error, asJSON, isStatus bool) in
 		printStatus(c.stdout, resp.Status)
 	}
 	if !resp.OK {
-		fmt.Fprintln(c.stderr, "llsl:", resp.Error)
+		fmt.Fprintln(c.stderr, "llsl:", clean(resp.Error))
 		// The log shows why llama-swap or a model failed. A config that
 		// didn't validate never ran, so the log wouldn't say anything.
 		if len(resp.Output) > 0 {
@@ -314,7 +316,52 @@ func exitCode(resp control.Response, isStatus bool) int {
 	return exitOK
 }
 
+// clean makes text from elsewhere safe to print: control characters, such
+// as an escape sequence that redraws the terminal or a newline that forges
+// a line of output, show as \x1b-style escapes. (-json escapes them
+// already; logs print as they are, as cat would.)
+func clean(s string) string {
+	if !strings.ContainsFunc(s, unicode.IsControl) {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsControl(r) && r != '\t' {
+			fmt.Fprintf(&b, "\\x%02x", r)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// cleaned returns a copy of s with every text field cleaned: the state,
+// the messages, model and peer IDs, and a peer's error all come from
+// outside llsl.
+func cleaned(s *control.Status) *control.Status {
+	c := *s
+	for _, f := range []*string{&c.AppVersion, &c.BundleID, &c.State, &c.Listen, &c.Version, &c.Message,
+		&c.Warning, &c.Binary, &c.Config, &c.LogFile, &c.LauncherLog} {
+		*f = clean(*f)
+	}
+	c.Models = slices.Clone(s.Models)
+	for i := range c.Models {
+		c.Models[i].ID, c.Models[i].State = clean(c.Models[i].ID), clean(c.Models[i].State)
+	}
+	c.Peers = slices.Clone(s.Peers)
+	for i := range c.Peers {
+		c.Peers[i].ID, c.Peers[i].Error = clean(c.Peers[i].ID), clean(c.Peers[i].Error)
+	}
+	if s.LastGPUFault != nil {
+		f := *s.LastGPUFault
+		f.Model = clean(f.Model)
+		c.LastGPUFault = &f
+	}
+	return &c
+}
+
 func printStatus(w io.Writer, s *control.Status) {
+	s = cleaned(s)
 	fmt.Fprintf(w, "app:        running (pid %d, %s %s)\n", s.AppPid, s.BundleID, s.AppVersion)
 	line := "llama-swap: " + s.State
 	switch {
@@ -328,6 +375,9 @@ func printStatus(w io.Writer, s *control.Status) {
 	fmt.Fprintln(w, line)
 	if s.Message != "" {
 		fmt.Fprintln(w, "            "+s.Message)
+	}
+	if s.Warning != "" {
+		fmt.Fprintln(w, "warning:    "+s.Warning)
 	}
 	fmt.Fprintln(w, "config:     "+orNone(s.Config))
 	fmt.Fprintln(w, "binary:     "+orNone(s.Binary))

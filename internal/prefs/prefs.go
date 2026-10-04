@@ -272,13 +272,14 @@ func (p Prefs) Validate() error {
 // llama-swap listen where the app isn't watching, or run a config the app
 // didn't validate. The rest would leave llama-swap unreachable or exiting.
 var reservedFlags = map[string]string{
-	"config":        "is set by the app, from the config file preference",
-	"listen":        "is set by the app, from the listen address preference",
-	"config-dir":    "isn't supported: the app validates and watches the one config file",
-	"tls-cert-file": "isn't supported: the app watches llama-swap over plain HTTP, so it couldn't follow it serving HTTPS",
-	"tls-key-file":  "isn't supported: the app watches llama-swap over plain HTTP, so it couldn't follow it serving HTTPS",
-	"validate":      "would make llama-swap check its config and exit at once",
-	"version":       "would make llama-swap print its version and exit at once",
+	"config":         "is set by the app, from the config file preference",
+	"listen":         "is set by the app, from the listen address preference",
+	"config-dir":     "isn't supported: the app validates and watches the one config file",
+	"tls-cert-file":  "isn't supported: the app watches llama-swap over plain HTTP, so it couldn't follow it serving HTTPS",
+	"tls-key-file":   "isn't supported: the app watches llama-swap over plain HTTP, so it couldn't follow it serving HTTPS",
+	"listen-tailcat": "isn't supported: a second listener, which the app can't watch or check for API keys",
+	"validate":       "would make llama-swap check its config and exit at once",
+	"version":        "would make llama-swap print its version and exit at once",
 }
 
 // flagName returns the flag name in arg, as Go's flag package reads it:

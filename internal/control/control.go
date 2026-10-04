@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"syscall"
@@ -74,6 +75,10 @@ type Status struct {
 	Listen  string `json:"listen,omitempty"`
 	Version string `json:"version,omitempty"` // the running llama-swap's, such as "v262 (079c35a)"
 	Message string `json:"message,omitempty"`
+	// Warning says when llama-swap can be used without an API key: the app
+	// has keys its config doesn't list, or it listens beyond this Mac with
+	// none.
+	Warning string `json:"warning,omitempty"`
 	Binary  string `json:"binary,omitempty"`
 	Config  string `json:"config,omitempty"`
 	LogFile string `json:"logFile"` // where llama-swap's output goes; "" when it isn't saved
@@ -145,6 +150,13 @@ func Listen(path string) (*net.UnixListener, error) {
 		_ = os.Remove(path) // left by an instance that crashed
 	}
 	l, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if errors.Is(err, syscall.EADDRINUSE) {
+		// Two copies opened at once, and the other bound first.
+		if conn, derr := net.DialTimeout("unix", path, time.Second); derr == nil {
+			_ = conn.Close() // only probing whether another instance answers
+			return nil, ErrAlreadyRunning
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +190,8 @@ func serveConn(conn *net.UnixConn, h Handler) {
 		return
 	}
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second)) // fails only on a closed connection, which the read then reports
-	r := bufio.NewReader(conn)
+	// A request is one short line of JSON; a longer one is refused.
+	r := bufio.NewReader(io.LimitReader(conn, maxRequest))
 	line, err := r.ReadBytes('\n')
 	if err != nil {
 		return
@@ -217,6 +230,9 @@ func sameUser(conn *net.UnixConn) bool {
 	})
 	return ok
 }
+
+// maxRequest caps a request's size: one line of JSON, which is short.
+const maxRequest = 64 << 10
 
 // ErrNotRunning means nothing answers at the socket: the app isn't running.
 var ErrNotRunning = errors.New("the app isn't running")

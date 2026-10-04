@@ -339,6 +339,7 @@ func (a *app) controlStatus() *control.Status {
 	a.mu.Lock()
 	s.LastGPUFault = a.lastFault
 	a.mu.Unlock()
+	s.Warning = openWarning(p, st, snap)
 	if st.State == supervisor.Running {
 		for _, m := range snap.Models {
 			if m.Loaded() {

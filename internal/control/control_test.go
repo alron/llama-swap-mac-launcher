@@ -1,8 +1,10 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -105,5 +107,26 @@ func TestHandlerContextEndsWhenClientHangsUp(t *testing.T) {
 	case <-cancelled:
 	case <-time.After(2 * time.Second):
 		t.Error("handler kept waiting after the client hung up")
+	}
+}
+
+// A request longer than maxRequest gets no answer.
+func TestOversizedRequest(t *testing.T) {
+	path := socketPath(t)
+	l, err := Listen(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go Serve(l, func(ctx context.Context, req Request) Response { return Response{OK: true} })
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	go conn.Write(append(bytes.Repeat([]byte("x"), maxRequest+100), '\n'))
+	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if b, _ := io.ReadAll(conn); len(b) != 0 {
+		t.Errorf("answered an oversized request: %q", b)
 	}
 }

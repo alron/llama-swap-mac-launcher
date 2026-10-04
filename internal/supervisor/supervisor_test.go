@@ -243,3 +243,20 @@ func TestCleanupIgnoresRecycledPid(t *testing.T) {
 		t.Error("pidfile not removed")
 	}
 }
+
+// When llama-swap dies leaving something behind, the status says it's
+// gone before the cleanup, which can take seconds: that's what stops the
+// app's requests to it.
+func TestStoppingDuringCleanup(t *testing.T) {
+	policy := Policy{Backoff: time.Minute, MaxBackoff: time.Minute, MaxCrashes: 3, Window: time.Minute, StableAfter: time.Hour}
+	s, _ := newTestSupervisor(t, policy)
+	// A child that ignores SIGTERM, so the cleanup takes its full 5 s.
+	if err := s.Start(shSpec("(trap '' TERM; exec sleep 60) & sleep 2; exit 3")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "llama-swap to exit and the cleanup to start", func() bool {
+		st := s.Status()
+		return st.State == Stopping && strings.Contains(st.Message, "left running")
+	})
+	waitFor(t, "the restart to be scheduled", func() bool { return s.Status().State == Waiting })
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"syscall"
 )
 
 type Rotating struct {
@@ -30,7 +31,10 @@ func Open(path string, maxSize int64, keep int) (*Rotating, error) {
 }
 
 func (r *Rotating) open() error {
-	f, err := os.OpenFile(r.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	// O_NOFOLLOW: in a folder others can write to (/tmp, say), a symlink
+	// waiting at the log's name would otherwise take the app's writes
+	// somewhere else.
+	f, err := os.OpenFile(r.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return err
 	}

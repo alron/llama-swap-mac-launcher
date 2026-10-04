@@ -333,6 +333,14 @@ func (s *Supervisor) wait(r *run) {
 	r.treeMu.Unlock()
 	// Before any restart: a leftover model server still holds its memory.
 	if left := living(r.lastTree()); len(left) > 0 {
+		// Say llama-swap is gone first: that's what stops the app's
+		// requests to it, which carry the API key and would otherwise go
+		// on, during the cleanup, to whatever listens on its port next.
+		s.mu.Lock()
+		if s.status.State == Running {
+			s.setStatus(Status{State: Stopping, Message: "llama-swap exited; stopping what it left running"})
+		}
+		s.mu.Unlock()
 		s.Logf("stopping %d process(es) llama-swap left running: pid %s", len(left), pids(left))
 		terminate(left, 5*time.Second)
 	}
