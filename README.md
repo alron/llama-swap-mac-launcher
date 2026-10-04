@@ -450,6 +450,26 @@ Override `SIGN_IDENTITY` (use `-` for an unsigned, ad-hoc build) and
 permission. Its `llsl` talks to it rather than to the release app.
 `LLSL_BUNDLE_ID` overrides which app `llsl` talks to.
 
+## How it was made
+
+Llama Swap Launcher was built with generative AI, and this is how.
+
+- **The code, tests and documentation were written by Claude**, Anthropic's
+  AI model, working in Claude Code under the maintainer's direction. Commits
+  say so with a `Co-Authored-By: Claude` line.
+- **The maintainer** set the goal, made the design decisions, and signs and
+  notarizes the releases with their own Developer ID. Every feature was
+  tested on real Macs before it was committed, by hand or by Claude driving
+  the real app.
+- **Checks and reviews:** unit tests, tests against a real llama-swap,
+  `go vet`, `staticcheck` and `gosec`. On top of those, reviews of the
+  project by local models (Gemma 4 and Qwen 3.6) and by a second Claude
+  model, whose accepted suggestions are recorded in CLAUDE.md.
+- **[CLAUDE.md](CLAUDE.md)** is the working brief the AI sessions follow:
+  the goal, each decision and why, what was tried and found, and what's
+  left. It stays in the repository, so how the project was built is open to
+  read.
+
 ## License
 
 MIT; see [LICENSE](LICENSE). Not affiliated with the llama-swap project; just
