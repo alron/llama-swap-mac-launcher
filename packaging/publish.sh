@@ -76,17 +76,26 @@ fi
 git show origin/main:CHANGELOG.md >"$dir/CHANGELOG.md" 2>/dev/null ||
 	die "CHANGELOG.md isn't on origin/main"
 awk -v v="$version" '/^## / { if (on) exit; on = ($2 == v); next } on' \
-	"$dir/CHANGELOG.md" >"$dir/notes.md"
-grep -q '[^[:space:]]' "$dir/notes.md" ||
+	"$dir/CHANGELOG.md" >"$dir/section.md"
+grep -q '[^[:space:]]' "$dir/section.md" ||
 	die "CHANGELOG.md on origin/main has no section for $version"
+# GitHub shows a release's line breaks as they are, as in a comment, so the
+# changelog's wrapped lines are joined: each paragraph or list item becomes
+# one line. Code blocks are left alone.
+awk '
+	function flush() { if (buf != "") print buf; buf = "" }
+	/^```/ { flush(); print; fence = !fence; next }
+	fence { print; next }
+	/^[[:space:]]*$/ { flush(); print; next }
+	/^[[:space:]]*([-*+]|[0-9]+\.) / || /^#/ || /^>/ { flush(); buf = $0; next }
+	{ if (buf == "") buf = $0; else { sub(/^[[:space:]]+/, ""); buf = buf " " $0 } }
+	END { flush() }
+' "$dir/section.md" >"$dir/notes.md"
 cat >>"$dir/notes.md" <<EOF
 
 ### Checking the download
 
-\`$(basename "$zip")\` has the SHA-256 \`$sha\`; compare it with
-\`shasum -a 256\`. After unzipping, \`spctl -a -vv "$app.app"\` should say
-\`source=Notarized Developer ID\`, and \`codesign -dv "$app.app"\` should
-show \`TeamIdentifier=$team\`.
+\`$(basename "$zip")\` has the SHA-256 \`$sha\`; compare it with \`shasum -a 256\`. After unzipping, \`spctl -a -vv "$app.app"\` should say \`source=Notarized Developer ID\`, and \`codesign -dv "$app.app"\` should show \`TeamIdentifier=$team\`.
 EOF
 
 if [ -n "${DRY_RUN:-}" ]; then
