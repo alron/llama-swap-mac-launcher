@@ -23,7 +23,7 @@ export CGO_ENABLED := 1
 export CGO_CFLAGS  := -O2 -g -mmacosx-version-min=$(MIN_MACOS)
 export CGO_LDFLAGS := -mmacosx-version-min=$(MIN_MACOS)
 
-.PHONY: dev run release icons test vet lint sec clean
+.PHONY: dev run release publish icons test vet lint sec vuln clean
 
 # dev builds "Llama Swap Launcher Dev.app": the .dev bundle ID, signed with
 # the Developer ID certificate, not notarized. The .app path contains
@@ -73,6 +73,13 @@ release: build/AppIcon.icns
 	packaging/check-zip.sh "$(REL_ZIP)" "$(APP_NAME)"
 	shasum -a 256 "$(REL_ZIP)"
 
+# publish puts the release built above on GitHub, with CHANGELOG.md's notes
+# for this version. packaging/publish.sh says what it checks first; with
+# DRY_RUN=1 it stops after the checks and shows the notes. The signing keys
+# never leave this Mac, so releases are built here, not in GitHub Actions.
+publish:
+	DRY_RUN="$(DRY_RUN)" packaging/publish.sh "$(VERSION)" "$(REL_ZIP)" "$(APP_NAME)" "$(EXE)"
+
 test:
 	go test ./...
 
@@ -86,6 +93,10 @@ lint: vet
 # stable points; CLAUDE.md records which findings are accepted and why.
 sec:
 	gosec -quiet ./...
+
+# vuln reports known vulnerabilities in the code the app actually calls.
+vuln:
+	govulncheck ./...
 
 clean:
 	rm -rf build
@@ -110,5 +121,6 @@ define bundle
 		--sign "$(SIGN_IDENTITY)" "$(1)/Contents/Helpers/llsl"
 	codesign --force --options runtime $(4) --sign "$(SIGN_IDENTITY)" "$(1)"
 	codesign --verify --strict "$(1)"
+	packaging/check-build.sh "$(1)" $(MIN_MACOS)
 	@echo "built $(1)"
 endef

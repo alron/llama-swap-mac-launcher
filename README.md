@@ -30,7 +30,9 @@ The app doesn't include llama-swap; install that separately.
 
 ## Installing
 
-1. Download `Llama-Swap-Launcher-<version>.zip`, unzip it, and move
+1. Download `Llama-Swap-Launcher-<version>.zip` from
+   [Releases](https://github.com/alron/llama-swap-mac-launcher/releases)
+   (what changed is in [CHANGELOG.md](CHANGELOG.md)), unzip it, and move
    **Llama Swap Launcher** to `/Applications`. Open it.
 2. The first time, it asks for your llama-swap config: open **Settings…**,
    choose the config file, and **Save**, then **Start**. It finds llama-swap
@@ -488,10 +490,20 @@ keychain profile.
 
 ```sh
 make test      # unit tests
+make lint      # go vet and staticcheck
+make sec       # gosec
+make vuln      # govulncheck
 make dev       # build/Llama Swap Launcher Dev.app: separate bundle ID, signed, not notarized
 make run       # build and open the dev app
 make release   # build/release/Llama-Swap-Launcher-<version>.zip: signed, notarized, stapled
 ```
+
+GitHub Actions runs the tests, the checkers and an ad-hoc build for every
+push and pull request, on macOS 15
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml), which also names
+the checkers' versions). It holds no secrets: releases are signed,
+notarized and published on the maintainer's Mac (`make release`, then `make
+publish`), so the signing keys aren't on GitHub.
 
 Override `SIGN_IDENTITY` (use `-` for an unsigned, ad-hoc build) and
 `NOTARY_PROFILE` on the `make` command line. The dev app is a separate app,
@@ -513,11 +525,12 @@ Llama Swap Launcher was built with generative AI, and this is how.
   AI model, working in Claude Code under the maintainer's direction. Commits
   say so with a `Co-Authored-By: Claude` line.
 - **The maintainer** set the goal, made the design decisions, and signs and
-  notarizes the releases with their own Developer ID. Every feature was
+  notarizes the releases with their own Developer ID, on their own Mac. Every feature was
   tested on real Macs before it was committed, by hand or by Claude driving
   the real app.
 - **Checks and reviews:** unit tests, tests against a real llama-swap,
-  `go vet`, `staticcheck` and `gosec`. On top of those, reviews of the
+  `go vet`, `staticcheck`, `gosec` and `govulncheck`, also run by GitHub
+  Actions for every push and pull request. On top of those, reviews of the
   project by local models (Gemma 4 and Qwen 3.6) and by a second Claude
   model, whose accepted suggestions are recorded in CLAUDE.md.
 - **[CLAUDE.md](CLAUDE.md)** is the working brief the AI sessions follow:

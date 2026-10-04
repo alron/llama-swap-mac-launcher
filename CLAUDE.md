@@ -8,11 +8,11 @@ The app does **not** bundle or redistribute llama-swap. The user installs llama-
 
 ## Current status and decisions
 
-- **Stage:** milestones 0 to 5 passed on 2026-09-28 (see their results sections). The notarized 0.1.0 release runs on both the development Mac and a second Mac, the LAN peer. The icons are done (2026-09-29; see Components → Icons). Every TODO item up to 22 was done by 2026-10-04 (version 0.2.0), and the scrubbed history pushed to GitHub. A security assessment the same day added items 23 to 32 and a publishing checklist (the end of "TODO"); they come before the repository is made public. Then: milestone 6 (GitHub Actions). The milestone-0 test app stays in `spike/localnet/` for reference.
+- **Stage:** milestones 0 to 5 passed on 2026-09-28 (see their results sections). The notarized 0.1.0 release runs on both the development Mac and a second Mac, the LAN peer. The icons are done (2026-09-29; see Components → Icons). Every TODO item up to 22 was done by 2026-10-04 (version 0.2.0), and the scrubbed history pushed to GitHub. A security assessment the same day added items 23 to 32 and a publishing checklist (the end of "TODO"); they were fixed in 0.2.1, tagged `v0.2.1`. Milestone 6 followed the same day: CI on GitHub Actions with no secrets, and `make publish` for releases (see "Milestone 6 results"). Next: making the repository public, which is the maintainer's call, then milestone 7 once it has run for a while without major problems. The milestone-0 test app stays in `spike/localnet/` for reference.
 - **The primary goal is met** (2026-09-28): llama-swap runs under a signed, notarized app and reaches the LAN from anywhere, tmux included. What's left is polish and publishing, with the aim of sharing the project with llama-swap's developer. The order:
   1. the items in "TODO" below: all of them, before the project goes public on GitHub (decided 2026-10-03; the Preferences dialog is done);
   2. publishing: done 2026-10-04 as a single fresh commit of the scrubbed tree, rather than rewriting history, so nothing depends on a rewrite being complete. The detailed history stays on a local branch that's never pushed, and personal context (machines, hostnames, the setup before the launcher) is in `CLAUDE.local.md`, which Claude Code loads alongside this file and `.gitignore` keeps out of the repo. That file also has the check to run before any push. The Makefile's `SIGN_IDENTITY` default carries the maintainer's name and team ID; both are in `LICENSE` and in every signed binary already, so it stays. `README.md` (usage, the full `llsl` reference, settings) and `LICENSE` (MIT, like llama-swap's) were added 2026-09-28;
-  3. milestone 6 (GitHub Actions) and milestone 7 (Homebrew cask).
+  3. milestone 6 (GitHub Actions; done 2026-10-04) and milestone 7 (Homebrew cask), which waits until the repository is public and no major problems have come up (the maintainer, 2026-10-04).
 - **Machines and the real setup:** a development Mac, and a second Mac on the LAN running its own llama-swap (the peer, also through the release app). Before the launcher, llama-swap ran from the maintainer's shell scripts, with a config whose `peers:` entry is the LAN connection that gets blocked. The details are in `CLAUDE.local.md`.
 - **Signing:** Developer ID Application certificate installed and backed up (team ID `P56KW9H72P`); a hardened-runtime, timestamped test signature verified on 2026-09-28. Notarization credentials (App Store Connect API key) are saved in the keychain as notarytool profile `my-wang` (`--keychain-profile my-wang`), verified 2026-09-28. Account setup is complete.
 - **Toolchain:** Go 1.27 and Xcode 27, but the active developer directory deliberately stays on the Command Line Tools. Call Apple's tools through `xcrun` so either setup works.
@@ -186,9 +186,9 @@ From a security assessment by Claude Fable 5.1 (2026-10-04), before the reposito
     - `-listen-tailcat` (Components §3) isn't in `reservedFlags`. Decide whether it should be; item 27's check can't see that listener.
 
 **Publishing checklist** from the same assessment (not code):
-- **Tag the release commit** (`v0.2.0`, or the next version's). The binary embeds `vcs.revision`, which should be a commit people can find; 0.2.0's is on `main`, and there are no tags yet. In the release notes: the zip's SHA-256, and how to check a download (`spctl -a -vv`, and Team ID `P56KW9H72P` in `codesign -dv`).
+- **Tag the release commit** (**done 2026-10-04**: `v0.2.1`, with the zip's SHA-256 in its message; `make publish` now creates the tag when there isn't one and checks it when there is) (`v0.2.0`, or the next version's). The binary embeds `vcs.revision`, which should be a commit people can find; 0.2.0's is on `main`, and there are no tags yet. In the release notes: the zip's SHA-256, and how to check a download (`spctl -a -vv`, and Team ID `P56KW9H72P` in `codesign -dv`).
 - **When the repository is public, turn on** private vulnerability reporting, secret scanning with push protection, Dependabot alerts, and a ruleset on `main` that refuses force-pushes. The last isn't offered for a private repository on this plan (the API said so, 2026-10-04).
-- **A pull request is a way into the Mac that signs.** Agents build this project on the machine that holds the Developer ID and the notary credentials. A branch that changes `CLAUDE.md`, adds `.claude/` settings or hooks or an `.mcp.json`, or touches the `Makefile` or `packaging/`, steers or runs code there as soon as a session opens it. Read those paths by eye first, and don't check a stranger's branch out in this working copy. For milestone 6: signing secrets only in a protected environment, on tag pushes, never in a workflow a fork's pull request can trigger; pin actions by commit.
+- **A pull request is a way into the Mac that signs.** Agents build this project on the machine that holds the Developer ID and the notary credentials. A branch that changes `CLAUDE.md`, adds `.claude/` settings or hooks or an `.mcp.json`, or touches the `Makefile` or `packaging/`, steers or runs code there as soon as a session opens it. Read those paths by eye first, and don't check a stranger's branch out in this working copy. For milestone 6: signing secrets only in a protected environment, on tag pushes, never in a workflow a fork's pull request can trigger; pin actions by commit. (Decided 2026-10-04: no signing secrets on GitHub at all; see Signing, notarization, distribution.)
 - **Forks and ad-hoc builds** (**said in the README 2026-10-04**) should use their own bundle ID (`make BUNDLE_ID=…`): under this one, an ad-hoc build leaves Local Network entries that can't be removed, and shares this app's folder, socket and keychain service name. Say so under the README's "Building from source".
 - **Not security, and not tested here** (**the startup check is done 2026-10-04**: an alert when the executable's path has `/AppTranslocation/`): opened straight from Downloads, a quarantined app runs from a random read-only path (Gatekeeper's app translocation), so Launch at Login and an `llsl` symlink would point at a path that disappears. The README says to move it to `/Applications`; a check at startup (the executable's path contains `/AppTranslocation/`) could say so too.
 
@@ -221,11 +221,13 @@ Suggested order: 23 (two flags), 25, 26 and 31 (a few lines each), then 24 and 2
 - `make release` builds `build/release/Llama Swap Launcher.app` under the release bundle ID:
   - it signs with a secure timestamp and zips the app with `ditto`;
   - `packaging/notarize.sh` notarizes it (keychain profile `my-wang`) and staples the ticket, or prints Apple's log if rejected;
-  - it zips the app again so the zip carries the ticket, then runs `spctl --assess` and prints the zip's SHA-256.
+  - it zips the app again so the zip carries the ticket, then runs `spctl --assess`, `packaging/check-zip.sh` (unpacks it with `unzip` and checks the app) and prints the zip's SHA-256.
   
   Notarization takes a few minutes. `syspolicy_check distribution <app>` is a further readiness check.
-- Builds use `-trimpath`, so the binaries don't contain local paths.
-- **Checks at stable points:** `make lint` (`go vet` + `staticcheck`) and `make sec` (`gosec`, which catches things the others don't). The gopls MCP server is also available for diagnostics, references and renames.
+- **`make publish`** (`packaging/publish.sh`) puts the built release on GitHub: it checks the zip again, that the app is `VERSION` built from a clean tree whose commit is on `origin/main`, the tag (creating it if missing) and the changelog, then pushes the tag and runs `gh release create`. `DRY_RUN=1` stops after the checks and shows the notes. It's outward-facing: ask the maintainer before running it for real.
+- **`CHANGELOG.md`** has a section per release (`## <version> (<date>)`), written for users, with full URLs for links (release notes don't resolve relative ones). Commit and push it before `make publish`, which takes the release notes from `origin/main`'s copy and adds how to check the download.
+- Builds use `-trimpath`, so the binaries don't contain local paths. `packaging/check-build.sh` runs after every build (dev, release, CI) and fails if either binary targets a macOS newer than `MIN_MACOS`, lacks an `LC_UUID`, or contains a path from the build machine.
+- **Checks at stable points:** `make lint` (`go vet` + `staticcheck`), `make sec` (`gosec`, which catches things the others don't) and `make vuln` (`govulncheck`). CI runs all of them, plus `make test` and an ad-hoc build, for every push to `main` and every pull request (`.github/workflows/ci.yml`). The gopls MCP server is also available for diagnostics, references and renames.
 - **gosec triage, 2026-09-28:** fixed G115 (the peer-UID comparison) and one G104 (`llsl logs -f` ignored a failed `Seek` and would reprint the whole log). Accepted as by design:
   - G204, a subprocess with variable arguments: launching the user's llama-swap is the app's job, and the rest are `/usr/bin/open` with fixed arguments.
   - G304, a file path from a variable: every path comes from the bundle ID or is the user's own config.
@@ -400,7 +402,9 @@ Also make sure the main executable has a **unique Mach-O UUID** (TN3179 notes lo
 - Sign inner binaries first (Helpers), then the bundle. Avoid `--deep`.
 - Notarize with `xcrun notarytool submit --wait`, then `xcrun stapler staple`.
 - Package as a `.zip` for GitHub Releases (decided; see Current status).
-- Automate via a Makefile (local) and a GitHub Actions release workflow (secrets: signing cert .p12, notarytool API key).
+- **Releases are built, signed, notarized and published on the development Mac** (decided 2026-10-04, milestone 6): `make release`, then `make publish`. GitHub Actions runs CI only, with no secrets.
+  - The maintainer's reasoning: a leak through GitHub (a fault there, an intrusion, a compromised action) is likelier than a remote compromise of their own Mac, so the private halves of the Developer ID certificate and the notary key stay off it.
+  - That may change if releases become frequent. Then: a second Developer ID Application certificate and App Store Connect API key issued for GitHub alone, each revocable without touching the others. Builds signed with the second certificate keep users' Local Network grants, since the designated requirement is the bundle ID plus the team ID, with no certificate hash. The signing job would run only on tags, in a protected environment that waits for the maintainer's approval, with actions pinned by commit.
 - **Later:** Homebrew cask. Official casks now must pass Gatekeeper, meaning signed and notarized. Use the cask `binary` stanza to symlink `llsl` onto `PATH`. The official cask repo also has popularity requirements, so start with our own tap.
 - **Later / optional:** Sparkle for in-app updates.
 
@@ -426,7 +430,7 @@ Also make sure the main executable has a **unique Mach-O UUID** (TN3179 notes lo
 3. Control socket + CLI, including `restart --wait` and `open -b` auto-launch. Done 2026-09-28; see "Milestone 3 results".
 4. `.app` bundling, Info.plist, launch-at-login. Done 2026-09-28 with placeholder icons; see "Milestone 4 results".
 5. Release signing (release bundle ID, secure timestamp) + notarization in the Makefile; verify the Local Network prompt appears under the app's name and the grant survives a rebuild. Done 2026-09-28; see "Milestone 5 results". The grant surviving a rebuild was shown with the Developer ID-signed dev build in milestone 0, and the release build uses the same identity scheme.
-6. GitHub Actions release pipeline.
+6. GitHub Actions: CI, and publishing releases from the Mac. Done 2026-10-04; see "Milestone 6 results".
 7. Homebrew cask.
 
 ## Milestone 0 results (2026-09-28)
@@ -493,6 +497,18 @@ Hands-on test of the dev app, with placeholder icons:
   - Outgoing: the development Mac's llama-swap proxying to the peer.
   - Incoming: a browser on the development Mac reaching the llama-swap the peer's app runs, listening on all interfaces.
 - **Firewall prompts:** each Mac's firewall prompted once, naming **Llama Swap Launcher.app** (for llama-swap's connections too), and hasn't asked again. A stable signature also keeps third-party firewall rules working.
+
+## Milestone 6 results (2026-10-04)
+
+Releases stay on the development Mac (see Signing, notarization, distribution); GitHub Actions only checks.
+
+- **CI** (`.github/workflows/ci.yml`): `make test`, `make lint`, `make sec`, `make vuln` and `make dev SIGN_IDENTITY=-`, for pushes to `main`, pull requests, and by hand.
+  - It runs on `macos-15`: the oldest macOS the app supports, with Xcode 16.4 and the macOS 15 SDK, so a shim calling a newer API without checking fails to build there.
+  - It holds no secrets: `contents: read`, the checkout keeps no credentials, and actions are pinned by commit. `.github/dependabot.yml` proposes action updates monthly. The checkers' versions are pinned in the workflow; raise them by hand.
+  - Fork pull requests get the same read-only run. GitHub's default asks the maintainer to approve a first-time contributor's run.
+  - While the repository is private, macOS minutes count ten times against the plan's free allowance; public repositories' runs are free.
+  - The `-buildvcs` worry (declined from the Qwen review) didn't arise: the checkout's `.git` is readable.
+- **Publishing:** `make publish` and `CHANGELOG.md` (see Working in this repo).
 
 ## Verify before relying on it
 

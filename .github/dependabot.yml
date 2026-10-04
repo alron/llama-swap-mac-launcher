@@ -1,0 +1,9 @@
+# Proposes updates to the actions CI uses, which are pinned by commit and
+# would otherwise go stale. Go modules aren't included: govulncheck reports
+# the ones that matter.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

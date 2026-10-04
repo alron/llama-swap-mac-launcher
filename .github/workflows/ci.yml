@@ -1,0 +1,51 @@
+# Tests, checkers and an unsigned build, for every push to main and every
+# pull request. It holds no secrets and signs nothing with the Developer ID:
+# releases are built, notarized and published on the maintainer's Mac
+# (`make release`, `make publish`), so the signing keys never reach GitHub.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # The oldest macOS the app supports, with its SDK: a shim that calls a
+    # newer API without checking for it fails to build here.
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      # Actions are pinned by commit; Dependabot proposes updates.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install the checkers
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Test
+        run: make test
+      - name: vet and staticcheck
+        run: make lint
+      - name: gosec
+        run: make sec
+      - name: govulncheck
+        run: make vuln
+      # Ad-hoc signed, which needs no certificate. It also runs
+      # packaging/check-build.sh: minimum macOS, UUIDs, no local paths.
+      - name: Build
+        run: make dev SIGN_IDENTITY=-
