@@ -8,7 +8,7 @@ The app does **not** bundle or redistribute llama-swap. The user installs llama-
 
 ## Current status and decisions
 
-- **Stage:** milestones 0 to 5 passed on 2026-09-28 (see their results sections). The notarized 0.1.0 release runs on both the development Mac and a second Mac, the LAN peer. The icons are done (2026-09-29; see Components → Icons). Every TODO item was done by 2026-10-04 (version 0.2.0), and the scrubbed history pushed to GitHub. Next: milestone 6 (GitHub Actions). The milestone-0 test app stays in `spike/localnet/` for reference.
+- **Stage:** milestones 0 to 5 passed on 2026-09-28 (see their results sections). The notarized 0.1.0 release runs on both the development Mac and a second Mac, the LAN peer. The icons are done (2026-09-29; see Components → Icons). Every TODO item up to 22 was done by 2026-10-04 (version 0.2.0), and the scrubbed history pushed to GitHub. A security assessment the same day added items 23 to 32 and a publishing checklist (the end of "TODO"); they come before the repository is made public. Then: milestone 6 (GitHub Actions). The milestone-0 test app stays in `spike/localnet/` for reference.
 - **The primary goal is met** (2026-09-28): llama-swap runs under a signed, notarized app and reaches the LAN from anywhere, tmux included. What's left is polish and publishing, with the aim of sharing the project with llama-swap's developer. The order:
   1. the items in "TODO" below: all of them, before the project goes public on GitHub (decided 2026-10-03; the Preferences dialog is done);
   2. publishing: done 2026-10-04 as a single fresh commit of the scrubbed tree, rather than rewriting history, so nothing depends on a rewrite being complete. The detailed history stays on a local branch that's never pushed, and personal context (machines, hostnames, the setup before the launcher) is in `CLAUDE.local.md`, which Claude Code loads alongside this file and `.gitignore` keeps out of the repo. That file also has the check to run before any push. The Makefile's `SIGN_IDENTITY` default carries the maintainer's name and team ID; both are in `LICENSE` and in every signed binary already, so it stays. `README.md` (usage, the full `llsl` reference, settings) and `LICENSE` (MIT, like llama-swap's) were added 2026-09-28;
@@ -129,6 +129,80 @@ From the maintainer (2026-10-03):
 **Preferences is outgrowing one form** (noted 2026-10-03): logs (item 22), the API key (item 14) and secret environment variables will make it unwieldy. Plan on tabs (General, Logs, API Key), with Log Settings… opening the Logs tab; do it with whichever of items 14 and 22 comes first. Apple's convention since macOS 13 names the menu item "Settings…" rather than "Preferences…"; a cheap rename to make alongside.
 
 Suggested order (2026-10-02; all of them come before publishing, so this is only which to do first): items 13 (the socket path changes, and nothing depends on it yet), 10 and 11 together, 6, 9, 14, 15 and 16. Then 1 with 4, then 2; 17 to 20 as they come up; then 3, 7, 8, and 5 last. Added 2026-10-03: 21 alongside 10 and 11 (it's where the versions go); 22 after 14, sharing the move to tabs.
+
+From a security assessment by Claude Fable 5.1 (2026-10-04), before the repository goes public. Every Go and Objective-C file was read, and each item marked "verified" was tested, not only read. Nothing found lets a remote machine or another user of the Mac take over the app or read its secrets. These are what to fix, or say, before strangers run it:
+
+23. **The release zip breaks when unpacked with `unzip`** (verified with the 0.2.0 zip).
+    - `ditto -c -k --keepParent` stores each file's `com.apple.provenance` attribute as a `._name` file beside it. Finder and `ditto -x -k` merge those back. `/usr/bin/unzip` leaves 11 of them inside the bundle, and `codesign --verify` and `spctl` then both report "a sealed resource is missing or invalid".
+    - People who live in a terminal are this app's audience. Whether Homebrew unpacks a cask's zip the same way wasn't checked; check before milestone 7.
+    - Fix: `ditto -c -k --norsrc --noextattr --keepParent` on both `ditto` lines of `release`. Verified: unpacked with either tool, `codesign --verify --strict`, `spctl` and `stapler validate` all pass, and nothing else is in the zip. The stapled ticket is a file (`Contents/CodeResources`), so dropping attributes loses nothing. Add an `unzip`, `codesign --verify` step to `release` so it can't come back.
+24. **Collect Diagnostics leaves secrets in** (verified by running the redactor on samples). People will attach these zips to public issues. What got through:
+    - a commented-out line (`# apiKey: old-key`);
+    - a block scalar under a secret-named key (`apiKey: |`, with the key on the next line: the `|` is redacted, the key isn't);
+    - `x-api-key: …` anywhere, in YAML or in `curl -H "x-api-key: …"`: the hint is `api_?key`, which doesn't match the hyphen, and it's a header llama-swap itself accepts;
+    - keys named `key`, `peer_key`, `pass` or `pwd`, and macros with innocent names;
+    - `curl -u user:password`, `MYPASS=…`, and a secret-named key inside one-line JSON (`{"api_key":"…"}`), since the key rule only matches at the start of a line;
+    - token shapes not listed: `github_pat_…`, `glpat-…`, `AIza…`;
+    - `prefs.json`'s `env` values under names that don't look secret (`GH_PAT`, `WANDB_KEY`).
+
+    The first two have one cause: llama-swap's rules, which these copy, run on the parsed YAML, where comments are gone and a block scalar is one value. Here they run on the raw file's lines. Fixes:
+    - blank every `env` value in the `prefs.json` copy (the app knows that map exactly; the names stay);
+    - apply the rules to comment lines too, and carry a secret-named key's block scalar;
+    - widen the hint to `api[-_]?key`, add `-u`, the token shapes, and secret-named keys inside a line;
+    - have the alert say, as the README does, that hostnames and addresses stay, and that logs can hold prompts.
+
+    Add each sample to `redact_test.go`.
+25. **A client can keep its requests out of the saved log** (verified against v262 on a spare port).
+    - `logfile.DropLines` drops every line containing `llama-swap-launcher-healthcheck`, and llama-swap's access line quotes the client's User-Agent: `[INFO] Request 127.0.0.1 "POST /api/models/unload HTTP/1.1" 200 13 "llama-swap-launcher-healthcheck" 36µs`.
+    - So any client that sends that User-Agent, from the LAN included, is missing from the log, `llsl logs`, the failure alert and diagnostics, whatever it asked for. The query string isn't logged, so only the User-Agent does it.
+    - Fix: drop a line only when it's also a health check, `"GET /health HTTP/` or `"GET /upstream/…/health HTTP/`, with the quoted User-Agent. `app.recentOutput` has the same test.
+26. **The app's requests to llama-swap obey `HTTP_PROXY`** (verified with a stand-in proxy).
+    - `health.New` makes a plain `http.Client`, and `control.go` and `peers.go` use `http.DefaultClient`. Both take a proxy from the app's environment, which `open` and `llsl` pass in from the shell.
+    - Go skips the proxy for loopback, so the default `127.0.0.1`, and `0.0.0.0` (which the app dials as `127.0.0.1`), aren't affected.
+    - With `listen` set to one of the Mac's own LAN addresses, or a host name, every request goes to the proxy with `Authorization: Bearer <key>`: the key leaves the Mac, and the monitor connects only if the proxy can reach the Mac back.
+    - Fix: one shared client for all of the app's requests to llama-swap, with the transport's `Proxy` set to nil.
+27. **Warn when llama-swap can be used without a key** (a feature, and the one worth adding before going public). The likeliest way a user gets hurt is `0.0.0.0` on a laptop, no keys, then another network. Two checks:
+    - On Save: `listen` isn't loopback and the app has no API keys. Confirm, saying what's exposed.
+    - Once llama-swap is ready: one request without a key for a route that needs one (`/api/version`). A 200 means llama-swap isn't asking for keys. This matters most when the app *has* keys: someone who adds a key under Secrets but never adds `apiKeys:` to llama-swap's config has a llama-swap that ignores it, and everything looks right, since the monitor's requests succeed either way. Show it in the menu and in `llsl status` when `listen` isn't loopback.
+
+    Verified on v262 with no `apiKeys`: a cross-origin `POST /api/models/unload` gets 200 and `Access-Control-Allow-Origin: *`. So on `127.0.0.1` too, any web page open in the user's browser can use llama-swap (its config's `cors.allowedOrigins` narrows that), and so can the Mac's other users. The README's API keys section reads as if keys only matter on `0.0.0.0`; say this there. It's llama-swap's own behaviour, and worth raising with its developer.
+28. **Say what the app trusts: a `SECURITY.md`, and a short Security section in the README.** There's neither, and GitHub shows no security policy. What they should say:
+    - How to report a vulnerability: GitHub's private reporting (see the checklist below).
+    - `prefs.json` and llama-swap's config decide what the app runs. Anything running as the user can write either and reach the control socket, and so can make the app run any program: with its Local Network permission, with any file access macOS has granted it, and with every keychain secret in its environment, without a keychain prompt. That isn't a bug; it's what a launcher is, as with a terminal. But the README's "other programs can only read it with your permission" is half the story: the keychain protects the keys on disk, in backups and from other users, not from programs already running as the user.
+    - **For agents:** an agent allowed to edit llama-swap's config and run `llsl restart` can run any command, outside whatever sandbox the agent itself is in, because the app runs it. The README recommends exactly that workflow, so it should say so. `llsl`'s output also carries text from elsewhere (clients' request paths in log lines, a peer's error body), which an agent reads as input.
+    - llama-swap speaks plain HTTP, so keys cross the LAN unencrypted, and the app refuses the TLS flags (`reservedFlags`), so under the app there's no way to turn TLS on. A later feature: allow them, and have the monitor speak HTTPS.
+29. **`llsl`'s text output prints text from the network as it comes.** A peer's error (up to 1000 bytes of the peer's reply), `message`, and model IDs go to the terminal with any escape sequences and newlines they contain, which can redraw the terminal or forge a line such as `llama-swap: ready`. `-json` already escapes them. Replace control characters in `printStatus` and `report`; `logs` can stay as it is, like `cat`.
+30. **The monitor keeps sending the key after llama-swap dies.** `Supervisor.wait` stops leftover model servers (up to 5 s) before it changes the status, which is what makes `syncMonitor` cancel the monitor. Until then the monitor's reconnects (every 250 ms at first) and the model-log watchers carry the key to whatever listens on the port next, such as another user's program on a shared Mac. Fix: let the app know the process has gone before `terminate` runs.
+31. **Text that isn't valid UTF-8 makes the shims raise** (verified in a harness: `str()` returns nil for it, and `alert.messageText`, `informativeText`, a menu item's title, `NSAttributedString` and a field's `stringValue` each raise an exception on nil).
+    - Such bytes can come from llama-swap: `Monitor.post` cuts an error body at 300 bytes, which can split a character, and `Validate` passes llama-swap's output on whole. Both reach `app.problem`.
+    - In the app, that's either a crash, which takes llama-swap down with it, or a caller left waiting for ever. Which of the two wasn't tested.
+    - Fix: `strings.ToValidUTF8` in the Go wrappers (`Alert`, `Confirm` and the rest), or a `str()` that never returns nil.
+    - Today the failure alert's output box is silently left out when a line was cut mid-character (`tail` cuts at 1000 bytes).
+32. **Smaller, as they come up:**
+    - Without the control socket, the app carries on without its single-instance lock (`main.go`: any `Listen` error except `ErrAlreadyRunning`), and `CleanupLeftovers` then stops another instance's llama-swap. `Listen` can also lose a race between two launches: both find nothing listening, and the second bind fails. Don't clean up or start llama-swap without the lock.
+    - `control.serveConn` reads a request line of any length (the same user only). Cap it at 64 KB.
+    - A log in a folder others can write to (`/tmp`, `/Users/Shared`) is opened through whatever symlink is waiting there. `O_NOFOLLOW` would refuse it.
+    - The GPU-fault marker is matched anywhere in a model's output, so with `unloadOnGpuFault`, a server that logs prompts unloads on a prompt containing it. Anyone who can send a prompt can call unload too, so this is only noted.
+    - `-listen-tailcat` (Components §3) isn't in `reservedFlags`. Decide whether it should be; item 27's check can't see that listener.
+
+**Publishing checklist** from the same assessment (not code):
+- **Tag the release commit** (`v0.2.0`, or the next version's). The binary embeds `vcs.revision`, which should be a commit people can find; 0.2.0's is on `main`, and there are no tags yet. In the release notes: the zip's SHA-256, and how to check a download (`spctl -a -vv`, and Team ID `P56KW9H72P` in `codesign -dv`).
+- **When the repository is public, turn on** private vulnerability reporting, secret scanning with push protection, Dependabot alerts, and a ruleset on `main` that refuses force-pushes. The last isn't offered for a private repository on this plan (the API said so, 2026-10-04).
+- **A pull request is a way into the Mac that signs.** Agents build this project on the machine that holds the Developer ID and the notary credentials. A branch that changes `CLAUDE.md`, adds `.claude/` settings or hooks or an `.mcp.json`, or touches the `Makefile` or `packaging/`, steers or runs code there as soon as a session opens it. Read those paths by eye first, and don't check a stranger's branch out in this working copy. For milestone 6: signing secrets only in a protected environment, on tag pushes, never in a workflow a fork's pull request can trigger; pin actions by commit.
+- **Forks and ad-hoc builds** should use their own bundle ID (`make BUNDLE_ID=…`): under this one, an ad-hoc build leaves Local Network entries that can't be removed, and shares this app's folder, socket and keychain service name. Say so under the README's "Building from source".
+- **Not security, and not tested here:** opened straight from Downloads, a quarantined app runs from a random read-only path (Gatekeeper's app translocation), so Launch at Login and an `llsl` symlink would point at a path that disappears. The README says to move it to `/Applications`; a check at startup (the executable's path contains `/AppTranslocation/`) could say so too.
+
+Noted, not planned: a launcher that runs whatever its preferences name can serve malware already on a Mac as a signed parent, and the same Developer ID signs all the maintainer's work. That's inherent in what the app is, and true of terminals too.
+
+Checked and found sound, so the next review needn't repeat it:
+- **The 0.2.0 release app:** hardened runtime, no entitlements (so no injected libraries, no debugger), notarized and stapled, the designated requirement is the bundle ID plus the team ID, no local paths in either binary, and `vcs.modified=false`. `make test`, `make lint`, `make sec` and `govulncheck` are clean.
+- **What can reach the app:** only the control socket (mode 0600 in a 0700 folder, plus the peer-UID check; checked on the installed app). It isn't HTTP, so no web page can reach it. The app has no listening port, URL scheme or Apple Events interface.
+- **What the app runs:** llama-swap's environment is built from scratch (no `DYLD_*` or proxy variables reach it), every subprocess is started without a shell, and `lsof` and `open` get fixed paths and checked arguments.
+- **Secrets:** keys come from `SecRandomCopyBytes` (48 bytes); they aren't synced, never logged, and absent from `prefs.json`, the status and the diagnostics summary (names only); the dialog uses secure fields and never writes the clipboard.
+- **Files:** preferences, pidfile, logs and the diagnostics zip are 0600. The pidfile cleanup checks pid, start time and name before it stops anything.
+- **The repository:** the tree and `main`'s commit messages pass `CLAUDE.local.md`'s check, commits carry the noreply address, and the PNGs carry no metadata beyond a colour profile.
+
+Suggested order: 23 (two flags), 25, 26 and 31 (a few lines each), then 24 and 27, then 28 with the README changes, then 29, 30 and 32. Items 24 to 31 change the app, so they're a new version (0.2.1), which also gets the fixed zip.
 
 ## Working in this repo
 
@@ -251,7 +325,7 @@ Explicitly rejected alternatives:
   - Also there: `/running`, `/v1/models` (with `status.value` loaded/unloaded), `/api/version`, `/metrics`.
   - **Auth:** with `apiKeys` set, every route the app uses except `/health` needs a key: `/api/*`, `/logs*`, `/upstream/*`, `/v1/models`, `/running`, `/metrics` and `/ui/` (the route table in `internal/server/server.go`). It's accepted as `Authorization: Bearer`, as Basic's password, or as `x-api-key`. The app doesn't send one yet: TODO item 14.
   - Peers: nothing beyond `peerID` in `modelStatus`; no endpoint lists peers or their URLs. `/upstream/<peer>/<model>/…` is proxied to the peer, and its `/health` is answered by the peer's llama-swap (TODO items 1 and 4).
-  - Flags: `-config`, `-config-dir` (additive to `-config`), `-listen`, `-watch-config`, `-validate`, `-version`, and TLS (`-tls-cert-file`, `-tls-key-file`). TLS flags in `args` would make llama-swap serve `https://`, which the app's `http://` monitor can't reach; not supported.
+  - Flags: `-config`, `-config-dir` (additive to `-config`), `-listen`, `-watch-config`, `-validate`, `-version`, and TLS (`-tls-cert-file`, `-tls-key-file`). TLS flags in `args` would make llama-swap serve `https://`, which the app's `http://` monitor can't reach; not supported. v262's `-h` also lists `-listen-tailcat` (a second listener, given a private-key file), which the app neither watches nor forbids (TODO item 32).
 - The monitor (`internal/health`) follows `/api/events` for model states and checks `/health` periodically, which catches a llama-swap that's hung but still holds the stream open. The menu shows "starting", "ready" or "not responding", lists loaded models with an Unload submenu each, and offers Unload All Models.
 - The event stream has no heartbeat (llama-swap's `serveSSE` only sends real events), so hang detection needs requests, and with `logToStdout` including `http` each one is a log line. So (decided 2026-09-28):
   - the interval is a preference, `healthCheckSeconds`, default 60;
