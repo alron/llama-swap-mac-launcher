@@ -4,10 +4,15 @@
 # (`make release`, `make publish`), so the signing keys never reach GitHub.
 name: CI
 
+# Changes to Markdown alone (the README, CLAUDE.md, the changelog) don't
+# run it: nothing here checks them, and macOS minutes are dear while the
+# repository is private.
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md']
   pull_request:
+    paths-ignore: ['**.md']
   workflow_dispatch:
 
 permissions:

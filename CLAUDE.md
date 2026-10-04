@@ -502,13 +502,13 @@ Hands-on test of the dev app, with placeholder icons:
 
 Releases stay on the development Mac (see Signing, notarization, distribution); GitHub Actions only checks.
 
-- **CI** (`.github/workflows/ci.yml`): `make test`, `make lint`, `make sec`, `make vuln` and `make dev SIGN_IDENTITY=-`, for pushes to `main`, pull requests, and by hand.
+- **CI** (`.github/workflows/ci.yml`): `make test`, `make lint`, `make sec`, `make vuln` and `make dev SIGN_IDENTITY=-`, for pushes to `main`, pull requests, and by hand; not for changes to Markdown files alone. The first run passed in under two minutes, with every package's tests run on macOS 15.
   - It runs on `macos-15`: the oldest macOS the app supports, with Xcode 16.4 and the macOS 15 SDK, so a shim calling a newer API without checking fails to build there.
   - It holds no secrets: `contents: read`, the checkout keeps no credentials, and actions are pinned by commit. `.github/dependabot.yml` proposes action updates monthly. The checkers' versions are pinned in the workflow; raise them by hand.
   - Fork pull requests get the same read-only run. GitHub's default asks the maintainer to approve a first-time contributor's run.
   - While the repository is private, macOS minutes count ten times against the plan's free allowance; public repositories' runs are free.
   - The `-buildvcs` worry (declined from the Qwen review) didn't arise: the checkout's `.git` is readable.
-- **Publishing:** `make publish` and `CHANGELOG.md` (see Working in this repo).
+- **Publishing:** `make publish` and `CHANGELOG.md` (see Working in this repo). 0.2.1 was the first GitHub Release, published this way on 2026-10-04: the zip downloaded from it has the same SHA-256 and passes `check-zip.sh`.
 
 ## Verify before relying on it
 
