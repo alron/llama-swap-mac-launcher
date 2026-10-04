@@ -182,7 +182,7 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
   "ok": true,
   "status": {
     "appPid": 31539,
-    "appVersion": "0.2.0",
+    "appVersion": "0.2.1",
     "bundleID": "com.my-wang.llama-swap-launcher",
     "state": "ready",
     "pid": 31590,

@@ -3,7 +3,7 @@
 APP_NAME       := Llama Swap Launcher
 BUNDLE_ID      := com.my-wang.llama-swap-launcher
 EXE            := llama-swap-launcher
-VERSION        ?= 0.2.0
+VERSION        ?= 0.2.1
 MIN_MACOS      := 15.0
 SIGN_IDENTITY  ?= Developer ID Application: Dean Bailey (P56KW9H72P)
 NOTARY_PROFILE ?= my-wang
