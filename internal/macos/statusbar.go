@@ -25,9 +25,9 @@ const (
 // letters in letters and the arrow in arrow. It reports false if it couldn't
 // find the menu-bar item.
 func SetMenuBarTitle(left, right string, letters, arrow Color) bool {
-	cleft := C.CString(left)
+	cleft := cString(left)
 	defer C.free(unsafe.Pointer(cleft))
-	cright := C.CString(right)
+	cright := cString(right)
 	defer C.free(unsafe.Pointer(cright))
 	return C.lsl_set_menu_bar_title(cleft, cright, C.int(letters), C.int(arrow)) != 0
 }

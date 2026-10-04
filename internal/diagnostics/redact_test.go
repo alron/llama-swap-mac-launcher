@@ -125,3 +125,54 @@ func TestZip(t *testing.T) {
 		t.Errorf("got %v", names)
 	}
 }
+
+// The samples the 2026-10-04 security assessment got past the first
+// version, and lines that must survive.
+func TestRedactAssessmentSamples(t *testing.T) {
+	in := `# apiKey: old-commented-key
+apiKey: |
+  block-scalar-key-1234
+  second-line-of-it
+ttl: 60
+headers:
+  x-api-key: header-dash-key
+cmd: curl -H "x-api-key: curl-header-key" -u alice:curl-user-pass http://host/v1
+key: plain-key-value
+peer_key: peer-key-value
+pass: pass-value-1
+pwd: pwd-value-1
+peerKey: camel-key-value
+env: MYPASS=env-pass-value WANDB_API_KEY=wandb-value
+json: {"api_key":"json-inline-key","model":"m"}
+tokens: github_pat_11ABCDEFG0123456789_abcdefghij glpat-abcdefghij0123456789 AIzaSyA1234567890abcdefghijklmnopqrstuv
+models:
+  monkey-7b:
+    cmd: llama-server --port ${PORT}
+  turkey:
+    ttl: 300
+log: slot update_slots: n_tokens = 512, n_past = 48
+macro: "innocent-name-known-secret"
+`
+	got := NewRedactor("innocent-name-known-secret").Text(in)
+	for _, secret := range []string{
+		"old-commented-key", "block-scalar-key-1234", "second-line-of-it", "header-dash-key", "curl-header-key",
+		"curl-user-pass", "plain-key-value", "peer-key-value", "pass-value-1", "pwd-value-1", "camel-key-value",
+		"env-pass-value", "wandb-value", "json-inline-key", "github_pat_11ABCDEFG", "glpat-abcdefghij", "AIzaSyA1234567890",
+		"innocent-name-known-secret",
+	} {
+		if strings.Contains(got, secret) {
+			t.Errorf("%q survived", secret)
+		}
+	}
+	for _, keep := range []string{
+		"ttl: 60", "alice:", `"model":"m"`, "monkey-7b:", "turkey:", "    ttl: 300",
+		"cmd: llama-server --port ${PORT}", "n_tokens = 512, n_past = 48", "http://host/v1",
+	} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("%q didn't survive", keep)
+		}
+	}
+	if t.Failed() {
+		t.Logf("redacted:\n%s", got)
+	}
+}

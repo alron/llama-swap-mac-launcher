@@ -76,7 +76,7 @@ func Preferences(form PreferencesForm) (PreferencesForm, PreferencesResult, erro
 	if err != nil {
 		return form, PreferencesCancel, err
 	}
-	cin := C.CString(string(in))
+	cin := cString(string(in))
 	defer C.free(unsafe.Pointer(cin))
 	var result C.int
 	cout := C.lsl_preferences(cin, &result)

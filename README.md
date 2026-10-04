@@ -428,7 +428,8 @@ like secrets, passwords in URLs, and anything shaped like a Hugging Face,
 OpenAI, GitHub, Slack or AWS key. Your home folder becomes `~`, and your
 user name, wherever else it appears, `<user>`. Still, look
 the files over before you share them: no redaction can promise to catch
-everything, and the config has your hostnames and paths. Nothing is ever
+everything, the config has your hostnames and paths, and the logs can hold
+prompts and replies. Nothing is ever
 sent anywhere by the app.
 
 ## Building from source

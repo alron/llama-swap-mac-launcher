@@ -9,12 +9,14 @@ package health
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -115,6 +117,23 @@ var maxLine = 8 << 20
 // their lines can be kept out of the app's copy of llama-swap's log.
 const CheckUserAgent = "llama-swap-launcher-healthcheck"
 
+// checkRequest matches the request in llama-swap's access-log line for one
+// of the app's own checks: its /health, or a peer's through /upstream.
+var checkRequest = regexp.MustCompile(`"GET /(?:upstream/[^ "]+/)?health HTTP/`)
+
+// IsCheckLine reports whether line is llama-swap's access-log line for one
+// of the app's own checks, which the app keeps out of its copy of the log:
+// a GET of a /health, sent with CheckUserAgent, which llama-swap quotes
+// after the status:
+//
+//	[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck" 36µs
+//
+// The User-Agent alone isn't enough: any client can send it, and would
+// then be left out of the log whatever it asked for.
+func IsCheckLine(line []byte) bool {
+	return bytes.Contains(line, []byte(`"`+CheckUserAgent+`"`)) && checkRequest.Match(line)
+}
+
 type Monitor struct {
 	base    string
 	client  *http.Client
@@ -146,12 +165,23 @@ type Monitor struct {
 	watchers  map[string]context.CancelFunc
 }
 
+// NewClient returns an HTTP client for the app's requests to llama-swap.
+// It ignores proxy settings (HTTP_PROXY and the like), which the app can
+// inherit from the shell that opened it: the requests carry the API key,
+// so they go straight to llama-swap, never through a proxy. (Go already
+// skips the proxy for loopback, but listen can be a LAN address.)
+func NewClient() *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Proxy = nil
+	return &http.Client{Transport: t}
+}
+
 // New returns a monitor for the llama-swap at base, such as
 // "http://127.0.0.1:8080".
 func New(base string) *Monitor {
 	return &Monitor{
 		base:        strings.TrimSuffix(base, "/"),
-		client:      &http.Client{},
+		client:      NewClient(),
 		changed:     make(chan struct{}, 1),
 		HealthEvery: time.Minute,
 		faults:      make(map[string]bool),

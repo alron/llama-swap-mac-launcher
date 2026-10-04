@@ -82,7 +82,7 @@ func newApp(p paths.Paths, lg *logs) *app {
 			Log: lg.notes,
 			// The monitor's own health checks would otherwise be a line
 			// in the log every interval, when the config logs requests.
-			Output:  logfile.DropLines(lg.output, health.CheckUserAgent),
+			Output:  logfile.DropLines(lg.output, health.IsCheckLine),
 			PidFile: p.PidFile(),
 		}),
 		prefs: prefs.Defaults(),
@@ -434,7 +434,7 @@ func (a *app) showAbout() {
 // out the app's own health checks, as its log does.
 func (a *app) recentOutput(n int) []string {
 	lines := slices.DeleteFunc(a.sup.RecentOutput(n+20), func(l string) bool {
-		return strings.Contains(l, health.CheckUserAgent)
+		return health.IsCheckLine([]byte(l))
 	})
 	return lines[max(0, len(lines)-n):]
 }
@@ -523,6 +523,7 @@ const detailLines, detailWidth = 4, 64
 // showDetail shows msg under the status, wrapped over the detail lines, or
 // hides them if it's empty. The full text is also each line's tooltip.
 func (a *app) showDetail(msg string) {
+	msg = strings.ToValidUTF8(msg, "\uFFFD") // it can quote llama-swap's output; see macos.cString
 	lines := wrap(msg, detailWidth, len(a.details))
 	for i, item := range a.details {
 		if i < len(lines) {

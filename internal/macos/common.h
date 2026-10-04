@@ -66,7 +66,14 @@ static inline void ensure_edit_menu(void) {
 // exactly those (see dialogs.m). Every dialog here goes through it.
 NSModalResponse lsl_run_modal(id modal);
 
-// str converts a C string from Go, which may be NULL, to an NSString.
+// str converts a C string from Go, which may be NULL, to an NSString. It
+// never returns nil: AppKit raises an exception for a nil title or text.
+// Go passes only valid UTF-8 (see cString in dialogs.go), so the fallback,
+// decoding byte for byte, is a backstop.
 static inline NSString *str(const char *s) {
-	return s ? [NSString stringWithUTF8String:s] : @"";
+	if (s == NULL) {
+		return @"";
+	}
+	NSString *v = [NSString stringWithUTF8String:s];
+	return v ?: [NSString stringWithCString:s encoding:NSISOLatin1StringEncoding];
 }

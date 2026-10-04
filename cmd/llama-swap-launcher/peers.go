@@ -21,6 +21,10 @@ import (
 	"github.com/alron/llama-swap-mac-launcher/internal/supervisor"
 )
 
+// direct is the app's HTTP client for llama-swap, which ignores proxy
+// settings; see health.NewClient.
+var direct = health.NewClient()
+
 // peerTimeout bounds each peer check: a peer host that's off can leave a
 // connection hanging for much longer.
 const peerTimeout = 3 * time.Second
@@ -66,7 +70,7 @@ func checkPeer(ctx context.Context, st supervisor.Status, model string) error {
 	// Like the health checks, kept out of the app's copy of llama-swap's
 	// log: one line per peer for every llsl status would be noise.
 	req.Header.Set("User-Agent", health.CheckUserAgent)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := direct.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("didn't answer within %s", peerTimeout)

@@ -455,3 +455,33 @@ func TestTokensPerSecond(t *testing.T) {
 	events <- event("modelStatus", `[{"id":"m","state":"stopped"}]`)
 	waitFor(t, "the speed to be forgotten", func() bool { return speed() == 0 })
 }
+
+// Only the app's own health checks are left out of its log: a client that
+// sends the app's User-Agent with any other request is kept.
+func TestIsCheckLine(t *testing.T) {
+	for line, want := range map[string]bool{
+		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck" 36µs`:                       true,
+		`[INFO] Request 127.0.0.1 "GET /upstream/studio/gemma4/health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck" 1ms`: true,
+		`[INFO] Request 127.0.0.1 "POST /api/models/unload HTTP/1.1" 200 13 "llama-swap-launcher-healthcheck" 36µs`:          false,
+		`[INFO] Request 10.0.0.9 "GET /v1/models HTTP/1.1" 200 900 "llama-swap-launcher-healthcheck" 1ms`:                    false,
+		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "curl/8.7.1" 20µs`:                                            false,
+		`[INFO] Request 127.0.0.1 "GET /healthz?x=llama-swap-launcher-healthcheck HTTP/1.1" 404 9 "x" 2µs`:                   false,
+	} {
+		if got := IsCheckLine([]byte(line)); got != want {
+			t.Errorf("IsCheckLine(%q) = %v, want %v", line, got, want)
+		}
+	}
+}
+
+// The app's client never takes a proxy from the environment: its requests
+// carry the API key.
+func TestNewClientIgnoresProxies(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://proxy.invalid:3128")
+	tr, ok := NewClient().Transport.(*http.Transport)
+	if !ok || tr.Proxy != nil {
+		t.Fatalf("the client's transport has a proxy function")
+	}
+	if m := New("http://192.168.1.20:8080"); m.client.Transport.(*http.Transport).Proxy != nil {
+		t.Error("the monitor's client has a proxy function")
+	}
+}

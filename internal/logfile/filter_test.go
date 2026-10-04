@@ -7,7 +7,7 @@ import (
 
 func TestDropLines(t *testing.T) {
 	var out bytes.Buffer
-	w := DropLines(&out, "healthcheck")
+	w := DropLines(&out, func(line []byte) bool { return bytes.Contains(line, []byte("healthcheck")) })
 	// Lines arrive split across writes, as pipe reads deliver them.
 	for _, chunk := range []string{
 		"keep one\nGET /health 200 \"llama-swap-launcher-heal",

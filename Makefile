@@ -63,11 +63,14 @@ run: dev
 release: build/AppIcon.icns
 	$(call bundle,$(REL_APP),$(BUNDLE_ID),$(APP_NAME),--timestamp)
 	rm -f "$(REL_ZIP)"
-	ditto -c -k --keepParent "$(REL_APP)" "$(REL_ZIP)"
+	ditto -c -k --norsrc --noextattr --keepParent "$(REL_APP)" "$(REL_ZIP)"
 	packaging/notarize.sh "$(REL_ZIP)" "$(REL_APP)" "$(NOTARY_PROFILE)"
 	rm -f "$(REL_ZIP)"
-	ditto -c -k --keepParent "$(REL_APP)" "$(REL_ZIP)"
+	# Without --norsrc --noextattr, ditto adds ._ files for extended
+	# attributes, which unzip leaves in the bundle, breaking its seal.
+	ditto -c -k --norsrc --noextattr --keepParent "$(REL_APP)" "$(REL_ZIP)"
 	spctl --assess --type execute --verbose=2 "$(REL_APP)"
+	packaging/check-zip.sh "$(REL_ZIP)" "$(APP_NAME)"
 	shasum -a 256 "$(REL_ZIP)"
 
 test:

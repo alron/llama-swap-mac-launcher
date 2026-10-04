@@ -24,7 +24,7 @@ const errSecItemNotFound = -25300
 // account, replacing any value already there. Keychain Access shows it
 // as label.
 func KeychainSet(service, account, label, secret string) error {
-	cs, ca, cl, csec := C.CString(service), C.CString(account), C.CString(label), C.CString(secret)
+	cs, ca, cl, csec := cString(service), cString(account), cString(label), cString(secret)
 	defer C.free(unsafe.Pointer(cs))
 	defer C.free(unsafe.Pointer(ca))
 	defer C.free(unsafe.Pointer(cl))
@@ -35,7 +35,7 @@ func KeychainSet(service, account, label, secret string) error {
 // KeychainGet returns the secret stored under service and account, or
 // ErrNotInKeychain.
 func KeychainGet(service, account string) (string, error) {
-	cs, ca := C.CString(service), C.CString(account)
+	cs, ca := cString(service), cString(account)
 	defer C.free(unsafe.Pointer(cs))
 	defer C.free(unsafe.Pointer(ca))
 	var out *C.char
@@ -49,7 +49,7 @@ func KeychainGet(service, account string) (string, error) {
 // KeychainDelete removes the item stored under service and account. A
 // missing item isn't an error.
 func KeychainDelete(service, account string) error {
-	cs, ca := C.CString(service), C.CString(account)
+	cs, ca := cString(service), cString(account)
 	defer C.free(unsafe.Pointer(cs))
 	defer C.free(unsafe.Pointer(ca))
 	return keychainErr(C.lsl_keychain_delete(cs, ca))

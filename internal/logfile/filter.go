@@ -11,16 +11,16 @@ import (
 const maxPartial = 64 << 10
 
 // DropLines returns a writer that passes whole lines on to w, except those
-// containing drop. It holds an unfinished line back until its newline
-// arrives.
-func DropLines(w io.Writer, drop string) io.Writer {
-	return &lineFilter{w: w, drop: []byte(drop)}
+// drop reports true for. It holds an unfinished line back until its
+// newline arrives.
+func DropLines(w io.Writer, drop func(line []byte) bool) io.Writer {
+	return &lineFilter{w: w, drop: drop}
 }
 
 type lineFilter struct {
 	mu   sync.Mutex
 	w    io.Writer
-	drop []byte
+	drop func([]byte) bool
 	buf  []byte
 }
 
@@ -35,7 +35,7 @@ func (f *lineFilter) Write(p []byte) (int, error) {
 		if i < 0 {
 			break
 		}
-		if line := rest[:i+1]; !bytes.Contains(line, f.drop) {
+		if line := rest[:i+1]; !f.drop(line) {
 			out = append(out, line...)
 		}
 		rest = rest[i+1:]

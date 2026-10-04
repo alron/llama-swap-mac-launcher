@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -168,7 +167,7 @@ func (a *app) loadModel(ctx context.Context, model string) error {
 	if err != nil {
 		return codeError{control.CodeUsage, err}
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := direct.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return codeError{control.CodeTimeout, fmt.Errorf("timed out waiting for %s to load", model)}

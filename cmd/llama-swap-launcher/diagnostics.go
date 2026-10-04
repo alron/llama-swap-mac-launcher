@@ -60,8 +60,9 @@ func (a *app) collectDiagnostics() {
 	a.reveal(path)
 	macos.Alert("Diagnostics saved",
 		"They're shown in the Finder. Keys, tokens and passwords are replaced with "+diagnostics.Redacted+
-			", your home folder with ~ and your name with <user>, but look the files over before you share them: "+
-			"no redaction can promise to catch everything. Nothing has been sent anywhere.")
+			", your home folder with ~ and your name with <user>. Hostnames, addresses and paths stay, and the logs "+
+			"can hold prompts and replies. Look the files over before you share them: no redaction can promise "+
+			"to catch everything. Nothing has been sent anywhere.")
 }
 
 // diagnosticFiles gathers the zip's files, redacted.
@@ -90,8 +91,23 @@ func (a *app) diagnosticFiles() ([]diagnostics.File, error) {
 	if status, err := json.MarshalIndent(a.controlStatus(), "", "  "); err == nil {
 		add("status.json", status)
 	}
-	if b, err := os.ReadFile(a.paths.Prefs()); err == nil { // #nosec G304 -- the app's own preferences
-		add("prefs.json", b)
+	// The preferences as the app reads them, with every env value blanked,
+	// whatever its name: the app knows that map exactly. A file that
+	// doesn't load goes in as it is (redacted), since that's what needs
+	// looking at.
+	if _, err := prefs.Load(a.paths.Prefs()); err != nil {
+		if b, err := os.ReadFile(a.paths.Prefs()); err == nil { // #nosec G304 -- the app's own preferences
+			add("prefs.json (as on disk; it doesn't load)", b)
+		}
+	} else {
+		shown := p
+		shown.Env = map[string]string{}
+		for name := range p.Env {
+			shown.Env[name] = diagnostics.Redacted
+		}
+		if b, err := json.MarshalIndent(shown, "", "  "); err == nil { // #nosec G117 -- APIKeys holds names only, and env values are blanked above
+			add("prefs.json", b)
+		}
 	}
 	if config := p.ConfigPath(); config != "" {
 		if b, err := os.ReadFile(config); err == nil { // #nosec G304 -- the user's llama-swap config, from the preferences

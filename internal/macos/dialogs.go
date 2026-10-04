@@ -22,10 +22,18 @@ import (
 	"unsafe"
 )
 
+// cString converts s for the Objective-C side, which the caller must free.
+// Text that isn't valid UTF-8, such as llama-swap's output cut mid-character,
+// has the bad bytes replaced: the shims' NSString conversion would fail on
+// it, and AppKit raise an exception.
+func cString(s string) *C.char {
+	return C.CString(strings.ToValidUTF8(s, "\uFFFD"))
+}
+
 // SaveFile shows a Save panel, starting in dir with name filled in, and
 // returns the path chosen, or "" if the user cancelled.
 func SaveFile(title, dir, name string) string {
-	ct, cd, cn := C.CString(title), C.CString(dir), C.CString(name)
+	ct, cd, cn := cString(title), cString(dir), cString(name)
 	defer C.free(unsafe.Pointer(ct))
 	defer C.free(unsafe.Pointer(cd))
 	defer C.free(unsafe.Pointer(cn))
@@ -45,11 +53,11 @@ func Alert(message, detail string) {
 // AlertWithOutput is Alert with a program's output, such as the last lines
 // of llama-swap's, shown under the message in a scrollable box.
 func AlertWithOutput(message, detail string, output []string) {
-	cmsg := C.CString(message)
+	cmsg := cString(message)
 	defer C.free(unsafe.Pointer(cmsg))
-	cdetail := C.CString(detail)
+	cdetail := cString(detail)
 	defer C.free(unsafe.Pointer(cdetail))
-	coutput := C.CString(strings.Join(output, "\n"))
+	coutput := cString(strings.Join(output, "\n"))
 	defer C.free(unsafe.Pointer(coutput))
 	C.lsl_alert(cmsg, cdetail, coutput)
 }
@@ -57,13 +65,13 @@ func AlertWithOutput(message, detail string, output []string) {
 // Confirm shows a modal alert with two buttons, ok (the default) and
 // cancel, and reports whether the user chose ok.
 func Confirm(message, detail, ok, cancel string) bool {
-	cmsg := C.CString(message)
+	cmsg := cString(message)
 	defer C.free(unsafe.Pointer(cmsg))
-	cdetail := C.CString(detail)
+	cdetail := cString(detail)
 	defer C.free(unsafe.Pointer(cdetail))
-	cok := C.CString(ok)
+	cok := cString(ok)
 	defer C.free(unsafe.Pointer(cok))
-	ccancel := C.CString(cancel)
+	ccancel := cString(cancel)
 	defer C.free(unsafe.Pointer(ccancel))
 	return C.lsl_confirm(cmsg, cdetail, cok, ccancel) != 0
 }
