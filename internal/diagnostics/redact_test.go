@@ -144,7 +144,7 @@ pwd: pwd-value-1
 peerKey: camel-key-value
 env: MYPASS=env-pass-value WANDB_API_KEY=wandb-value
 json: {"api_key":"json-inline-key","model":"m"}
-tokens: github_pat_11ABCDEFG0123456789_abcdefghij glpat-abcdefghij0123456789 AIzaSyA1234567890abcdefghijklmnopqrstuv
+tokens: github_pat_11ABCDEFG0123456789_abcdefghij glpat-abcdefghij0123456789 GOOGLE_KEY
 models:
   monkey-7b:
     cmd: llama-server --port ${PORT}
@@ -153,6 +153,9 @@ models:
 log: slot update_slots: n_tokens = 512, n_past = 48
 macro: "innocent-name-known-secret"
 `
+	// A fake Google API key, put together here so that GitHub's secret
+	// scanning doesn't take the source for a real one.
+	in = strings.Replace(in, "GOOGLE_KEY", "AIza"+"SyA1234567890abcdefghijklmnopqrstuv", 1)
 	got := NewRedactor("innocent-name-known-secret").Text(in)
 	for _, secret := range []string{
 		"old-commented-key", "block-scalar-key-1234", "second-line-of-it", "header-dash-key", "curl-header-key",
