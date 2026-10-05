@@ -15,6 +15,8 @@ updates, and it works however you asked it to start llama-swap.
 
 The app doesn't include llama-swap; install that separately.
 
+![The menu, with llama-swap ready and two models loaded](docs/images/menu.png)
+
 ## Requirements
 
 - macOS 15 or later, Apple Silicon.
@@ -86,6 +88,11 @@ In the menu bar, the app shows **L→S**, and the arrow's colour is the status:
   or a model's GPU backend has failed.
 
 When llama-swap is stopped, the whole **L→S** is faded.
+
+<p>
+  <img src="docs/images/menu-stopped.png" width="272" alt="The menu with llama-swap stopped: L→S faded, Stop and Restart greyed out">
+  <img src="docs/images/menu-loading.png" width="311" alt="The menu while a model loads: the arrow grey">
+</p>
 
 ## `llsl`
 
@@ -282,6 +289,8 @@ running when you save a change it runs with, the app offers to restart it.
 Health-check changes take effect straight away. While the dialog is open, the
 menu offers only **Quit**.
 
+![Settings, General tab](docs/images/settings-general.png)
+
 They're stored in
 `~/Library/Application Support/com.my-wang.llama-swap-launcher/prefs.json`,
 which you (or a script) can also edit by hand in any text editor. The file is
@@ -333,6 +342,8 @@ apiKeys:
   - "${env.LLSL_ADMIN}"
   - "${env.LLSL_CLAUDE}"
 ```
+
+![Settings, Secrets tab: API keys and secret environment variables](docs/images/settings-secrets.png)
 
 1. In **Settings… → Secrets**, under API keys, click **+** for each key. It gets a new
    random key; name it to match the config (`ADMIN` for `LLSL_ADMIN`), or
@@ -387,6 +398,8 @@ Logs** says:
 - **Not saved.** The app still keeps its last 100 lines in memory, for the
   failure alert, `llsl logs` and the output `llsl` prints on a failure.
 
+![Settings, Logs tab](docs/images/settings-logs.png)
+
 The app's own `/health` checks and `llsl status`'s peer checks are left out
 of llama-swap's output. Each log is rotated at 10 MB, keeping 5 old files.
 Changes apply when you save, or, for hand edits of `prefs.json`, at
@@ -431,6 +444,8 @@ growing.
   supported.
 
 ## Reporting a problem
+
+![The Logs submenu, with Collect Diagnostics…](docs/images/menu-logs.png)
 
 **Logs → Collect Diagnostics…** saves a zip, wherever you choose (the Desktop
 is suggested), with what's needed to look into a problem:
