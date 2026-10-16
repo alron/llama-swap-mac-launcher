@@ -3,6 +3,12 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
+## Unreleased
+
+- Settings: the Environment field's hint says values are used exactly as
+  typed, quotes included, and the README explains how to use a path with
+  spaces in a model's command.
+
 ## 0.2.1 (2026-10-04)
 
 The first public release.

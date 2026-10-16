@@ -488,7 +488,8 @@ char *lsl_preferences(const char *json, int *result) {
 			@[ label(@"Extra arguments:"), argsArea ],
 			@[ empty, hint(@"Passed to llama-swap, one per line, e.g. -watch-config.") ],
 			@[ label(@"Environment:"), envArea ],
-			@[ empty, hint(@"NAME=value, one per line, e.g. HF_TOKEN=…") ],
+			@[ empty, hint(@"NAME=value, one per line, e.g. HF_TOKEN=…. Used exactly as typed, quotes included: "
+			                @"for a path with spaces, quote it where llama-swap's config uses it.") ],
 			@[ label(@"Health check every:"), row(@[ seconds, label(@"seconds") ]) ],
 			@[ empty, skip ],
 			@[ empty, unloadFaulted ],

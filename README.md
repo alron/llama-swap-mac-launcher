@@ -303,7 +303,7 @@ misspelling, is reported as an error rather than ignored.
 | `config` | `""` | llama-swap's config file. |
 | `listen` | `"127.0.0.1:8080"` | Passed to llama-swap as `-listen`. Use `"0.0.0.0:8080"` for other machines to reach it; they can then use all of it, including unloading models and reading logs, unless its config sets API keys (see [API keys](#api-keys)). |
 | `args` | `[]` | Extra llama-swap arguments, e.g. `["-watch-config"]`. Not `-config` or `-listen`, which the app sets from the preferences above, nor `-config-dir`, the TLS flags, `-validate` or `-version`. |
-| `env` | `{}` | Environment variables for llama-swap and the commands its config runs, e.g. `{"HF_TOKEN": "…"}`. |
+| `env` | `{}` | Environment variables for llama-swap and the commands its config runs, e.g. `{"HF_TOKEN": "…"}`. Values are used exactly as typed, quotes included; for a path with spaces, see [Good to know](#good-to-know). |
 | `autoStart` | `true` | Start llama-swap when the app opens. |
 | `healthCheckSeconds` | `60` | How often to check that llama-swap still answers. |
 | `healthCheckSkipWhenActive` | `true` | Skip a check when llama-swap has been busy since the last one. |
@@ -439,6 +439,24 @@ growing.
   servers don't; the next time the app opens, it stops them first.
 - **A llama-swap downloaded with a browser** may be blocked by Gatekeeper the
   first time. The app explains how to allow it.
+- **A path with spaces in a model's command** needs quotes in llama-swap's
+  config, where the path is used. llama-swap puts `${env.NAME}` values and
+  macros into a model's `cmd` as plain text, then splits the `cmd` into
+  arguments the way a shell does, so `/Volumes/My Disk/models` becomes two
+  arguments. With `MODELS_HOME` set to the plain path in Settings:
+
+  ```yaml
+  macros:
+    models: "${env.MODELS_HOME}"
+  models:
+    my-model:
+      cmd: llama-server --port ${PORT} --model '${models}/my-model.gguf'
+  ```
+
+  Quoting the value in Settings instead also works, but the quotes then
+  become part of the variable, for anything else that reads it (llama-swap's
+  model servers inherit it). Quote in one place only: with both, the quotes
+  end up in the path.
 - **Open the app, don't run its executable.** Use the Finder, `open`, or
   `llsl`. Running `…/Contents/MacOS/llama-swap-launcher` directly isn't
   supported.
