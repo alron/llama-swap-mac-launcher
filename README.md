@@ -20,7 +20,7 @@ The app doesn't include llama-swap; install that separately.
 ## Requirements
 
 - macOS 15 or later, Apple Silicon.
-- llama-swap v252 or later (tested with v262), and whatever its config runs
+- llama-swap v252 or later (tested with v265), and whatever its config runs
   (such as llama.cpp's `llama-server`). With Homebrew, as
   [llama-swap's README](https://github.com/mostlygeek/llama-swap/blob/main/README.md)
   describes:
@@ -191,12 +191,12 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
   "ok": true,
   "status": {
     "appPid": 31539,
-    "appVersion": "0.2.1",
+    "appVersion": "0.2.2",
     "bundleID": "com.my-wang.llama-swap-launcher",
     "state": "ready",
     "pid": 31590,
     "listen": "127.0.0.1:8080",
-    "version": "v262 (079c35a)",
+    "version": "v265 (d1e743f)",
     "binary": "/opt/homebrew/bin/llama-swap",
     "config": "/path/to/llama-swap.yaml",
     "logFile": "/Users/you/Library/Logs/com.my-wang.llama-swap-launcher/launcher.log",

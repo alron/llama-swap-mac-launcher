@@ -3,8 +3,9 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
-## Unreleased
+## 0.2.2 (2026-10-15)
 
+- Tested with llama-swap v265.
 - Settings: the Environment field's hint says values are used exactly as
   typed, quotes included, and the README explains how to use a path with
   spaces in a model's command.
@@ -13,6 +14,8 @@ not published; they're listed for people who had them.
   HTTP servers, HTTP/2 and TLS (the app is an HTTP client that talks plain
   HTTP to llama-swap), a proxy's CONNECT (the app uses no proxy), and header
   parsing, which would need llama-swap itself to send malicious headers.
+
+Upgrading: quit the running app before replacing it.
 
 ## 0.2.1 (2026-10-04)
 
