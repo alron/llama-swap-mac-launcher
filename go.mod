@@ -1,6 +1,6 @@
 module github.com/alron/llama-swap-mac-launcher
 
-go 1.27.1
+go 1.27.2
 
 require (
 	fyne.io/systray v1.12.2

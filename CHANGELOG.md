@@ -8,6 +8,11 @@ not published; they're listed for people who had them.
 - Settings: the Environment field's hint says values are used exactly as
   typed, quotes included, and the README explains how to use a path with
   spaces in a model's command.
+- Built with Go 1.27.2, which fixes eight vulnerabilities in Go's standard
+  library. None of them is reachable in how the app uses it: they're in
+  HTTP servers, HTTP/2 and TLS (the app is an HTTP client that talks plain
+  HTTP to llama-swap), a proxy's CONNECT (the app uses no proxy), and header
+  parsing, which would need llama-swap itself to send malicious headers.
 
 ## 0.2.1 (2026-10-04)
 
