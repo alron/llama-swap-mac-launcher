@@ -285,6 +285,32 @@ From use after publishing:
       - **Fetch models** (wanted, 2026-10-18): asks the peer's `/v1/models` and offers what it serves. The request is made in Go (the dialog calls back into it), with the proxy-free client, sending the chosen variable's value as it stands in the Secrets table (unsaved edits included) as `Authorization: Bearer` and `x-api-key`, as llama-swap does. It runs from the app, which has the Local Network permission. Check what another llama-swap's `/v1/models` lists for its own peers' models before deciding whether to offer them.
 37. **Tailcat** (the maintainer, 2026-10-18; later, not planned yet, as the maintainer doesn't use it). llama-swap's own tunnel: a peer whose `proxy` is `tailcat://<token>`, with an optional `tailcatKey` file, and the `-listen-tailcat` flag (refused in `args` today, item 32). Peers (item 36) start with `http://` and `https://` only; Tailcat peers, and perhaps the listener, can follow.
 
+38. **Managed CORS: which web pages may use llama-swap** (asked for by the maintainer 2026-10-18, "the last of the low-hanging fruit", reversing item 27's decision not to raise llama-swap's default; **built and verified hands-on 2026-10-18** on `managed-config`; **done**). Four of `security.cors`'s settings: `allowedOrigins`, `allowCredentials`, `allowPrivateNetwork` and `maxAge`. `allowedMethods`, `allowedHeaders` and `exposedHeaders` wait until someone asks.
+    - **llama-swap's rules** (v265's `internal/config/security.go` and `internal/server/cors.go`):
+      - Without `allowedOrigins`, any page may use it (`*`), its long-standing default. With it, only those pages, and an empty list is an error.
+      - The other settings require `allowedOrigins`. `"*"` can't go with `allowCredentials` or `allowPrivateNetwork`.
+      - Origins are `scheme://host[:port]`, nothing after.
+      - `maxAge` 0 means its default, 86400.
+      - Private Network Access is answered only on a preflight that asks (`Access-Control-Request-Private-Network: true`).
+    - **Checked against v265:**
+      - a folder file's origins add to the main config's;
+      - an unlisted origin's preflight gets no `Access-Control-Allow-Origin`, but its plain `GET` still gets 200: CORS stops a page reading replies or sending JSON, not a simple request such as an unload, so the README says API keys are the lock.
+    - **Where it lives:**
+      - `prefs.CORS`: `restrict`, with the origins kept while it's off, and `maxAge` as a pointer like the peer timeouts.
+      - `checkCORS` mirrors llama-swap's checks and refuses `"*"`, since unticking already means any page.
+      - `securityFile` writes `security.yaml`: the two switches only when on and `maxAge` only when changed, since each is a single value that would clash with a different one in the user's config.
+      - A **Security** tab, named after llama-swap's `security:` block, so TLS (item 35) can join it: the checkbox, the origins one per line, the two switches, and the cache time. All need the managed folder; the last three also need the box ticked.
+    - **Tested:**
+      - unit tests;
+      - `TestManagedCORSReal` against v265: a listed page and the user's own both allowed, an unlisted one refused, Private Network Access and `maxAge` applied, and a switch set differently in the user's config refused, naming `security.yaml`;
+      - the dialog test program: enabling, typing origins, the reply, and no Tab-order complaints in AppKit's log.
+      - Verified hands-on by the maintainer with a real browser and a test page on another origin (`http://localhost:18300`, fetching `/v1/models`):
+        - allowed by default, blocked once restricted to another page, and allowed once listed;
+        - `security.yaml` listing both origins;
+        - Private Network Access and a 600 s cache in a real preflight's headers;
+        - a trailing slash, `*` and a word for the cache time each refused with its own message;
+        - the tab greyed out without the managed folder.
+
 Considered for 0.3 and set aside (the maintainer, 2026-10-18):
 - **Preloading models at startup** (`hooks.on_startup.preload`, a list, so it would merge safely): it names models the app doesn't manage, which can change between starts and reloads. It belongs with a managed model config, if one comes. The maintainer has ideas for that, from their own configs, but it needs a fully managed config, macros included; not now.
 - **Single values** such as `logLevel`: llama-swap refuses to load when two files set one differently, so they'd need a "here or in your config, not both" hint. Hold until one is needed.

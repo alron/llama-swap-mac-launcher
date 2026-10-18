@@ -26,6 +26,7 @@ func managedFiles(p prefs.Prefs) map[string][]byte {
 	return map[string][]byte{
 		"api-keys.yaml": apiKeysFile(p),
 		"peers.yaml":    peersFile(p),
+		"security.yaml": securityFile(p),
 	}
 }
 
@@ -77,6 +78,34 @@ func peersFile(p prefs.Prefs) []byte {
 				}
 			}
 		}
+	}
+	return []byte(b.String())
+}
+
+// securityFile limits which web pages may use llama-swap, while the app
+// restricts them. The two switches are written only when on and maxAge
+// only when changed, since each is a single value that would clash with
+// a different one in the user's own config; the origins are a list, which
+// adds to the user's.
+func securityFile(p prefs.Prefs) []byte {
+	var b strings.Builder
+	b.WriteString(managedHeader)
+	if !p.ManagesCORS() {
+		return []byte(b.String())
+	}
+	c := p.CORS
+	b.WriteString("security:\n  cors:\n    allowedOrigins:\n")
+	for _, o := range c.AllowedOrigins {
+		fmt.Fprintf(&b, "      - %s\n", quoted(o))
+	}
+	if c.AllowCredentials {
+		b.WriteString("    allowCredentials: true\n")
+	}
+	if c.AllowPrivateNetwork {
+		b.WriteString("    allowPrivateNetwork: true\n")
+	}
+	if c.MaxAge != nil {
+		fmt.Fprintf(&b, "    maxAge: %d\n", *c.MaxAge)
 	}
 	return []byte(b.String())
 }

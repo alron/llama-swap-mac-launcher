@@ -84,6 +84,8 @@ func (a *app) editPreferences(tab string) (restart bool) {
 				form.Tab = "logs"
 			case errors.As(err, new(peerError)):
 				form.Tab = "peers"
+			case errors.As(err, new(corsError)):
+				form.Tab = "security"
 			}
 			macos.Alert("These preferences can't be saved", form.Error)
 			continue
@@ -161,7 +163,8 @@ func llamaSwapChanged(old, p prefs.Prefs) bool {
 		old.ConfigDirPath("") != p.ConfigDirPath("") || old.ConfigDirSetting() != p.ConfigDirSetting() ||
 		old.ManagesAPIKeys() != p.ManagesAPIKeys() || !maps.Equal(old.Env, p.Env) ||
 		!slices.Equal(old.APIKeys, p.APIKeys) || old.AppKey() != p.AppKey() ||
-		!slices.Equal(old.SecretEnv, p.SecretEnv) || !slices.EqualFunc(old.Peers, p.Peers, samePeer)
+		!slices.Equal(old.SecretEnv, p.SecretEnv) || !slices.EqualFunc(old.Peers, p.Peers, samePeer) ||
+		!sameCORS(old.CORS, p.CORS)
 }
 
 func samePeer(a, b prefs.Peer) bool {
@@ -169,6 +172,12 @@ func samePeer(a, b prefs.Peer) bool {
 	return a.Name == b.Name && a.URL == b.URL && a.KeyVariable == b.KeyVariable && slices.Equal(a.Models, b.Models) &&
 		same(a.Timeouts.ResponseHeader, b.Timeouts.ResponseHeader) && same(a.Timeouts.Connect, b.Timeouts.Connect) &&
 		same(a.Timeouts.KeepAlive, b.Timeouts.KeepAlive)
+}
+
+func sameCORS(a, b prefs.CORS) bool {
+	return a.Restrict == b.Restrict && slices.Equal(a.AllowedOrigins, b.AllowedOrigins) &&
+		a.AllowCredentials == b.AllowCredentials && a.AllowPrivateNetwork == b.AllowPrivateNetwork &&
+		(a.MaxAge == nil) == (b.MaxAge == nil) && (a.MaxAge == nil || *a.MaxAge == *b.MaxAge)
 }
 
 // shownTimeout is a peer timeout as the dialog shows it: llama-swap's
@@ -203,6 +212,7 @@ type (
 	secretError struct{ error }
 	logError    struct{ error }
 	peerError   struct{ error }
+	corsError   struct{ error }
 )
 
 // formFrom shows p, with its secrets' values (by variable), as the
@@ -252,6 +262,11 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		AppAPIKey:                 p.AppKey(),
 		SecretEnv:                 vars,
 		Peers:                     peers,
+		CORSRestrict:              p.CORS.Restrict,
+		CORSOrigins:               strings.Join(p.CORS.AllowedOrigins, "\n"),
+		CORSAllowCredentials:      p.CORS.AllowCredentials,
+		CORSAllowPrivateNetwork:   p.CORS.AllowPrivateNetwork,
+		CORSMaxAge:                shownTimeout(p.CORS.MaxAge, prefs.DefaultCORSMaxAge),
 		PeerTimeoutDefaults: macos.PeerField{
 			ResponseHeader: strconv.Itoa(prefs.DefaultResponseHeader),
 			Connect:        strconv.Itoa(prefs.DefaultConnect),
@@ -339,12 +354,27 @@ func prefsFrom(f macos.PreferencesForm) (prefs.Prefs, map[string]string, error) 
 		}
 		p.Peers = append(p.Peers, peer)
 	}
+	p.CORS = prefs.CORS{
+		Restrict:            f.CORSRestrict,
+		AllowedOrigins:      []string{},
+		AllowCredentials:    f.CORSAllowCredentials,
+		AllowPrivateNetwork: f.CORSAllowPrivateNetwork,
+	}
+	for _, line := range lines(f.CORSOrigins) {
+		p.CORS.AllowedOrigins = append(p.CORS.AllowedOrigins, strings.TrimSpace(line))
+	}
+	if p.CORS.MaxAge, err = timeoutFrom("", "", f.CORSMaxAge, prefs.DefaultCORSMaxAge); err != nil {
+		return p, nil, corsError{fmt.Errorf("security: the preflight cache, %q, isn't a whole number of seconds", strings.TrimSpace(f.CORSMaxAge))}
+	}
 	if err := checkLogs(p); err != nil {
 		return p, nil, logError{err}
 	}
 	if err := p.Validate(); err != nil {
-		if strings.HasPrefix(err.Error(), "peers:") {
+		switch {
+		case strings.HasPrefix(err.Error(), "peers:"):
 			return p, nil, peerError{err}
+		case strings.HasPrefix(err.Error(), "cors:"):
+			return p, nil, corsError{err}
 		}
 		return p, nil, err
 	}

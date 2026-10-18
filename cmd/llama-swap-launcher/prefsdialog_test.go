@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -29,6 +30,7 @@ func TestFormRoundTrip(t *testing.T) {
 		UnloadOnGPUFault:          true,
 		APIKeys:                   []string{"ADMIN", "CLAUDE"},
 		AppAPIKey:                 "CLAUDE",
+		CORS:                      prefs.CORS{Restrict: true, AllowedOrigins: []string{"http://localhost:3000"}, AllowPrivateNetwork: true, MaxAge: seconds(600)},
 		SecretEnv:                 []string{"GITHUB_TOKEN"},
 		Peers: []prefs.Peer{
 			{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "GITHUB_TOKEN", Models: []string{"a", "org/b"}},
@@ -213,5 +215,26 @@ func TestPeerTimeoutsFromForm(t *testing.T) {
 	}
 	if shown := formFrom(p, nil).Peers[0]; shown.ResponseHeader != "600" || shown.Connect != "30" || shown.KeepAlive != "30" {
 		t.Errorf("shown as %+v", shown)
+	}
+}
+
+// Problems with the web pages bring the dialog back on the Security tab,
+// and a preflight cache left at llama-swap's default is left to it.
+func TestPrefsFromCORS(t *testing.T) {
+	p, _, err := prefsFrom(macos.PreferencesForm{CORSRestrict: true, CORSOrigins: "http://localhost:3000\n\n https://app.example.com ", CORSMaxAge: "86400"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(p.CORS.AllowedOrigins, []string{"http://localhost:3000", "https://app.example.com"}) || p.CORS.MaxAge != nil {
+		t.Errorf("got %+v", p.CORS)
+	}
+	for _, f := range []macos.PreferencesForm{
+		{CORSRestrict: true},
+		{CORSRestrict: true, CORSOrigins: "http://localhost:3000/"},
+		{CORSRestrict: true, CORSOrigins: "http://localhost:3000", CORSMaxAge: "a day"},
+	} {
+		if _, _, err := prefsFrom(f); !errors.As(err, new(corsError)) {
+			t.Errorf("%+v: got %v, want a Security tab error", f, err)
+		}
 	}
 }

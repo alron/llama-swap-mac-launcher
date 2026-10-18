@@ -53,6 +53,10 @@ type Prefs struct {
 	// written to its peers in the managed config folder, so they apply only
 	// with ConfigDirManaged.
 	Peers []Peer `json:"peers"`
+	// CORS is which web pages may use llama-swap from a browser, written to
+	// its security.cors in the managed config folder, so it applies only
+	// with ConfigDirManaged.
+	CORS CORS `json:"cors"`
 	// Env adds to, or overrides, the environment llama-swap starts with.
 	Env map[string]string `json:"env"`
 	// AutoStart starts llama-swap when the app launches.
@@ -210,6 +214,64 @@ func (p Prefs) checkPeers() error {
 	return nil
 }
 
+// CORS is the part of llama-swap's security.cors the app manages, with
+// llama-swap's names. Restrict off writes none of it, which leaves
+// llama-swap's default: any web page may use it. llama-swap requires
+// allowedOrigins for the rest, so they apply only with Restrict.
+type CORS struct {
+	// Restrict limits browser access to AllowedOrigins.
+	Restrict bool `json:"restrict"`
+	// AllowedOrigins are the web pages that may use llama-swap, each
+	// scheme://host[:port], as a browser sends it. They're kept while
+	// Restrict is off.
+	AllowedOrigins []string `json:"allowedOrigins"`
+	// AllowCredentials lets those pages send cookies and Authorization.
+	AllowCredentials bool `json:"allowCredentials"`
+	// AllowPrivateNetwork answers Chrome's Private Network Access check,
+	// letting those pages, from public sites, reach llama-swap on this
+	// network.
+	AllowPrivateNetwork bool `json:"allowPrivateNetwork"`
+	// MaxAge is how long, in seconds, a browser may keep a preflight's
+	// answer. Nil keeps llama-swap's default, DefaultCORSMaxAge.
+	MaxAge *int `json:"maxAge,omitempty"`
+}
+
+// DefaultCORSMaxAge is llama-swap's own default for cors.maxAge (v265),
+// which the Settings dialog shows.
+const DefaultCORSMaxAge = 86400
+
+// ManagesCORS reports whether the app writes CORS into llama-swap's
+// config: it restricts, and the managed folder is in use.
+func (p Prefs) ManagesCORS() bool {
+	return p.CORS.Restrict && p.ConfigDirSetting() == ConfigDirManaged
+}
+
+// checkCORS checks CORS as llama-swap would (its security.go): origins
+// are scheme://host[:port] with nothing after, and restricting needs one.
+func (p Prefs) checkCORS() error {
+	seen := map[string]bool{}
+	for _, o := range p.CORS.AllowedOrigins {
+		u, err := url.Parse(o)
+		switch {
+		case o == "*":
+			return errors.New(`cors: "*" means any web page; turn restricting off instead`)
+		case err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+			u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || strings.Contains(o, "${"):
+			return fmt.Errorf("cors: %q isn't a web page's origin, such as http://localhost:3000, with nothing after the host and port", o)
+		case seen[strings.ToLower(o)]:
+			return fmt.Errorf("cors: %s is listed twice", o)
+		}
+		seen[strings.ToLower(o)] = true
+	}
+	if p.CORS.Restrict && len(p.CORS.AllowedOrigins) == 0 {
+		return errors.New("cors: list at least one web page, or turn restricting off")
+	}
+	if p.CORS.MaxAge != nil && *p.CORS.MaxAge < 0 {
+		return errors.New("cors: maxAge is negative")
+	}
+	return nil
+}
+
 // Whether llama-swap reads a config folder (ConfigDirMode).
 const (
 	ConfigDirOff     = "off"     // no -config-dir
@@ -316,6 +378,7 @@ func Defaults() Prefs {
 		ConfigDirMode:             ConfigDirOff,
 		SecretEnv:                 []string{},
 		Peers:                     []Peer{},
+		CORS:                      CORS{AllowedOrigins: []string{}},
 		AutoStart:                 true,
 		HealthCheckSeconds:        DefaultHealthCheckSeconds,
 		HealthCheckSkipWhenActive: true,
@@ -477,6 +540,9 @@ func (p Prefs) Validate() error {
 		return fmt.Errorf("configDirMode: %q isn't one of %q, %q or %q", p.ConfigDirMode, ConfigDirOff, ConfigDirOwn, ConfigDirManaged)
 	}
 	if err := p.checkPeers(); err != nil {
+		return err
+	}
+	if err := p.checkCORS(); err != nil {
 		return err
 	}
 	if p.AppAPIKey != "" && !seen[p.AppAPIKey] {

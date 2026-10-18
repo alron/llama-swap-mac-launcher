@@ -128,6 +128,15 @@ func TestValidate(t *testing.T) {
 		{"peer model twice", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x", "x"}}}}, false},
 		{"peer timeouts", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, Timeouts: PeerTimeouts{ResponseHeader: seconds(600), Connect: seconds(0)}}}}, true},
 		{"peer timeout negative", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, Timeouts: PeerTimeouts{KeepAlive: seconds(-1)}}}}, false},
+		{"cors", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"http://localhost:3000", "https://app.example.com"}, AllowCredentials: true, MaxAge: seconds(600)}}, true},
+		{"cors off, origins kept", Prefs{CORS: CORS{AllowedOrigins: []string{"http://localhost:3000"}}}, true},
+		{"cors restricting nothing", Prefs{CORS: CORS{Restrict: true}}, false},
+		{"cors star", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"*"}}}, false},
+		{"cors origin with a slash", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"http://localhost:3000/"}}}, false},
+		{"cors origin with a path", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"https://app.example.com/ui"}}}, false},
+		{"cors origin without a scheme", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"localhost:3000"}}}, false},
+		{"cors origin twice", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"http://a.example", "http://A.example"}}}, false},
+		{"cors maxAge negative", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"http://a.example"}, MaxAge: seconds(-1)}}, false},
 		{"peer model with a variable", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"${env.X}"}}}}, false},
 	} {
 		if err := tt.p.Validate(); (err == nil) != tt.ok {

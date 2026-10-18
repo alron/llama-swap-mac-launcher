@@ -21,6 +21,10 @@ less of it needs editing by hand.
   ones to offer, however long the list. A peer's timeouts for a reply, a
   connection and keep-alive can be raised for slow machines or long
   prompts.
+- **Web pages** (Settings → Security): with the app's folder, limit which
+  web pages may use llama-swap from a browser, which by default is any
+  page. Cookies and Authorization, Private Network Access and the preflight
+  cache time can be set for the pages listed.
 - **Reload the config when it changes** replaces the Extra arguments field,
   whose only use was `-watch-config`. Other arguments, for flags newer than
   the app, can still go in `prefs.json` by hand.

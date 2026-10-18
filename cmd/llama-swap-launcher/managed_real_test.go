@@ -145,3 +145,76 @@ func TestManagedPeersReal(t *testing.T) {
 		t.Errorf("the peer was sent %q, want the secret variable's key", got)
 	}
 }
+
+// TestManagedCORSReal runs an actual llama-swap with the security.yaml the
+// app writes (skipped unless LLAMA_SWAP_BIN is set, as above): listed pages
+// are allowed, together with those in the user's own config, others
+// aren't, and the switches and cache time apply. A switch the user's
+// config sets differently is llama-swap's own error.
+func TestManagedCORSReal(t *testing.T) {
+	bin := os.Getenv("LLAMA_SWAP_BIN")
+	if bin == "" {
+		t.Skip("set LLAMA_SWAP_BIN to run against a real llama-swap")
+	}
+	dir := t.TempDir()
+	config := filepath.Join(dir, "config.yaml")
+	os.WriteFile(config, []byte("security:\n  cors:\n    allowedOrigins: [\"http://mine.example\"]\n"+
+		"models:\n  m:\n    cmd: /bin/sleep 600 ${PORT}\n"), 0o600)
+	managed := filepath.Join(dir, "llama-swap.d")
+	os.Mkdir(managed, 0o700)
+	age := 600
+	p := prefs.Prefs{ConfigDirMode: prefs.ConfigDirManaged, CORS: prefs.CORS{
+		Restrict: true, AllowedOrigins: []string{"http://localhost:3000"}, AllowPrivateNetwork: true, MaxAge: &age,
+	}}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range managedFiles(p) {
+		os.WriteFile(filepath.Join(managed, name), data, 0o600)
+	}
+
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := l.Addr().String()
+	l.Close()
+	swap := exec.Command(bin, "-config", config, "-config-dir", managed, "-listen", addr)
+	if err := swap.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		swap.Process.Signal(syscall.SIGTERM)
+		swap.Wait()
+	})
+	preflight := func(origin string) http.Header {
+		req, _ := http.NewRequest(http.MethodOptions, "http://"+addr+"/v1/chat/completions", nil)
+		req.Header.Set("Origin", origin)
+		req.Header.Set("Access-Control-Request-Method", "POST")
+		req.Header.Set("Access-Control-Request-Private-Network", "true")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil
+		}
+		resp.Body.Close()
+		return resp.Header
+	}
+	for deadline := time.Now().Add(10 * time.Second); preflight("http://localhost:3000") == nil && time.Now().Before(deadline); {
+		time.Sleep(100 * time.Millisecond)
+	}
+	h := preflight("http://localhost:3000")
+	if h.Get("Access-Control-Allow-Origin") != "http://localhost:3000" || h.Get("Access-Control-Max-Age") != "600" ||
+		h.Get("Access-Control-Allow-Private-Network") != "true" {
+		t.Errorf("a listed page: %v", h)
+	}
+	if h := preflight("http://mine.example"); h.Get("Access-Control-Allow-Origin") != "http://mine.example" {
+		t.Errorf("the user's own page: %v", h)
+	}
+	if h := preflight("http://elsewhere.example"); h.Get("Access-Control-Allow-Origin") != "" {
+		t.Errorf("a page not listed: %v", h)
+	}
+
+	clash := filepath.Join(dir, "clash.yaml")
+	os.WriteFile(clash, []byte("security:\n  cors:\n    allowedOrigins: [\"http://mine.example\"]\n    allowPrivateNetwork: false\n"), 0o600)
+	out, err := exec.Command(bin, "-config", clash, "-config-dir", managed, "-validate").CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "security.yaml") {
+		t.Errorf("a switch set differently in the user's config: %v\n%s", err, out)
+	}
+}

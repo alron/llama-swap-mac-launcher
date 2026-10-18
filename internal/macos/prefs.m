@@ -2,7 +2,7 @@
 //
 // It's an alert (Save, Cancel) with tabs as its accessory view: General, a
 // grid of labels and fields; Secrets, two tables of named secrets (API keys
-// and secret environment variables); Peers; and Logs. The values go in and come back
+// and secret environment variables); Peers; Security; and Logs. The values go in and come back
 // out as JSON, so the C interface is a single function and all the
 // checking stays in Go. If what the user entered doesn't check out, Go
 // shows the dialog again with their entries and the error.
@@ -249,6 +249,13 @@ static NSString *newKey(void) {
 @property(strong) LSLSecretTable *vars;
 @property(strong) NSPopUpButton *appKey;
 @property(strong) LSLPeers *peers; // the Peers tab
+// The Security tab: which web pages may use llama-swap.
+@property(strong) NSButton *corsRestrict;
+@property(strong) NSTextView *corsOrigins;
+@property(strong) NSButton *corsCredentials;
+@property(strong) NSButton *corsPrivate;
+@property(strong) NSTextField *corsMaxAge;
+@property(strong) NSTextField *corsHint;
 // The config folder: the menu, the field, and the user's own folder, kept
 // while the field shows the app's managed one.
 @property(strong) NSPopUpButton *dirMode;
@@ -316,12 +323,31 @@ static NSString *newKey(void) {
 	self.showDir.enabled = own || managed;
 	self.manageKeys.enabled = managed;
 	[self.peers setManaged:managed]; // peers, too, are written to the managed folder
+	[self corsChanged:nil];
 	self.manageKeysHint.stringValue = managed
 		? [NSString stringWithFormat:@"The app lists them in llama-swap's apiKeys, in its managed config folder. "
 		                             @"Otherwise, list them in llama-swap's config yourself:\n%@", self.keysExample]
 		: [NSString stringWithFormat:@"Needs Config folder: Managed by the app, on the General tab. "
 		                             @"Until then, list them in llama-swap's config yourself:\n%@", self.keysExample];
 }
+// corsChanged enables the Security tab's settings: all of them need the
+// managed folder, and llama-swap takes the rest only with a list of pages.
+- (void)corsChanged:(id)sender {
+	BOOL managed = [self.dirMode.selectedItem.representedObject isEqual:@"managed"];
+	BOOL on = managed && self.corsRestrict.state == NSControlStateValueOn;
+	self.corsRestrict.enabled = managed;
+	self.corsOrigins.editable = on;
+	self.corsOrigins.textColor = on ? NSColor.labelColor : NSColor.secondaryLabelColor;
+	self.corsCredentials.enabled = on;
+	self.corsPrivate.enabled = on;
+	self.corsMaxAge.enabled = on;
+	self.corsHint.stringValue = managed
+		? @"The app writes these to llama-swap's security.cors, in its managed config folder. Pages listed in your own "
+		  @"config count too; a switch or cache time set differently there stops llama-swap from loading."
+		: @"Needs Config folder: Managed by the app, on the General tab. Until then, any page may use llama-swap, "
+		  @"unless its own config says otherwise.";
+}
+
 // ownDirValue is the user's own folder, whichever folder the field shows.
 - (NSString *)ownDirValue {
 	return [self.lastMode isEqual:@"own"] ? self.configDir.stringValue : self.ownDir;
@@ -1224,6 +1250,40 @@ char *lsl_preferences(const char *json, int *result) {
 		]);
 		[secrets setCustomSpacing:16 afterView:secrets.views[5]];
 
+		// Security: which web pages may use llama-swap.
+		NSTextField *webTitle = label(@"Web pages");
+		webTitle.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
+		c.corsRestrict = checkbox(@"Only let these web pages use llama-swap", in[@"corsRestrict"]);
+		c.corsRestrict.target = c;
+		c.corsRestrict.action = @selector(corsChanged:);
+		NSTextView *origins;
+		NSScrollView *originsArea = area(string(in, @"corsOrigins"), c, &origins);
+		c.corsOrigins = origins;
+		c.corsCredentials = checkbox(@"Let them send cookies and Authorization headers", in[@"corsAllowCredentials"]);
+		c.corsPrivate = checkbox(@"Let them reach llama-swap on this network from a public site (Private Network Access)",
+		                         in[@"corsAllowPrivateNetwork"]);
+		c.corsMaxAge = field(string(in, @"corsMaxAge"), @"", 80);
+		// The longer of its two texts, for sizing the tab; corsChanged sets
+		// the real one.
+		c.corsHint = hint(@"The app writes these to llama-swap's security.cors, in its managed config folder. Pages listed in your own "
+		                  @"config count too; a switch or cache time set differently there stops llama-swap from loading.");
+		NSStackView *security = column(@[
+			webTitle,
+			hint(@"By default llama-swap lets any web page use it, including pages open in your browser now. This limits it to "
+			     @"the pages you list. A page can still send a simple request, such as an unload, without reading the reply; "
+			     @"API keys stop that (Secrets tab)."),
+			c.corsRestrict,
+			originsArea,
+			hint(@"One per line, as the browser shows it, such as http://localhost:3000: no path, no trailing slash."),
+			c.corsCredentials,
+			c.corsPrivate,
+			row(@[ label(@"Browsers may cache a check for:"), c.corsMaxAge, label(@"seconds") ]),
+			c.corsHint,
+		]);
+		[security setCustomSpacing:12 afterView:security.views[1]];
+		[security setCustomSpacing:12 afterView:security.views[4]];
+		[security setCustomSpacing:12 afterView:security.views[7]];
+
 		// Peers.
 		c.peers = [[LSLPeers alloc] initWithRows:in[@"peers"]];
 		c.peers.timeoutDefaults = [in[@"peerTimeoutDefaults"] isKindOfClass:[NSDictionary class]] ? in[@"peerTimeoutDefaults"] : @{};
@@ -1236,6 +1296,7 @@ char *lsl_preferences(const char *json, int *result) {
 		[tabs addTabViewItem:tab(@"general", @"General", general)];
 		[tabs addTabViewItem:tab(@"secrets", @"Secrets", secrets)];
 		[tabs addTabViewItem:tab(@"peers", @"Peers", peersView)];
+		[tabs addTabViewItem:tab(@"security", @"Security", security)];
 		[tabs addTabViewItem:tab(@"logs", @"Logs", logs)];
 		NSSize content = NSZeroSize;
 		for (NSTabViewItem *item in tabs.tabViewItems) {
@@ -1251,7 +1312,7 @@ char *lsl_preferences(const char *json, int *result) {
 		[c.peers showSelected];
 		[c dirModeChanged:nil];
 		NSString *first = string(in, @"tab");
-		if ([first isEqual:@"secrets"] || [first isEqual:@"peers"] || [first isEqual:@"logs"]) {
+		if ([first isEqual:@"secrets"] || [first isEqual:@"peers"] || [first isEqual:@"security"] || [first isEqual:@"logs"]) {
 			[tabs selectTabViewItemWithIdentifier:first];
 		}
 
@@ -1268,6 +1329,7 @@ char *lsl_preferences(const char *json, int *result) {
 		NSString *shown = tabs.selectedTabViewItem.identifier;
 		alert.window.initialFirstResponder = [shown isEqual:@"secrets"] ? (NSView *)c.keys.table
 		                                     : [shown isEqual:@"peers"] ? (NSView *)c.peers.table
+		                                     : [shown isEqual:@"security"] ? (NSView *)c.corsRestrict
 		                                     : [shown isEqual:@"logs"]  ? (NSView *)c.launcherLog
 		                                                                 : (NSView *)c.binary;
 		[NSApp activate];
@@ -1296,6 +1358,11 @@ char *lsl_preferences(const char *json, int *result) {
 			@"appApiKey" : c.appKey.selectedItem.representedObject ?: @"",
 			@"secretEnv" : [c.vars json],
 			@"peers" : [c.peers json],
+			@"corsRestrict" : c.corsRestrict.state == NSControlStateValueOn ? @YES : @NO,
+			@"corsOrigins" : c.corsOrigins.string,
+			@"corsAllowCredentials" : c.corsCredentials.state == NSControlStateValueOn ? @YES : @NO,
+			@"corsAllowPrivateNetwork" : c.corsPrivate.state == NSControlStateValueOn ? @YES : @NO,
+			@"corsMaxAge" : c.corsMaxAge.stringValue,
 			@"launcherLog" : c.launcherLog.stringValue,
 			@"llamaSwapLog" : c.logMode.selectedItem.representedObject ?: @"launcher",
 			@"llamaSwapLogFile" : c.ownLog.stringValue,

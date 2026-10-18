@@ -42,11 +42,19 @@ type PreferencesForm struct {
 	// defaults.
 	Peers               []PeerField `json:"peers"`
 	PeerTimeoutDefaults PeerField   `json:"peerTimeoutDefaults"`
+	// The Security tab: which web pages may use llama-swap. The origins
+	// are one per line, and maxAge is text, shown as llama-swap's default
+	// when it isn't set.
+	CORSRestrict            bool   `json:"corsRestrict"`
+	CORSOrigins             string `json:"corsOrigins"`
+	CORSAllowCredentials    bool   `json:"corsAllowCredentials"`
+	CORSAllowPrivateNetwork bool   `json:"corsAllowPrivateNetwork"`
+	CORSMaxAge              string `json:"corsMaxAge"`
 	// The Logs tab.
 	LauncherLog      string `json:"launcherLog"`
 	LlamaSwapLog     string `json:"llamaSwapLog"` // "launcher", "file" or "off"
 	LlamaSwapLogFile string `json:"llamaSwapLogFile"`
-	// Tab is the tab to show first, "general", "secrets", "peers" or "logs", and
+	// Tab is the tab to show first, "general", "secrets", "peers", "security" or "logs", and
 	// comes back as the one showing when the dialog closed.
 	Tab string `json:"tab"`
 

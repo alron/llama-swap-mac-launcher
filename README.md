@@ -290,7 +290,9 @@ llama-swap binary and config (each with a **Choose…** button), the config
 folder (see [Config folder](#config-folder)), the listen address,
 environment variables (one per line), and the settings below; the **Secrets** tab has llama-swap's API keys and secret
 environment variables, the **Peers** tab the peers the app manages (see
-[Peers](#peers)), and the **Logs** tab where the logs go (see below). Save checks
+[Peers](#peers)), the **Security** tab which web pages may use llama-swap
+(see [Web pages](#web-pages)), and the **Logs** tab where the logs go (see
+below). Save checks
 them first: if something's wrong, an alert says what, and the dialog comes back
 with your entries and the problem shown until it's fixed. If llama-swap is
 running when you save a change it runs with, the app offers to restart it.
@@ -315,6 +317,7 @@ misspelling, is reported as an error rather than ignored.
 | `configDir` | `""` | Your own config folder, with `"own"`. The app never writes there. |
 | `manageApiKeys` | `false` | With the managed folder, list the API keys in llama-swap's `apiKeys` for it, so it requires them. See [API keys](#api-keys). |
 | `peers` | `[]` | The peers the app manages, each with `name`, `url`, `keyVariable` (a secret variable, or `""`), `models`, and optionally `timeouts` (`responseHeader`, `connect`, `keepalive`, in seconds, as llama-swap names them). Used with the managed folder; see [Peers](#peers). |
+| `cors` | off | Which web pages may use llama-swap: `restrict`, `allowedOrigins`, `allowCredentials`, `allowPrivateNetwork` and `maxAge`, as llama-swap's `security.cors` names them. Used with the managed folder; see [Web pages](#web-pages). |
 | `args` | `[]` | Extra llama-swap arguments, for flags newer than the app. Settings doesn't show them. Not `-config`, `-listen`, `-config-dir` or `-watch-config`, which are settings above, nor the TLS flags, `-validate` or `-version`. A `-watch-config` here from an earlier version becomes `watchConfig` when the file is read. |
 | `env` | `{}` | Environment variables for llama-swap and the commands its config runs, e.g. `{"HF_TOKEN": "…"}`. Values are used exactly as typed, quotes included; for a path with spaces, see [Good to know](#good-to-know). |
 | `autoStart` | `true` | Start llama-swap when the app opens. |
@@ -404,6 +407,36 @@ from the config and add it on the Peers tab. A peer that needs llama-swap's
 `filters`, its other timeouts (`tlsHandshake`, `expectContinue`,
 `idleConn`) or a `tailcat://` address stays in your config for now.
 
+### Web pages
+
+By default llama-swap lets any web page use it, including pages open in
+your browser right now. The **Security** tab, with **Config folder** set to
+**Managed by the app**, limits that:
+
+- **Only let these web pages use llama-swap:** the pages allowed, one per
+  line, as the browser shows them: `http://localhost:3000`, with no path and
+  no trailing slash. A front end such as Open WebUI goes here. llama-swap's
+  own UI doesn't need to: it's the same site.
+- **Let them send cookies and Authorization headers:** for a page that logs
+  in to llama-swap with a key from the browser.
+- **Let them reach llama-swap on this network from a public site:** Chrome
+  asks before a page on a public site uses a server on your network
+  (Private Network Access), and llama-swap answers yes only with this.
+- **Browsers may cache a check for:** how long a browser may remember
+  llama-swap's answer before asking again. It starts at llama-swap's 86400
+  seconds; only a changed value is written.
+
+The last three apply only while the first is ticked, as llama-swap requires.
+
+**This isn't a lock.** A page that isn't listed can't read llama-swap's
+replies, or send it JSON, but it can still send a simple request, such as
+an unload. API keys stop that; see [API keys](#api-keys).
+
+The app writes this to `security.yaml` in its config folder. Pages your own
+config lists in `security.cors.allowedOrigins` are allowed too, but a switch
+or cache time your config sets to a different value stops llama-swap from
+loading, and Start and Restart say so. Set each in one place.
+
 ### API keys
 
 Without `apiKeys` in its config, llama-swap answers anyone who can reach it:
@@ -412,7 +445,7 @@ beyond this Mac (`0.0.0.0`, or a LAN address), that's anyone on your network,
 and on any network the Mac joins later. Even on `127.0.0.1` it's more than
 you might think: llama-swap allows requests from any web page by default
 (`Access-Control-Allow-Origin: *`), so a page open in your browser can use
-it too, as can other users of this Mac; its config's `cors` settings can
+it too, as can other users of this Mac; see [Web pages](#web-pages) to
 narrow that. The app keeps those keys in your login keychain rather than in a
 file, and hands them to llama-swap as environment variables, so your config
 names a variable instead of holding the key:

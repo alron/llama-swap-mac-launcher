@@ -146,3 +146,28 @@ func TestManagedFiles(t *testing.T) {
 }
 
 func seconds(n int) *int { return &n }
+
+func TestSecurityFile(t *testing.T) {
+	p := prefs.Prefs{ConfigDirMode: prefs.ConfigDirManaged, CORS: prefs.CORS{
+		Restrict: true, AllowedOrigins: []string{"http://localhost:3000", "https://app.example.com"}, AllowPrivateNetwork: true, MaxAge: seconds(600),
+	}}
+	want := managedHeader + `security:
+  cors:
+    allowedOrigins:
+      - "http://localhost:3000"
+      - "https://app.example.com"
+    allowPrivateNetwork: true
+    maxAge: 600
+`
+	if got := string(managedFiles(p)["security.yaml"]); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+	for _, q := range []prefs.Prefs{
+		{ConfigDirMode: prefs.ConfigDirManaged, CORS: prefs.CORS{AllowedOrigins: []string{"http://localhost:3000"}}},
+		{ConfigDirMode: prefs.ConfigDirOwn, CORS: prefs.CORS{Restrict: true, AllowedOrigins: []string{"http://localhost:3000"}}},
+	} {
+		if got := string(managedFiles(q)["security.yaml"]); got != managedHeader {
+			t.Errorf("%+v: got %q, want only the note", q.CORS, got)
+		}
+	}
+}
