@@ -32,7 +32,7 @@ func TestFormRoundTrip(t *testing.T) {
 		SecretEnv:                 []string{"GITHUB_TOKEN"},
 		Peers: []prefs.Peer{
 			{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "GITHUB_TOKEN", Models: []string{"a", "org/b"}},
-			{Name: "open", URL: "https://example.com/api", Models: []string{"x"}},
+			{Name: "open", URL: "https://example.com/api", Models: []string{"x"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: seconds(600), KeepAlive: seconds(0)}},
 		},
 		LauncherLog:      "/tmp/launcher.log",
 		LlamaSwapLog:     prefs.LogToFile,
@@ -187,6 +187,8 @@ func TestPrefsFromPeerErrors(t *testing.T) {
 		{"nothing ticked", macos.PeerField{Name: "studio", URL: "http://h"}, "tick at least one"},
 		{"bad URL", macos.PeerField{Name: "studio", URL: "h:8080", Models: []string{"a"}}, "isn't an http://"},
 		{"key gone", macos.PeerField{Name: "studio", URL: "http://h", KeyVariable: "GONE", Models: []string{"a"}}, "isn't one of the secret variables"},
+		{"timeout not a number", macos.PeerField{Name: "studio", URL: "http://h", Models: []string{"a"}, ResponseHeader: "ten"}, "isn't a whole number of seconds"},
+		{"timeout negative", macos.PeerField{Name: "studio", URL: "http://h", Models: []string{"a"}, Connect: "-5"}, "isn't a whole number of seconds"},
 	} {
 		_, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok, tt.peer}})
 		if !errors.As(err, new(peerError)) || !strings.Contains(err.Error(), tt.want) {
@@ -195,5 +197,21 @@ func TestPrefsFromPeerErrors(t *testing.T) {
 	}
 	if _, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok}}); err != nil {
 		t.Errorf("a good peer: %v", err)
+	}
+}
+
+// A timeout shown at, or typed as, llama-swap's default is left to it.
+func TestPeerTimeoutsFromForm(t *testing.T) {
+	f := macos.PeerField{Name: "a", URL: "http://h", Models: []string{"x"}, ResponseHeader: "600", Connect: "30", KeepAlive: " "}
+	p, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{f}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	to := p.Peers[0].Timeouts
+	if to.ResponseHeader == nil || *to.ResponseHeader != 600 || to.Connect != nil || to.KeepAlive != nil {
+		t.Errorf("got %+v", to)
+	}
+	if shown := formFrom(p, nil).Peers[0]; shown.ResponseHeader != "600" || shown.Connect != "30" || shown.KeepAlive != "30" {
+		t.Errorf("shown as %+v", shown)
 	}
 }

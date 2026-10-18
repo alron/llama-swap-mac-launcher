@@ -126,6 +126,8 @@ func TestValidate(t *testing.T) {
 		{"peer URL without a host", Prefs{Peers: []Peer{{Name: "a", URL: "http://", Models: []string{"x"}}}}, false},
 		{"peer URL with a variable", Prefs{Peers: []Peer{{Name: "a", URL: "http://${env.HOST}", Models: []string{"x"}}}}, false},
 		{"peer model twice", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x", "x"}}}}, false},
+		{"peer timeouts", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, Timeouts: PeerTimeouts{ResponseHeader: seconds(600), Connect: seconds(0)}}}}, true},
+		{"peer timeout negative", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, Timeouts: PeerTimeouts{KeepAlive: seconds(-1)}}}}, false},
 		{"peer model with a variable", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"${env.X}"}}}}, false},
 	} {
 		if err := tt.p.Validate(); (err == nil) != tt.ok {
@@ -218,5 +220,30 @@ func TestConfigDir(t *testing.T) {
 		if dir := tt.p.ConfigDirPath("/managed"); dir != tt.dir || tt.p.ManagesAPIKeys() != tt.manages {
 			t.Errorf("%+v: got %q, manages %v; want %q, %v", tt.p, dir, tt.p.ManagesAPIKeys(), tt.dir, tt.manages)
 		}
+	}
+}
+
+func seconds(n int) *int { return &n }
+
+// A peer's timeouts round-trip, and one left at the default isn't stored.
+func TestPeerTimeoutsJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prefs.json")
+	p := Defaults()
+	p.Peers = []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, Timeouts: PeerTimeouts{ResponseHeader: seconds(600)}}}
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), `"timeouts": {
+        "responseHeader": 600
+      }`) {
+		t.Errorf("saved as:\n%s", b)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if to := got.Peers[0].Timeouts; to.ResponseHeader == nil || *to.ResponseHeader != 600 || to.Connect != nil || to.KeepAlive != nil {
+		t.Errorf("loaded %+v", to)
 	}
 }

@@ -219,6 +219,12 @@ static NSString *newKey(void) {
 @property(strong) NSTextField *status;
 @property(strong) NSTextField *count;
 @property(strong) NSTextField *addField;
+// The selected peer's timeouts, in seconds, and the ones a new peer starts
+// with: llama-swap's defaults.
+@property(strong) NSTextField *responseHeader;
+@property(strong) NSTextField *connect;
+@property(strong) NSTextField *keepalive;
+@property(strong) NSDictionary *timeoutDefaults;
 @property(strong) NSArray<NSControl *> *detail; // usable while a peer is selected
 @property(strong) NSArray<NSControl *> *all;    // usable with the managed folder
 @property(strong) NSTextField *managedHint;
@@ -575,6 +581,9 @@ static NSString *sentenceCase(NSString *s) {
 				@"url" : string(r, @"url"),
 				@"key" : string(r, @"keyVariable"),
 				@"models" : models,
+				@"responseHeader" : string(r, @"responseHeader"),
+				@"connect" : string(r, @"connect"),
+				@"keepalive" : string(r, @"keepalive"),
 			} mutableCopy]];
 		}
 	}
@@ -634,6 +643,15 @@ static NSString *sentenceCase(NSString *s) {
 	}
 }
 
+// A timeout being typed belongs to the peer selected now: the edit is
+// finished, and kept with that peer, before the selection moves.
+- (BOOL)selectionShouldChangeInTableView:(NSTableView *)tableView {
+	if (tableView == self.table) {
+		[tableView.window makeFirstResponder:nil];
+	}
+	return YES;
+}
+
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
 	if (notification.object == self.table) {
 		[self showSelected];
@@ -651,6 +669,10 @@ static NSString *sentenceCase(NSString *s) {
 - (void)showSelected {
 	self.filter.stringValue = @"";
 	[self say:@""];
+	NSDictionary *peer = self.selected;
+	self.responseHeader.stringValue = peer[@"responseHeader"] ?: @"";
+	self.connect.stringValue = peer[@"connect"] ?: @"";
+	self.keepalive.stringValue = peer[@"keepalive"] ?: @"";
 	[self refreshKeys];
 	[self applyFilter];
 	[self enable];
@@ -664,13 +686,23 @@ static NSString *sentenceCase(NSString *s) {
 	for (NSControl *c in self.detail) {
 		c.enabled = detail;
 	}
-	// The cells follow too: the checkboxes, and the peers' names and URLs.
-	// Those are redrawn in place: reloading the table, or selecting a row
-	// again, would report a selection change, which comes back here.
-	[self.list reloadData];
-	if (self.table.numberOfRows > 0) {
-		[self.table reloadDataForRowIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, (NSUInteger)self.table.numberOfRows)]
-		                      columnIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, 2)]];
+	// The cells follow too: the peers' names and URLs, and the checkboxes.
+	// The cells on screen are changed where they are, not replaced: a
+	// replaced cell may still be in the window's Tab order, which AppKit
+	// then loses track of, and closing the window crashed. Cells made
+	// later get the state from tableView:viewForTableColumn:row:.
+	for (NSTableView *t in @[ self.table, self.list ]) {
+		for (NSInteger row = 0; row < t.numberOfRows; row++) {
+			for (NSInteger col = 0; col < t.numberOfColumns; col++) {
+				NSView *v = [t viewAtColumn:col row:row makeIfNecessary:NO];
+				if (t == self.table && [v isKindOfClass:[NSTextField class]]) {
+					((NSTextField *)v).editable = self.managed;
+					((NSTextField *)v).selectable = self.managed;
+				} else if (t == self.list && [v isKindOfClass:[NSButton class]]) {
+					((NSButton *)v).enabled = self.managed;
+				}
+			}
+		}
 	}
 }
 
@@ -704,6 +736,13 @@ static NSString *sentenceCase(NSString *s) {
 		self.key.lastItem.representedObject = current;
 	}
 	[self.key selectItemAtIndex:[self.key indexOfItemWithRepresentedObject:current]];
+}
+
+// timeoutEdited keeps a timeout field's text with the selected peer; Go
+// checks it at Save.
+- (void)timeoutEdited:(NSTextField *)sender {
+	NSString *key = sender == self.responseHeader ? @"responseHeader" : sender == self.connect ? @"connect" : @"keepalive";
+	self.selected[key] = [sender.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
 }
 
 - (void)keyChanged:(id)sender {
@@ -872,7 +911,12 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 
 - (void)addPeer:(id)sender {
 	[self.table.window makeFirstResponder:nil];
-	[self.peers addObject:[@{@"name" : @"", @"url" : @"", @"key" : @"", @"models" : [NSMutableArray array]} mutableCopy]];
+	[self.peers addObject:[@{
+		@"name" : @"", @"url" : @"", @"key" : @"", @"models" : [NSMutableArray array],
+		@"responseHeader" : string(self.timeoutDefaults, @"responseHeader"),
+		@"connect" : string(self.timeoutDefaults, @"connect"),
+		@"keepalive" : string(self.timeoutDefaults, @"keepalive"),
+	} mutableCopy]];
 	NSInteger row = (NSInteger)self.peers.count - 1;
 	[self.table reloadData];
 	[self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
@@ -900,7 +944,10 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 				[models addObject:m[@"id"]];
 			}
 		}
-		[out addObject:@{@"name" : p[@"name"], @"url" : p[@"url"], @"keyVariable" : p[@"key"], @"models" : models}];
+		[out addObject:@{
+			@"name" : p[@"name"], @"url" : p[@"url"], @"keyVariable" : p[@"key"], @"models" : models,
+			@"responseHeader" : p[@"responseHeader"], @"connect" : p[@"connect"], @"keepalive" : p[@"keepalive"],
+		}];
 	}
 	return out;
 }
@@ -975,7 +1022,7 @@ static NSView *peersTab(LSLPeers *p) {
 	listScroll.hasVerticalScroller = YES;
 	listScroll.borderType = NSBezelBorder;
 	[listScroll.widthAnchor constraintEqualToConstant:540].active = YES;
-	[listScroll.heightAnchor constraintEqualToConstant:170].active = YES;
+	[listScroll.heightAnchor constraintEqualToConstant:150].active = YES;
 
 	NSButton *tick = [NSButton buttonWithTitle:@"Tick All Shown" target:p action:@selector(tickShown:)];
 	NSButton *untick = [NSButton buttonWithTitle:@"Untick All Shown" target:p action:@selector(untickShown:)];
@@ -987,9 +1034,33 @@ static NSView *peersTab(LSLPeers *p) {
 
 	// The longer of its two texts, for sizing the tab; setManaged sets the
 	// real one.
+	// The timeouts, filled in with llama-swap's defaults for a new peer.
+	NSTextField *(^seconds)(NSString *) = ^NSTextField *(NSString *tip) {
+		NSTextField *f = field(@"", @"", 52);
+		f.target = p;
+		f.action = @selector(timeoutEdited:);
+		f.cell.sendsActionOnEndEditing = YES;
+		f.toolTip = tip;
+		return f;
+	};
+	p.responseHeader = seconds(@"How long llama-swap waits for the peer to start answering: raise it for a slow machine, "
+	                           @"or long prompts at a large context. llama-swap's default is 60. 0 means no limit.");
+	p.connect = seconds(@"How long opening a connection to the peer may take. llama-swap's default is 30. 0 means no limit.");
+	p.keepalive = seconds(@"The connection's TCP keep-alive. llama-swap's default is 30. 0 means no limit.");
+	NSTextField *noLimit = label(@"0 means no limit");
+	noLimit.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+	noLimit.textColor = NSColor.secondaryLabelColor;
+
+	NSTextField *s1 = label(@"s"), *s2 = label(@"s"), *s3 = label(@"s");
+	NSStackView *timeouts = row(@[ label(@"Wait for a reply:"), p.responseHeader, s1, label(@"Connect:"), p.connect, s2,
+	                              label(@"Keep-alive:"), p.keepalive, s3, noLimit ]);
+	for (NSTextField *unit in @[ s1, s2, s3 ]) {
+		[timeouts setCustomSpacing:16 afterView:unit];
+	}
+
 	p.managedHint = hint(@"The app writes these to llama-swap's peers, in its managed config folder. Keep each peer in one place: "
 	                     @"a peer also in your own config stops llama-swap from loading.");
-	p.detail = @[ remove, p.key, p.filter, p.fetch, list, tick, untick, p.addField, addModel ];
+	p.detail = @[ remove, p.key, p.responseHeader, p.connect, p.keepalive, p.filter, p.fetch, list, tick, untick, p.addField, addModel ];
 	p.all = @[ table, add ];
 
 	NSTextField *keyHint = label(@"one of the secret variables on the Secrets tab, or None");
@@ -1003,6 +1074,7 @@ static NSView *peersTab(LSLPeers *p) {
 		peerScroll,
 		row(@[ add, remove ]),
 		row(@[ label(@"Key:"), p.key, keyHint ]),
+		timeouts,
 		row(@[ label(@"Models:"), p.filter, p.fetch, p.spinner ]),
 		p.status,
 		listScroll,
@@ -1011,7 +1083,7 @@ static NSView *peersTab(LSLPeers *p) {
 		p.managedHint,
 	]);
 	[v setCustomSpacing:12 afterView:v.views[3]];
-	[v setCustomSpacing:12 afterView:v.views[4]];
+	[v setCustomSpacing:12 afterView:v.views[5]];
 	return v;
 }
 
@@ -1154,6 +1226,7 @@ char *lsl_preferences(const char *json, int *result) {
 
 		// Peers.
 		c.peers = [[LSLPeers alloc] initWithRows:in[@"peers"]];
+		c.peers.timeoutDefaults = [in[@"peerTimeoutDefaults"] isKindOfClass:[NSDictionary class]] ? in[@"peerTimeoutDefaults"] : @{};
 		c.peers.vars = c.vars;
 		NSView *peersView = peersTab(c.peers);
 

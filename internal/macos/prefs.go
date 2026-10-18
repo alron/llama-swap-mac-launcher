@@ -38,8 +38,10 @@ type PreferencesForm struct {
 	AppAPIKey     string        `json:"appApiKey"`
 	ManageAPIKeys bool          `json:"manageApiKeys"`
 	SecretEnv     []SecretField `json:"secretEnv"`
-	// The Peers tab.
-	Peers []PeerField `json:"peers"`
+	// The Peers tab, and the timeouts a new peer starts with: llama-swap's
+	// defaults.
+	Peers               []PeerField `json:"peers"`
+	PeerTimeoutDefaults PeerField   `json:"peerTimeoutDefaults"`
 	// The Logs tab.
 	LauncherLog      string `json:"launcherLog"`
 	LlamaSwapLog     string `json:"llamaSwapLog"` // "launcher", "file" or "off"
@@ -76,6 +78,10 @@ type PeerField struct {
 	URL         string   `json:"url"`
 	KeyVariable string   `json:"keyVariable"`
 	Models      []string `json:"models"`
+	// Its timeouts, in seconds, as typed.
+	ResponseHeader string `json:"responseHeader"`
+	Connect        string `json:"connect"`
+	KeepAlive      string `json:"keepalive"`
 }
 
 // PreferencesResult says how the dialog was closed.

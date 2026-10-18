@@ -314,7 +314,7 @@ misspelling, is reported as an error rather than ignored.
 | `configDirMode` | `"off"` | Whether llama-swap also reads a folder of config files (`-config-dir`): `"off"`, `"own"` (`configDir`) or `"managed"` (the app's own folder). See [Config folder](#config-folder). |
 | `configDir` | `""` | Your own config folder, with `"own"`. The app never writes there. |
 | `manageApiKeys` | `false` | With the managed folder, list the API keys in llama-swap's `apiKeys` for it, so it requires them. See [API keys](#api-keys). |
-| `peers` | `[]` | The peers the app manages, each with `name`, `url`, `keyVariable` (a secret variable, or `""`) and `models`. Used with the managed folder; see [Peers](#peers). |
+| `peers` | `[]` | The peers the app manages, each with `name`, `url`, `keyVariable` (a secret variable, or `""`), `models`, and optionally `timeouts` (`responseHeader`, `connect`, `keepalive`, in seconds, as llama-swap names them). Used with the managed folder; see [Peers](#peers). |
 | `args` | `[]` | Extra llama-swap arguments, for flags newer than the app. Settings doesn't show them. Not `-config`, `-listen`, `-config-dir` or `-watch-config`, which are settings above, nor the TLS flags, `-validate` or `-version`. A `-watch-config` here from an earlier version becomes `watchConfig` when the file is read. |
 | `env` | `{}` | Environment variables for llama-swap and the commands its config runs, e.g. `{"HF_TOKEN": "…"}`. Values are used exactly as typed, quotes included; for a path with spaces, see [Good to know](#good-to-know). |
 | `autoStart` | `true` | Start llama-swap when the app opens. |
@@ -385,7 +385,12 @@ set to **Managed by the app**:
    list, and **Tick All Shown** and **Untick All Shown** act on what it
    shows. Fetching again adds new models unticked and keeps your ticks. For
    a model the peer doesn't list, type its name and click **Add**.
-4. Save, and let the app restart llama-swap.
+4. If the peer is slow to start answering (slower hardware, or long prompts
+   at a large context), raise **Wait for a reply** above llama-swap's 60
+   seconds. **Connect** and **Keep-alive** are there too. They start at
+   llama-swap's defaults; 0 means no limit, which llama-swap advises
+   against. Only values you change are written.
+5. Save, and let the app restart llama-swap.
 
 The app writes them to `peers.yaml` in its config folder each time it
 starts llama-swap; the key goes in as `${env.NAME}`, never the key itself.
@@ -396,8 +401,8 @@ those out.
 and the app's folder both define a peer of the same name, and Start and
 Restart say so. To move a peer from your config into the app, delete it
 from the config and add it on the Peers tab. A peer that needs llama-swap's
-`filters`, `timeouts` or a `tailcat://` address stays in your config for
-now: the app offers only the name, URL, key and models.
+`filters`, its other timeouts (`tlsHandshake`, `expectContinue`,
+`idleConn`) or a `tailcat://` address stays in your config for now.
 
 ### API keys
 

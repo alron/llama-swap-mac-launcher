@@ -18,7 +18,9 @@ less of it needs editing by hand.
   peers, other llama-swaps or servers like OpenRouter, without editing its
   config. A peer's key is one of your secret variables. **Fetch Models**
   asks the peer what it serves, and a checklist with a filter picks the
-  ones to offer, however long the list.
+  ones to offer, however long the list. A peer's timeouts for a reply, a
+  connection and keep-alive can be raised for slow machines or long
+  prompts.
 - **Reload the config when it changes** replaces the Extra arguments field,
   whose only use was `-watch-config`. Other arguments, for flags newer than
   the app, can still go in `prefs.json` by hand.

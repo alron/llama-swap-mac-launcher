@@ -165,7 +165,36 @@ func llamaSwapChanged(old, p prefs.Prefs) bool {
 }
 
 func samePeer(a, b prefs.Peer) bool {
-	return a.Name == b.Name && a.URL == b.URL && a.KeyVariable == b.KeyVariable && slices.Equal(a.Models, b.Models)
+	same := func(x, y *int) bool { return (x == nil) == (y == nil) && (x == nil || *x == *y) }
+	return a.Name == b.Name && a.URL == b.URL && a.KeyVariable == b.KeyVariable && slices.Equal(a.Models, b.Models) &&
+		same(a.Timeouts.ResponseHeader, b.Timeouts.ResponseHeader) && same(a.Timeouts.Connect, b.Timeouts.Connect) &&
+		same(a.Timeouts.KeepAlive, b.Timeouts.KeepAlive)
+}
+
+// shownTimeout is a peer timeout as the dialog shows it: llama-swap's
+// default when it isn't set.
+func shownTimeout(v *int, def int) string {
+	if v == nil {
+		return strconv.Itoa(def)
+	}
+	return strconv.Itoa(*v)
+}
+
+// timeoutFrom reads a peer timeout from the dialog. Blank, or the default,
+// is nil: it's left to llama-swap.
+func timeoutFrom(peer, name, s string, def int) (*int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return nil, peerError{fmt.Errorf("peers: %s's %s: %q isn't a whole number of seconds; 0 means no limit", peer, name, s)}
+	}
+	if n == def {
+		return nil, nil
+	}
+	return &n, nil
 }
 
 // secretError, logError and peerError are problems on the Secrets, Logs
@@ -189,7 +218,12 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 	}
 	peers := []macos.PeerField{}
 	for _, peer := range p.Peers {
-		peers = append(peers, macos.PeerField{Name: peer.Name, URL: peer.URL, KeyVariable: peer.KeyVariable, Models: peer.Models})
+		peers = append(peers, macos.PeerField{
+			Name: peer.Name, URL: peer.URL, KeyVariable: peer.KeyVariable, Models: peer.Models,
+			ResponseHeader: shownTimeout(peer.Timeouts.ResponseHeader, prefs.DefaultResponseHeader),
+			Connect:        shownTimeout(peer.Timeouts.Connect, prefs.DefaultConnect),
+			KeepAlive:      shownTimeout(peer.Timeouts.KeepAlive, prefs.DefaultKeepAlive),
+		})
 	}
 	var env []string
 	for _, name := range slices.Sorted(maps.Keys(p.Env)) {
@@ -218,11 +252,16 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		AppAPIKey:                 p.AppKey(),
 		SecretEnv:                 vars,
 		Peers:                     peers,
-		LauncherLog:               p.LauncherLog,
-		LlamaSwapLog:              p.LogMode(),
-		LlamaSwapLogFile:          p.LlamaSwapLogFile,
-		KeyPrefix:                 prefs.KeyPrefix,
-		Tab:                       "general",
+		PeerTimeoutDefaults: macos.PeerField{
+			ResponseHeader: strconv.Itoa(prefs.DefaultResponseHeader),
+			Connect:        strconv.Itoa(prefs.DefaultConnect),
+			KeepAlive:      strconv.Itoa(prefs.DefaultKeepAlive),
+		},
+		LauncherLog:      p.LauncherLog,
+		LlamaSwapLog:     p.LogMode(),
+		LlamaSwapLogFile: p.LlamaSwapLogFile,
+		KeyPrefix:        prefs.KeyPrefix,
+		Tab:              "general",
 	}
 }
 
@@ -287,6 +326,16 @@ func prefsFrom(f macos.PreferencesForm) (prefs.Prefs, map[string]string, error) 
 			return p, nil, peerError{fmt.Errorf("peers: give %s's URL, such as http://192.168.1.20:8080", peer.Name)}
 		case len(peer.Models) == 0:
 			return p, nil, peerError{fmt.Errorf("peers: tick at least one of %s's models. Fetch Models lists them", peer.Name)}
+		}
+		var err error
+		if peer.Timeouts.ResponseHeader, err = timeoutFrom(peer.Name, "wait for a reply", f.ResponseHeader, prefs.DefaultResponseHeader); err != nil {
+			return p, nil, err
+		}
+		if peer.Timeouts.Connect, err = timeoutFrom(peer.Name, "connect timeout", f.Connect, prefs.DefaultConnect); err != nil {
+			return p, nil, err
+		}
+		if peer.Timeouts.KeepAlive, err = timeoutFrom(peer.Name, "keep-alive", f.KeepAlive, prefs.DefaultKeepAlive); err != nil {
+			return p, nil, err
 		}
 		p.Peers = append(p.Peers, peer)
 	}

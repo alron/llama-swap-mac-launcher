@@ -64,6 +64,18 @@ func peersFile(p prefs.Prefs) []byte {
 			for _, m := range peer.Models {
 				fmt.Fprintf(&b, "      - %s\n", quoted(m))
 			}
+			// Only those changed from llama-swap's defaults.
+			if to := peer.Timeouts; to.ResponseHeader != nil || to.Connect != nil || to.KeepAlive != nil {
+				b.WriteString("    timeouts:\n")
+				for _, t := range []struct {
+					name string
+					v    *int
+				}{{"connect", to.Connect}, {"keepalive", to.KeepAlive}, {"responseHeader", to.ResponseHeader}} {
+					if t.v != nil {
+						fmt.Fprintf(&b, "      %s: %d\n", t.name, *t.v)
+					}
+				}
+			}
 		}
 	}
 	return []byte(b.String())

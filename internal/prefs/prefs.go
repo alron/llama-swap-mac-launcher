@@ -120,7 +120,34 @@ type Peer struct {
 	KeyVariable string `json:"keyVariable"`
 	// Models are the peer's models that llama-swap offers.
 	Models []string `json:"models"`
+	// Timeouts are those llama-swap's requests to the peer use instead of
+	// its defaults.
+	Timeouts PeerTimeouts `json:"timeouts"`
 }
+
+// PeerTimeouts are the peer timeouts the app offers, in seconds, by
+// llama-swap's names: three of its six, those that matter day to day. A
+// nil one keeps llama-swap's default (DefaultResponseHeader and the
+// rest), so it isn't written, and a peer follows if llama-swap changes
+// it. 0 means no limit, which llama-swap advises against.
+type PeerTimeouts struct {
+	// ResponseHeader is how long llama-swap waits for the peer to start
+	// answering: a slow machine, or a long prompt at a large context,
+	// needs more.
+	ResponseHeader *int `json:"responseHeader,omitempty"`
+	// Connect is how long opening a connection to the peer may take.
+	Connect *int `json:"connect,omitempty"`
+	// KeepAlive is the connection's TCP keep-alive.
+	KeepAlive *int `json:"keepalive,omitempty"`
+}
+
+// llama-swap's own defaults for the peer timeouts (v265), which the
+// Settings dialog shows.
+const (
+	DefaultResponseHeader = 60
+	DefaultConnect        = 30
+	DefaultKeepAlive      = 30
+)
 
 // ManagesPeers reports whether the app writes Peers into llama-swap's
 // config: there are some, and the managed folder is in use.
@@ -160,6 +187,14 @@ func (p Prefs) checkPeers() error {
 		u, err := url.Parse(peer.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.Contains(peer.URL, "${") {
 			return fmt.Errorf("peers: %s's URL %q isn't an http:// or https:// address", peer.Name, peer.URL)
+		}
+		for _, t := range []struct {
+			name string
+			v    *int
+		}{{"wait for a reply", peer.Timeouts.ResponseHeader}, {"connect", peer.Timeouts.Connect}, {"keep-alive", peer.Timeouts.KeepAlive}} {
+			if t.v != nil && *t.v < 0 {
+				return fmt.Errorf("peers: %s's %s timeout is negative; use 0 for no limit", peer.Name, t.name)
+			}
 		}
 		models := map[string]bool{}
 		for _, m := range peer.Models {

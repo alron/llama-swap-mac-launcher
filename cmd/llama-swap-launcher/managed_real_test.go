@@ -33,6 +33,13 @@ func TestManagedPeersReal(t *testing.T) {
 	}
 	var mu sync.Mutex
 	var got []string // the keys the stand-in peer was sent
+	// A peer that takes 3 s to start answering, against a 1 s timeout.
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Second)
+		w.Write([]byte(`{}`))
+	}))
+	defer slow.Close()
+	one := 1
 	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		got = append(got, r.Header.Get("Authorization")+" | "+r.Header.Get("x-api-key"))
@@ -50,7 +57,10 @@ func TestManagedPeersReal(t *testing.T) {
 	p := prefs.Prefs{
 		ConfigDirMode: prefs.ConfigDirManaged,
 		SecretEnv:     []string{"STUDIO_KEY"},
-		Peers:         []prefs.Peer{{Name: "studio", URL: peer.URL, KeyVariable: "STUDIO_KEY", Models: []string{"big-model", "org/other"}}},
+		Peers: []prefs.Peer{
+			{Name: "studio", URL: peer.URL, KeyVariable: "STUDIO_KEY", Models: []string{"big-model", "org/other"}},
+			{Name: "slow", URL: slow.URL, Models: []string{"m"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: &one}},
+		},
 	}
 	if err := p.Validate(); err != nil {
 		t.Fatal(err)
@@ -119,6 +129,16 @@ func TestManagedPeersReal(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
+	start := time.Now()
+	resp, err = http.Post(base+"/v1/chat/completions", "application/json",
+		strings.NewReader(`{"model":"slow/m","messages":[{"role":"user","content":"hi"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if took := time.Since(start); resp.StatusCode == http.StatusOK || took > 2500*time.Millisecond {
+		t.Errorf("the slow peer: HTTP %d after %s, want a failure after about 1 s", resp.StatusCode, took)
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	if !slices.Contains(got, "Bearer sk-studio | sk-studio") {

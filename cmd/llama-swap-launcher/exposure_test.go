@@ -109,7 +109,7 @@ func TestManagedFiles(t *testing.T) {
 	}
 	peers := prefs.Prefs{ConfigDirMode: prefs.ConfigDirManaged, Peers: []prefs.Peer{
 		{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "STUDIO_KEY", Models: []string{"gemma", "org/model \"q\""}},
-		{Name: "open", URL: "https://example.com/api", Models: []string{"x"}},
+		{Name: "open", URL: "https://example.com/api", Models: []string{"x"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: seconds(600), Connect: seconds(0)}},
 	}}
 	wantPeers := managedHeader + `peers:
   "studio":
@@ -122,6 +122,9 @@ func TestManagedFiles(t *testing.T) {
     proxy: "https://example.com/api"
     models:
       - "x"
+    timeouts:
+      connect: 0
+      responseHeader: 600
 `
 	if got := string(managedFiles(peers)["peers.yaml"]); got != wantPeers {
 		t.Errorf("peers: got\n%s\nwant\n%s", got, wantPeers)
@@ -141,3 +144,5 @@ func TestManagedFiles(t *testing.T) {
 		}
 	}
 }
+
+func seconds(n int) *int { return &n }
