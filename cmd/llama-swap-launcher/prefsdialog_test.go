@@ -30,9 +30,13 @@ func TestFormRoundTrip(t *testing.T) {
 		APIKeys:                   []string{"ADMIN", "CLAUDE"},
 		AppAPIKey:                 "CLAUDE",
 		SecretEnv:                 []string{"GITHUB_TOKEN"},
-		LauncherLog:               "/tmp/launcher.log",
-		LlamaSwapLog:              prefs.LogToFile,
-		LlamaSwapLogFile:          "/tmp/llama-swap.log",
+		Peers: []prefs.Peer{
+			{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "GITHUB_TOKEN", Models: []string{"a", "org/b"}},
+			{Name: "open", URL: "https://example.com/api", Models: []string{"x"}},
+		},
+		LauncherLog:      "/tmp/launcher.log",
+		LlamaSwapLog:     prefs.LogToFile,
+		LlamaSwapLogFile: "/tmp/llama-swap.log",
 	}
 	wantSecrets := map[string]string{"LLSL_ADMIN": "sk-one", "LLSL_CLAUDE": "sk-two", "GITHUB_TOKEN": "gh x y"}
 	got, secrets, err := prefsFrom(formFrom(want, wantSecrets))
@@ -167,5 +171,29 @@ func TestTildePaths(t *testing.T) {
 	}
 	if p.ConfigPath() != config {
 		t.Errorf("ConfigPath() = %q, want %q", p.ConfigPath(), config)
+	}
+}
+
+// Problems with peers bring the dialog back on the Peers tab.
+func TestPrefsFromPeerErrors(t *testing.T) {
+	ok := macos.PeerField{Name: "other", URL: "http://h:8080", Models: []string{"a"}}
+	for _, tt := range []struct {
+		name string
+		peer macos.PeerField
+		want string
+	}{
+		{"no name", macos.PeerField{URL: "http://h", Models: []string{"a"}}, "give the peer a name"},
+		{"no URL", macos.PeerField{Name: "studio", Models: []string{"a"}}, "give studio's URL"},
+		{"nothing ticked", macos.PeerField{Name: "studio", URL: "http://h"}, "tick at least one"},
+		{"bad URL", macos.PeerField{Name: "studio", URL: "h:8080", Models: []string{"a"}}, "isn't an http://"},
+		{"key gone", macos.PeerField{Name: "studio", URL: "http://h", KeyVariable: "GONE", Models: []string{"a"}}, "isn't one of the secret variables"},
+	} {
+		_, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok, tt.peer}})
+		if !errors.As(err, new(peerError)) || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: got %v, want a peer error with %q", tt.name, err, tt.want)
+		}
+	}
+	if _, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok}}); err != nil {
+		t.Errorf("a good peer: %v", err)
 	}
 }

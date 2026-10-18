@@ -123,3 +123,69 @@ func escapeModel(id string) string {
 	}
 	return strings.Join(parts, "/")
 }
+
+// fetchTimeout bounds Fetch models in Settings: long enough for a provider
+// with a big list, short enough for a peer that's switched off.
+const fetchTimeout = 15 * time.Second
+
+// fetchPeerModels asks a peer for its models (GET /v1/models), for the
+// Settings dialog's Fetch models. The list is OpenAI's, whose IDs are what
+// llama-swap's peers config names. Another llama-swap also lists its own
+// peers' models, marked as such (meta.llamaswap.type "peer"); those are
+// left out, since a chain of peers is for the user to set up by hand. The
+// key, if any, is sent as llama-swap sends it to peers. The IDs come back
+// sorted, for finding one in a long list.
+func fetchPeerModels(ctx context.Context, base, key string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("x-api-key", key)
+	}
+	resp, err := direct.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20)) // a long list is still a few MB at most
+	switch {
+	case (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && key == "":
+		return nil, fmt.Errorf("the peer wants an API key (HTTP %d). Choose the secret variable that holds it", resp.StatusCode)
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return nil, fmt.Errorf("the peer didn't accept the key (HTTP %d)", resp.StatusCode)
+	case resp.StatusCode != http.StatusOK:
+		msg := llamaSwapError(body)
+		if len(msg) > 300 {
+			msg = msg[:300] + "…"
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
+	}
+	var list struct {
+		Data []struct {
+			ID   string `json:"id"`
+			Meta struct {
+				LlamaSwap struct {
+					Type string `json:"type"`
+				} `json:"llamaswap"`
+			} `json:"meta"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, fmt.Errorf("its reply isn't a /v1/models list: %w", err)
+	}
+	seen := map[string]bool{}
+	ids := []string{}
+	for _, m := range list.Data {
+		if m.ID == "" || m.Meta.LlamaSwap.Type == "peer" || seen[m.ID] {
+			continue
+		}
+		seen[m.ID] = true
+		ids = append(ids, m.ID)
+	}
+	slices.SortFunc(ids, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	return ids, nil
+}

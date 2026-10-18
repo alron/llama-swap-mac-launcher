@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -47,6 +48,11 @@ type Prefs struct {
 	// in its apiKeys through a file in the managed config folder. It applies
 	// only with ConfigDirManaged.
 	ManageAPIKeys bool `json:"manageApiKeys"`
+	// Peers are the peers the app manages for llama-swap: other llama-swaps,
+	// or servers with the same API, whose models it serves too. They're
+	// written to its peers in the managed config folder, so they apply only
+	// with ConfigDirManaged.
+	Peers []Peer `json:"peers"`
 	// Env adds to, or overrides, the environment llama-swap starts with.
 	Env map[string]string `json:"env"`
 	// AutoStart starts llama-swap when the app launches.
@@ -102,6 +108,72 @@ const (
 	DefaultLauncherLog  = "launcher.log"
 	DefaultLlamaSwapLog = "llama-swap.log"
 )
+
+// Peer is one of llama-swap's peers, as the app manages it.
+type Peer struct {
+	// Name is llama-swap's name for it; its models are Name/model.
+	Name string `json:"name"`
+	// URL is where llama-swap sends its requests: http:// or https://.
+	URL string `json:"url"`
+	// KeyVariable names the secret variable (SecretEnv) holding its API key,
+	// which llama-swap sends with each request. Empty means none.
+	KeyVariable string `json:"keyVariable"`
+	// Models are the peer's models that llama-swap offers.
+	Models []string `json:"models"`
+}
+
+// ManagesPeers reports whether the app writes Peers into llama-swap's
+// config: there are some, and the managed folder is in use.
+func (p Prefs) ManagesPeers() bool {
+	return len(p.Peers) > 0 && p.ConfigDirSetting() == ConfigDirManaged
+}
+
+// validPeerName is a peer name that's safe in a variable-free YAML key and
+// in the "peer/model" names llama-swap gives its models: letters, digits,
+// dots, dashes and underscores, starting with a letter or digit.
+var validPeerName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// configVariable is a variable name llama-swap fills in as ${env.NAME}.
+var configVariable = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// checkPeers checks Peers, against the secret variables for their keys.
+func (p Prefs) checkPeers() error {
+	secret := map[string]bool{}
+	for _, name := range p.SecretEnv {
+		secret[name] = true
+	}
+	seen := map[string]bool{}
+	for _, peer := range p.Peers {
+		switch {
+		case !validPeerName.MatchString(peer.Name):
+			return fmt.Errorf("peers: %q can only have letters, digits, dots, dashes and underscores", peer.Name)
+		case seen[peer.Name]:
+			return fmt.Errorf("peers: %s is listed twice", peer.Name)
+		case peer.KeyVariable != "" && !secret[peer.KeyVariable]:
+			return fmt.Errorf("peers: %s's key is %s, which isn't one of the secret variables", peer.Name, peer.KeyVariable)
+		case peer.KeyVariable != "" && !configVariable.MatchString(peer.KeyVariable):
+			return fmt.Errorf("peers: %s's key is %s, but llama-swap's config can only use variables named with letters, digits and underscores", peer.Name, peer.KeyVariable)
+		case len(peer.Models) == 0:
+			return fmt.Errorf("peers: %s has no models; llama-swap needs at least one", peer.Name)
+		}
+		seen[peer.Name] = true
+		u, err := url.Parse(peer.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.Contains(peer.URL, "${") {
+			return fmt.Errorf("peers: %s's URL %q isn't an http:// or https:// address", peer.Name, peer.URL)
+		}
+		models := map[string]bool{}
+		for _, m := range peer.Models {
+			switch {
+			case strings.TrimSpace(m) != m || m == "" || strings.ContainsAny(m, "\n\r") || strings.Contains(m, "${"):
+				return fmt.Errorf("peers: %s has a model named %q, which llama-swap can't use", peer.Name, m)
+			case models[m]:
+				return fmt.Errorf("peers: %s lists %s twice", peer.Name, m)
+			}
+			models[m] = true
+		}
+	}
+	return nil
+}
 
 // Whether llama-swap reads a config folder (ConfigDirMode).
 const (
@@ -208,6 +280,7 @@ func Defaults() Prefs {
 		LlamaSwapLog:              LogToLauncher,
 		ConfigDirMode:             ConfigDirOff,
 		SecretEnv:                 []string{},
+		Peers:                     []Peer{},
 		AutoStart:                 true,
 		HealthCheckSeconds:        DefaultHealthCheckSeconds,
 		HealthCheckSkipWhenActive: true,
@@ -367,6 +440,9 @@ func (p Prefs) Validate() error {
 		}
 	default:
 		return fmt.Errorf("configDirMode: %q isn't one of %q, %q or %q", p.ConfigDirMode, ConfigDirOff, ConfigDirOwn, ConfigDirManaged)
+	}
+	if err := p.checkPeers(); err != nil {
+		return err
 	}
 	if p.AppAPIKey != "" && !seen[p.AppAPIKey] {
 		return fmt.Errorf("appApiKey: %q isn't one of the API keys", p.AppAPIKey)

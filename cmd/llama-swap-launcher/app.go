@@ -133,6 +133,10 @@ func (a *app) onReady() {
 	systray.AddSeparator()
 	a.quitItem = systray.AddMenuItem("Quit", "")
 	// Without this, no menu item (not even Quit) works while a dialog is open.
+	// Settings' Fetch Models asks a peer for its models from Go.
+	macos.SetPeerModelsFetcher(func(url, key string) ([]string, error) {
+		return fetchPeerModels(context.Background(), url, key)
+	})
 	if !macos.MenuWorksDuringDialogs() {
 		a.sup.Logf("the menu won't work while a dialog is open: systray's menu target wasn't found")
 	}

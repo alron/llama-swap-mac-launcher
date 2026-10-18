@@ -38,11 +38,13 @@ type PreferencesForm struct {
 	AppAPIKey     string        `json:"appApiKey"`
 	ManageAPIKeys bool          `json:"manageApiKeys"`
 	SecretEnv     []SecretField `json:"secretEnv"`
+	// The Peers tab.
+	Peers []PeerField `json:"peers"`
 	// The Logs tab.
 	LauncherLog      string `json:"launcherLog"`
 	LlamaSwapLog     string `json:"llamaSwapLog"` // "launcher", "file" or "off"
 	LlamaSwapLogFile string `json:"llamaSwapLogFile"`
-	// Tab is the tab to show first, "general", "secrets" or "logs", and
+	// Tab is the tab to show first, "general", "secrets", "peers" or "logs", and
 	// comes back as the one showing when the dialog closed.
 	Tab string `json:"tab"`
 
@@ -64,6 +66,16 @@ type PreferencesForm struct {
 type SecretField struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+// PeerField is one peer on the Peers tab: its name, URL, the secret
+// variable holding its key ("" for none), and the models ticked for
+// llama-swap to offer.
+type PeerField struct {
+	Name        string   `json:"name"`
+	URL         string   `json:"url"`
+	KeyVariable string   `json:"keyVariable"`
+	Models      []string `json:"models"`
 }
 
 // PreferencesResult says how the dialog was closed.

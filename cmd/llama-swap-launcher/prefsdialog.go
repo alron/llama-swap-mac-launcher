@@ -82,6 +82,8 @@ func (a *app) editPreferences(tab string) (restart bool) {
 				form.Tab = "secrets"
 			case errors.As(err, new(logError)):
 				form.Tab = "logs"
+			case errors.As(err, new(peerError)):
+				form.Tab = "peers"
 			}
 			macos.Alert("These preferences can't be saved", form.Error)
 			continue
@@ -159,14 +161,19 @@ func llamaSwapChanged(old, p prefs.Prefs) bool {
 		old.ConfigDirPath("") != p.ConfigDirPath("") || old.ConfigDirSetting() != p.ConfigDirSetting() ||
 		old.ManagesAPIKeys() != p.ManagesAPIKeys() || !maps.Equal(old.Env, p.Env) ||
 		!slices.Equal(old.APIKeys, p.APIKeys) || old.AppKey() != p.AppKey() ||
-		!slices.Equal(old.SecretEnv, p.SecretEnv)
+		!slices.Equal(old.SecretEnv, p.SecretEnv) || !slices.EqualFunc(old.Peers, p.Peers, samePeer)
 }
 
-// secretError and logError are problems on the Secrets and Logs tabs, so
-// the dialog comes back there.
+func samePeer(a, b prefs.Peer) bool {
+	return a.Name == b.Name && a.URL == b.URL && a.KeyVariable == b.KeyVariable && slices.Equal(a.Models, b.Models)
+}
+
+// secretError, logError and peerError are problems on the Secrets, Logs
+// and Peers tabs, so the dialog comes back there.
 type (
 	secretError struct{ error }
 	logError    struct{ error }
+	peerError   struct{ error }
 )
 
 // formFrom shows p, with its secrets' values (by variable), as the
@@ -179,6 +186,10 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 	vars := []macos.SecretField{}
 	for _, name := range p.SecretEnv {
 		vars = append(vars, macos.SecretField{Name: name, Value: secrets[name]})
+	}
+	peers := []macos.PeerField{}
+	for _, peer := range p.Peers {
+		peers = append(peers, macos.PeerField{Name: peer.Name, URL: peer.URL, KeyVariable: peer.KeyVariable, Models: peer.Models})
 	}
 	var env []string
 	for _, name := range slices.Sorted(maps.Keys(p.Env)) {
@@ -206,6 +217,7 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		APIKeys:                   keys,
 		AppAPIKey:                 p.AppKey(),
 		SecretEnv:                 vars,
+		Peers:                     peers,
 		LauncherLog:               p.LauncherLog,
 		LlamaSwapLog:              p.LogMode(),
 		LlamaSwapLogFile:          p.LlamaSwapLogFile,
@@ -265,10 +277,29 @@ func prefsFrom(f macos.PreferencesForm) (prefs.Prefs, map[string]string, error) 
 		secrets[name] = value
 		p.SecretEnv = append(p.SecretEnv, name)
 	}
+	p.Peers = []prefs.Peer{}
+	for i, f := range f.Peers {
+		peer := prefs.Peer{Name: strings.TrimSpace(f.Name), URL: strings.TrimSpace(f.URL), KeyVariable: f.KeyVariable, Models: f.Models}
+		switch {
+		case peer.Name == "":
+			return p, nil, peerError{fmt.Errorf("peers, row %d: give the peer a name", i+1)}
+		case peer.URL == "":
+			return p, nil, peerError{fmt.Errorf("peers: give %s's URL, such as http://192.168.1.20:8080", peer.Name)}
+		case len(peer.Models) == 0:
+			return p, nil, peerError{fmt.Errorf("peers: tick at least one of %s's models. Fetch Models lists them", peer.Name)}
+		}
+		p.Peers = append(p.Peers, peer)
+	}
 	if err := checkLogs(p); err != nil {
 		return p, nil, logError{err}
 	}
-	return p, secrets, p.Validate()
+	if err := p.Validate(); err != nil {
+		if strings.HasPrefix(err.Error(), "peers:") {
+			return p, nil, peerError{err}
+		}
+		return p, nil, err
+	}
+	return p, secrets, nil
 }
 
 // checkLogs checks the Logs tab's paths: whole paths, in folders that

@@ -14,6 +14,11 @@ less of it needs editing by hand.
 - **Require these keys in llama-swap** (Settings → Secrets): with the app's
   folder, the app lists its API keys in llama-swap's `apiKeys` for you, so
   your config needs no change to require them.
+- **Peers** (Settings → Peers): with the app's folder, add llama-swap's
+  peers, other llama-swaps or servers like OpenRouter, without editing its
+  config. A peer's key is one of your secret variables. **Fetch Models**
+  asks the peer what it serves, and a checklist with a filter picks the
+  ones to offer, however long the list.
 - **Reload the config when it changes** replaces the Extra arguments field,
   whose only use was `-watch-config`. Other arguments, for flags newer than
   the app, can still go in `prefs.json` by hand.

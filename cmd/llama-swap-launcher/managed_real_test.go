@@ -1,0 +1,127 @@
+package main
+
+import (
+	"encoding/json"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
+)
+
+// TestManagedPeersReal runs an actual llama-swap with the peers the app
+// writes, skipped unless LLAMA_SWAP_BIN names the binary:
+//
+//	LLAMA_SWAP_BIN=/opt/homebrew/bin/llama-swap go test ./cmd/llama-swap-launcher -run ManagedPeersReal -v
+//
+// llama-swap must read peers.yaml, offer the peer's models as name/model,
+// send the peer the key from the secret variable, and refuse a peer that
+// the user's own config defines too.
+func TestManagedPeersReal(t *testing.T) {
+	bin := os.Getenv("LLAMA_SWAP_BIN")
+	if bin == "" {
+		t.Skip("set LLAMA_SWAP_BIN to run against a real llama-swap")
+	}
+	var mu sync.Mutex
+	var got []string // the keys the stand-in peer was sent
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = append(got, r.Header.Get("Authorization")+" | "+r.Header.Get("x-api-key"))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`))
+	}))
+	defer peer.Close()
+
+	dir := t.TempDir()
+	config := filepath.Join(dir, "config.yaml")
+	os.WriteFile(config, []byte("models:\n  local:\n    cmd: /bin/sleep 600 ${PORT}\n"), 0o600)
+	managed := filepath.Join(dir, "llama-swap.d")
+	os.Mkdir(managed, 0o700)
+	p := prefs.Prefs{
+		ConfigDirMode: prefs.ConfigDirManaged,
+		SecretEnv:     []string{"STUDIO_KEY"},
+		Peers:         []prefs.Peer{{Name: "studio", URL: peer.URL, KeyVariable: "STUDIO_KEY", Models: []string{"big-model", "org/other"}}},
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range managedFiles(p) {
+		os.WriteFile(filepath.Join(managed, name), data, 0o600)
+	}
+	env := append(os.Environ(), "STUDIO_KEY=sk-studio")
+
+	validate := func(cfg string) (string, error) {
+		cmd := exec.Command(bin, "-config", cfg, "-config-dir", managed, "-validate")
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	if out, err := validate(config); err != nil {
+		t.Fatalf("the managed peers don't validate: %v\n%s", err, out)
+	}
+	// The same peer in the user's config as well: llama-swap's own error.
+	twice := filepath.Join(dir, "twice.yaml")
+	os.WriteFile(twice, []byte("peers:\n  studio:\n    proxy: http://h\n    models: [x]\n"), 0o600)
+	if out, err := validate(twice); err == nil || !strings.Contains(out, `duplicate peers "studio"`) {
+		t.Errorf("a peer in both: got %v\n%s", err, out)
+	}
+
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := l.Addr().String()
+	l.Close()
+	swap := exec.Command(bin, "-config", config, "-config-dir", managed, "-listen", addr)
+	swap.Env = env
+	if err := swap.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		swap.Process.Signal(syscall.SIGTERM)
+		swap.Wait()
+	})
+	base := "http://" + addr
+	var ids []string
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		resp, err := http.Get(base + "/v1/models")
+		if err != nil {
+			continue
+		}
+		var list struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		json.NewDecoder(resp.Body).Decode(&list)
+		resp.Body.Close()
+		ids = ids[:0]
+		for _, m := range list.Data {
+			ids = append(ids, m.ID)
+		}
+		break
+	}
+	for _, want := range []string{"studio/big-model", "studio/org/other", "local"} {
+		if !slices.Contains(ids, want) {
+			t.Errorf("/v1/models lacks %s: %v", want, ids)
+		}
+	}
+	resp, err := http.Post(base+"/v1/chat/completions", "application/json",
+		strings.NewReader(`{"model":"studio/big-model","messages":[{"role":"user","content":"hi"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Contains(got, "Bearer sk-studio | sk-studio") {
+		t.Errorf("the peer was sent %q, want the secret variable's key", got)
+	}
+}

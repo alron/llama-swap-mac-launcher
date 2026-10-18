@@ -230,7 +230,28 @@ From use after publishing:
     - **Later:** generating a self-signed certificate. Go's `crypto/x509` can make the key and certificate itself, so no `openssl` is needed. Store them `0600` in the app's folder.
     - **Pie in the sky:** Let's Encrypt. It needs a public DNS name. For a llama-swap on a LAN, only the DNS-01 challenge works, through a DNS provider's API. Renewals would need a llama-swap reload or restart.
 
-36. **Managed peers** (decided with the maintainer 2026-10-18, the next 0.3 item; not built yet).
+36. **Managed peers** (decided with the maintainer 2026-10-18, the next 0.3 item; **built and verified hands-on 2026-10-18** on `managed-config`; **done**):
+    - **Verified hands-on by the maintainer** with a real peer and its key as a secret variable:
+      - the key menu listing an unsaved secret variable;
+      - Fetch without a key refused, with one working, and refused again without;
+      - the checklist, filter, Tick/Untick All Shown and Add;
+      - `/v1/models` listing what was ticked, and a request through the dev app to the peer working;
+      - `llsl status` showing the peer, and Show in Finder finding both files;
+      - a removed key variable flagged in the menu and refused at Save;
+      - greyed out without the managed folder, with the peer's models gone after a restart.
+    - **Two bugs found then, both fixed and in the test program:**
+      - The fetch status was cut short beside the button. It now has its own line, the tab's width, up to two lines, with the whole text in a tooltip.
+      - A peer's name and URL stayed editable while the tab was greyed out: each cell is a field of its own, which disabling the table doesn't reach. They now follow the tab, redrawn in place, since reloading or reselecting rows reports a selection change, and the first try at this recursed until the test program's stack overflowed.
+    - **Where it lives:**
+      - `prefs.Peer` (`name`, `url`, `keyVariable`, `models`) and `checkPeers`. Names match `[A-Za-z0-9][A-Za-z0-9._-]*`; URLs are http(s) with a host; the key is a secret variable that llama-swap can name as `${env.NAME}`; there's at least one model; no `${` anywhere.
+      - `peersFile` in `managed.go` writes `peers.yaml`, every string JSON-quoted.
+      - `fetchPeerModels` in `peers.go` makes the request. The dialog reaches it through `lsl_fetch_peer_models`, exported in `internal/macos/peers.go` and set by `SetPeerModelsFetcher`; it's called off the main thread, with the reply applied on it.
+      - `LSLPeers` in `prefs.m`: two tables, a key menu following the Secrets tab, a filter, Tick/Untick All Shown, and Add. Return in the filter or Add field doesn't press Save.
+    - **Tested:**
+      - unit tests;
+      - `TestManagedPeersReal` against v265: llama-swap reads `peers.yaml`, offers `studio/big-model` and `studio/org/other`, sends the stand-in peer `Bearer` plus `x-api-key` from the secret variable, and refuses a peer defined in both places;
+      - a test program with a stand-in fetch of 3,000 models (off the main thread; the filter, the ticks, Return in Add, greyed out without the managed folder, the reply checked).
+    - **Found while building:** a llama-swap's `/v1/models` needs the key when it has `apiKeys` (401 without), marks its own peers' models (`meta.llamaswap.type: "peer"`, left out by Fetch), and leaves out `unlisted` models (hence Add). A server that isn't llama-swap has no `meta`, and all its models are offered.
     - **What llama-swap takes** (v265's `internal/config/peer.go` and `docs/config.example.yaml`): `peers` maps a peer's name to:
       - `proxy`, a URL (required);
       - `apiKey` (optional), sent to the peer as `Authorization: Bearer` and `x-api-key`;

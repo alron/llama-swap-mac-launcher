@@ -107,6 +107,30 @@ func TestManagedFiles(t *testing.T) {
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
+	peers := prefs.Prefs{ConfigDirMode: prefs.ConfigDirManaged, Peers: []prefs.Peer{
+		{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "STUDIO_KEY", Models: []string{"gemma", "org/model \"q\""}},
+		{Name: "open", URL: "https://example.com/api", Models: []string{"x"}},
+	}}
+	wantPeers := managedHeader + `peers:
+  "studio":
+    proxy: "http://192.168.1.20:8080"
+    apiKey: "${env.STUDIO_KEY}"
+    models:
+      - "gemma"
+      - "org/model \"q\""
+  "open":
+    proxy: "https://example.com/api"
+    models:
+      - "x"
+`
+	if got := string(managedFiles(peers)["peers.yaml"]); got != wantPeers {
+		t.Errorf("peers: got\n%s\nwant\n%s", got, wantPeers)
+	}
+	unmanaged := peers
+	unmanaged.ConfigDirMode = prefs.ConfigDirOwn
+	if got := string(managedFiles(unmanaged)["peers.yaml"]); got != managedHeader {
+		t.Errorf("peers without the managed folder: got %q, want only the note", got)
+	}
 	// Not managed, or no keys: only the note, so the setting turns off.
 	for _, q := range []prefs.Prefs{
 		{APIKeys: []string{"ADMIN"}, ConfigDirMode: prefs.ConfigDirManaged},

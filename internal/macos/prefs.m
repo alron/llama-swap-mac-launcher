@@ -2,7 +2,7 @@
 //
 // It's an alert (Save, Cancel) with tabs as its accessory view: General, a
 // grid of labels and fields; Secrets, two tables of named secrets (API keys
-// and secret environment variables); and Logs. The values go in and come back
+// and secret environment variables); Peers; and Logs. The values go in and come back
 // out as JSON, so the C interface is a single function and all the
 // checking stays in Go. If what the user entered doesn't check out, Go
 // shows the dialog again with their entries and the error.
@@ -199,6 +199,36 @@ static NSString *newKey(void) {
 }
 @end
 
+// LSLPeers runs the Peers tab: a table of peers (name and URL), and for the
+// selected one, its key (one of the secret variables) and a checklist of
+// its models. A provider can serve hundreds of models, so the checklist is a
+// table, which only draws the rows on screen, with a filter, and buttons
+// that act on the rows the filter shows. Fetch models asks the app's Go
+// code, off the main thread, which asks the peer.
+@interface LSLPeers : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate>
+// Each peer: "name", "url", "key" (a secret variable's name, or "") and
+// "models", each model a dictionary with "id" and "on" (ticked).
+@property(strong) NSMutableArray<NSMutableDictionary *> *peers;
+@property(strong) NSMutableArray<NSMutableDictionary *> *shown; // the selected peer's models the filter shows
+@property(strong) NSTableView *table;                           // the peers
+@property(strong) NSTableView *list;                            // the selected peer's models
+@property(strong) NSSearchField *filter;
+@property(strong) NSPopUpButton *key;
+@property(strong) NSButton *fetch;
+@property(strong) NSProgressIndicator *spinner;
+@property(strong) NSTextField *status;
+@property(strong) NSTextField *count;
+@property(strong) NSTextField *addField;
+@property(strong) NSArray<NSControl *> *detail; // usable while a peer is selected
+@property(strong) NSArray<NSControl *> *all;    // usable with the managed folder
+@property(strong) NSTextField *managedHint;
+@property(weak) LSLSecretTable *vars; // the secret variables: the key menu, and the key's value for Fetch
+@property(nonatomic) BOOL managed;
+- (void)showSelected;
+- (void)refreshKeys;
+- (NSArray *)json;
+@end
+
 // LSLPrefsController runs the rest of the dialog that calls back: the
 // Choose… buttons, Tab in the multi-line fields, and the popup choosing the
 // key the app uses.
@@ -212,6 +242,7 @@ static NSString *newKey(void) {
 @property(strong) LSLSecretTable *keys;
 @property(strong) LSLSecretTable *vars;
 @property(strong) NSPopUpButton *appKey;
+@property(strong) LSLPeers *peers; // the Peers tab
 // The config folder: the menu, the field, and the user's own folder, kept
 // while the field shows the app's managed one.
 @property(strong) NSPopUpButton *dirMode;
@@ -278,6 +309,7 @@ static NSString *newKey(void) {
 	self.chooseDir.enabled = own;
 	self.showDir.enabled = own || managed;
 	self.manageKeys.enabled = managed;
+	[self.peers setManaged:managed]; // peers, too, are written to the managed folder
 	self.manageKeysHint.stringValue = managed
 		? [NSString stringWithFormat:@"The app lists them in llama-swap's apiKeys, in its managed config folder. "
 		                             @"Otherwise, list them in llama-swap's config yourself:\n%@", self.keysExample]
@@ -512,6 +544,477 @@ static NSTabViewItem *tab(NSString *identifier, NSString *title, NSView *view) {
 	return item;
 }
 
+// sentenceCase capitalizes a message's first letter: Go's errors start in
+// lower case, to go inside other sentences.
+static NSString *sentenceCase(NSString *s) {
+	return s.length == 0 ? s : [[s substringToIndex:1].uppercaseString stringByAppendingString:[s substringFromIndex:1]];
+}
+
+
+@implementation LSLPeers
+- (instancetype)initWithRows:(id)rows {
+	self = [super init];
+	self.peers = [NSMutableArray array];
+	self.shown = [NSMutableArray array];
+	if ([rows isKindOfClass:[NSArray class]]) {
+		for (id r in rows) {
+			if (![r isKindOfClass:[NSDictionary class]]) {
+				continue;
+			}
+			NSMutableArray *models = [NSMutableArray array];
+			id ids = r[@"models"];
+			if ([ids isKindOfClass:[NSArray class]]) {
+				for (id m in ids) {
+					if ([m isKindOfClass:[NSString class]]) {
+						[models addObject:[@{@"id" : m, @"on" : @YES} mutableCopy]];
+					}
+				}
+			}
+			[self.peers addObject:[@{
+				@"name" : string(r, @"name"),
+				@"url" : string(r, @"url"),
+				@"key" : string(r, @"keyVariable"),
+				@"models" : models,
+			} mutableCopy]];
+		}
+	}
+	return self;
+}
+
+- (NSMutableDictionary *)selected {
+	NSInteger row = self.table.selectedRow;
+	return row >= 0 && row < (NSInteger)self.peers.count ? self.peers[(NSUInteger)row] : nil;
+}
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+	return (NSInteger)(tableView == self.table ? self.peers.count : self.shown.count);
+}
+
+- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)column row:(NSInteger)row {
+	if (tableView == self.table) {
+		BOOL name = [column.identifier isEqual:@"name"];
+		NSTextField *f = [NSTextField textFieldWithString:self.peers[(NSUInteger)row][name ? @"name" : @"url"]];
+		f.placeholderString = name ? @"studio" : @"http://192.168.1.20:8080";
+		f.bordered = NO;
+		f.drawsBackground = NO;
+		// Each cell is a field of its own, which disabling the table
+		// doesn't reach: it's editable only while the tab is usable.
+		f.editable = self.managed;
+		f.selectable = self.managed;
+		f.target = self;
+		f.action = name ? @selector(nameEdited:) : @selector(urlEdited:);
+		f.cell.sendsActionOnEndEditing = YES;
+		f.cell.scrollable = YES;
+		return f;
+	}
+	NSMutableDictionary *m = self.shown[(NSUInteger)row];
+	if ([column.identifier isEqual:@"on"]) {
+		NSButton *b = [NSButton checkboxWithTitle:@"" target:self action:@selector(toggled:)];
+		b.state = [m[@"on"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
+		b.enabled = self.managed;
+		return b;
+	}
+	NSTextField *l = [NSTextField labelWithString:m[@"id"]];
+	l.lineBreakMode = NSLineBreakByTruncatingMiddle;
+	l.toolTip = m[@"id"]; // the whole ID, when it's cut short
+	return l;
+}
+
+- (void)nameEdited:(NSTextField *)sender {
+	NSInteger row = [self.table rowForView:sender];
+	if (row >= 0 && row < (NSInteger)self.peers.count) {
+		self.peers[(NSUInteger)row][@"name"] = [sender.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+	}
+}
+
+- (void)urlEdited:(NSTextField *)sender {
+	NSInteger row = [self.table rowForView:sender];
+	if (row >= 0 && row < (NSInteger)self.peers.count) {
+		self.peers[(NSUInteger)row][@"url"] = [sender.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+	}
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+	if (notification.object == self.table) {
+		[self showSelected];
+	}
+}
+
+// say puts a message under the Models row, with all of it in the tooltip
+// in case two lines cut it short.
+- (void)say:(NSString *)message {
+	self.status.stringValue = message;
+	self.status.toolTip = message.length > 0 ? message : nil;
+}
+
+// showSelected shows the selected peer's key and models.
+- (void)showSelected {
+	self.filter.stringValue = @"";
+	[self say:@""];
+	[self refreshKeys];
+	[self applyFilter];
+	[self enable];
+}
+
+- (void)enable {
+	for (NSControl *c in self.all) {
+		c.enabled = self.managed;
+	}
+	BOOL detail = self.managed && self.selected != nil;
+	for (NSControl *c in self.detail) {
+		c.enabled = detail;
+	}
+	// The cells follow too: the checkboxes, and the peers' names and URLs.
+	// Those are redrawn in place: reloading the table, or selecting a row
+	// again, would report a selection change, which comes back here.
+	[self.list reloadData];
+	if (self.table.numberOfRows > 0) {
+		[self.table reloadDataForRowIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, (NSUInteger)self.table.numberOfRows)]
+		                      columnIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, 2)]];
+	}
+}
+
+- (void)setManaged:(BOOL)managed {
+	_managed = managed;
+	self.managedHint.stringValue = managed
+		? @"The app writes these to llama-swap's peers, in its managed config folder. Keep each peer in one place: "
+		  @"a peer also in your own config stops llama-swap from loading."
+		: @"Needs Config folder: Managed by the app, on the General tab. Until then these aren't used; "
+		  @"peers in llama-swap's own config work as before.";
+	[self enable];
+}
+
+// refreshKeys lists None and the secret variables in the key menu, and
+// selects the selected peer's. A key that's no longer a secret variable
+// stays, marked, so Save can say what's wrong.
+- (void)refreshKeys {
+	NSString *current = self.selected[@"key"] ?: @"";
+	[self.key removeAllItems];
+	[self.key addItemWithTitle:@"None"];
+	self.key.lastItem.representedObject = @"";
+	for (NSDictionary *v in self.vars.rows) {
+		NSString *name = v[@"name"];
+		if (name.length > 0 && [self.key indexOfItemWithRepresentedObject:name] < 0) {
+			[self.key addItemWithTitle:name];
+			self.key.lastItem.representedObject = name;
+		}
+	}
+	if (current.length > 0 && [self.key indexOfItemWithRepresentedObject:current] < 0) {
+		[self.key addItemWithTitle:[current stringByAppendingString:@" (not a secret variable)"]];
+		self.key.lastItem.representedObject = current;
+	}
+	[self.key selectItemAtIndex:[self.key indexOfItemWithRepresentedObject:current]];
+}
+
+- (void)keyChanged:(id)sender {
+	self.selected[@"key"] = self.key.selectedItem.representedObject ?: @"";
+}
+
+- (void)filterChanged:(id)sender {
+	[self applyFilter];
+}
+
+// applyFilter shows the selected peer's models whose IDs contain the
+// filter's text.
+- (void)applyFilter {
+	NSString *text = self.filter.stringValue;
+	[self.shown removeAllObjects];
+	for (NSMutableDictionary *m in self.selected[@"models"]) {
+		if (text.length == 0 || [m[@"id"] localizedCaseInsensitiveContainsString:text]) {
+			[self.shown addObject:m];
+		}
+	}
+	[self.list reloadData];
+	[self updateCount];
+}
+
+- (void)updateCount {
+	NSArray *models = self.selected[@"models"];
+	NSUInteger on = 0;
+	for (NSDictionary *m in models) {
+		on += [m[@"on"] boolValue] ? 1 : 0;
+	}
+	self.count.stringValue = models.count == 0 ? @""
+		: self.filter.stringValue.length > 0
+		? [NSString stringWithFormat:@"%lu of %lu ticked, %lu shown", (unsigned long)on, (unsigned long)models.count, (unsigned long)self.shown.count]
+		: [NSString stringWithFormat:@"%lu of %lu ticked", (unsigned long)on, (unsigned long)models.count];
+}
+
+- (void)toggled:(NSButton *)sender {
+	NSInteger row = [self.list rowForView:sender];
+	if (row >= 0 && row < (NSInteger)self.shown.count) {
+		self.shown[(NSUInteger)row][@"on"] = sender.state == NSControlStateValueOn ? @YES : @NO;
+		[self updateCount];
+	}
+}
+
+- (void)tickShown:(id)sender {
+	[self markShown:YES];
+}
+- (void)untickShown:(id)sender {
+	[self markShown:NO];
+}
+- (void)markShown:(BOOL)on {
+	for (NSMutableDictionary *m in self.shown) {
+		m[@"on"] = on ? @YES : @NO;
+	}
+	[self.list reloadData];
+	[self updateCount];
+}
+
+static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
+	[models sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+		return [a[@"id"] caseInsensitiveCompare:b[@"id"]];
+	}];
+}
+
+// addModel adds, ticked, a model the peer doesn't list, typed by hand.
+- (void)addModel:(id)sender {
+	NSMutableDictionary *peer = self.selected;
+	NSString *id_ = [self.addField.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+	if (peer == nil || id_.length == 0) {
+		return;
+	}
+	NSMutableArray *models = peer[@"models"];
+	NSMutableDictionary *found = nil;
+	for (NSMutableDictionary *m in models) {
+		if ([m[@"id"] isEqual:id_]) {
+			found = m;
+		}
+	}
+	if (found != nil) {
+		found[@"on"] = @YES;
+	} else {
+		[models addObject:[@{@"id" : id_, @"on" : @YES} mutableCopy]];
+		sortModels(models);
+	}
+	self.addField.stringValue = @"";
+	[self applyFilter];
+}
+
+// Return in the filter or the add field would otherwise press Save.
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
+	if (command != @selector(insertNewline:)) {
+		return NO;
+	}
+	if (control == self.addField) {
+		[self addModel:nil];
+	}
+	return control == self.addField || control == self.filter;
+}
+
+// fetch asks the peer for its models, with the selected key's value as it
+// stands in the Secrets table, so a key added a moment ago works before
+// Save. New models arrive unticked; ticks already made stay.
+- (void)fetch:(id)sender {
+	NSMutableDictionary *peer = self.selected;
+	if (peer == nil) {
+		return;
+	}
+	[self.table.window makeFirstResponder:nil]; // finish an edit of the URL first
+	NSString *url = peer[@"url"], *keyName = peer[@"key"], *key = @"";
+	for (NSDictionary *v in self.vars.rows) {
+		if (keyName.length > 0 && [v[@"name"] isEqual:keyName]) {
+			key = v[@"value"];
+		}
+	}
+	if (url.length == 0) {
+		[self say:@"Give the peer's URL first."];
+		return;
+	}
+	self.fetch.enabled = NO;
+	[self.spinner startAnimation:nil];
+	[self say:@"Asking the peer…"];
+	__weak LSLPeers *weak = self;
+	__weak NSMutableDictionary *weakPeer = peer;
+	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+		char *reply = lsl_fetch_peer_models((char *)url.UTF8String, (char *)key.UTF8String);
+		NSString *json = reply != NULL ? [NSString stringWithUTF8String:reply] : @"{}";
+		free(reply);
+		main_async(^{
+			[weak fetched:json forPeer:weakPeer];
+		});
+	});
+}
+
+- (void)fetched:(NSString *)json forPeer:(NSMutableDictionary *)peer {
+	[self.spinner stopAnimation:nil];
+	[self enable];
+	if (peer == nil) {
+		return; // removed meanwhile
+	}
+	NSDictionary *reply = [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+	NSString *error = [reply isKindOfClass:[NSDictionary class]] ? string(reply, @"error") : @"no reply";
+	NSArray *ids = [reply isKindOfClass:[NSDictionary class]] ? reply[@"models"] : nil;
+	if (error.length > 0 || ![ids isKindOfClass:[NSArray class]]) {
+		[self say:error.length > 0 ? sentenceCase(error) : @"The peer's reply couldn't be read."];
+		return;
+	}
+	NSMutableArray *models = peer[@"models"];
+	NSMutableSet *known = [NSMutableSet set];
+	for (NSDictionary *m in models) {
+		[known addObject:m[@"id"]];
+	}
+	NSUInteger added = 0;
+	for (id i in ids) {
+		if ([i isKindOfClass:[NSString class]] && ![known containsObject:i]) {
+			[models addObject:[@{@"id" : i, @"on" : @NO} mutableCopy]];
+			[known addObject:i];
+			added++;
+		}
+	}
+	sortModels(models);
+	if (peer == self.selected) {
+		[self applyFilter];
+	}
+	[self say:[NSString stringWithFormat:@"It serves %lu models; %lu new, unticked.", (unsigned long)ids.count, (unsigned long)added]];
+}
+
+- (void)addPeer:(id)sender {
+	[self.table.window makeFirstResponder:nil];
+	[self.peers addObject:[@{@"name" : @"", @"url" : @"", @"key" : @"", @"models" : [NSMutableArray array]} mutableCopy]];
+	NSInteger row = (NSInteger)self.peers.count - 1;
+	[self.table reloadData];
+	[self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
+	[self.table editColumn:0 row:row withEvent:nil select:YES];
+}
+
+- (void)removePeer:(id)sender {
+	NSInteger row = self.table.selectedRow;
+	if (row < 0) {
+		return;
+	}
+	[self.table.window makeFirstResponder:nil];
+	[self.peers removeObjectAtIndex:(NSUInteger)row];
+	[self.table reloadData];
+	[self showSelected];
+}
+
+// json is the peers, each with only its ticked models, for the reply.
+- (NSArray *)json {
+	NSMutableArray *out = [NSMutableArray array];
+	for (NSDictionary *p in self.peers) {
+		NSMutableArray *models = [NSMutableArray array];
+		for (NSDictionary *m in p[@"models"]) {
+			if ([m[@"on"] boolValue]) {
+				[models addObject:m[@"id"]];
+			}
+		}
+		[out addObject:@{@"name" : p[@"name"], @"url" : p[@"url"], @"keyVariable" : p[@"key"], @"models" : models}];
+	}
+	return out;
+}
+@end
+
+// peersTab lays out the Peers tab for p.
+static NSView *peersTab(LSLPeers *p) {
+	NSTableView *table = [[NSTableView alloc] init];
+	NSTableColumn *name = [[NSTableColumn alloc] initWithIdentifier:@"name"];
+	name.title = @"Name";
+	name.width = 150;
+	NSTableColumn *url = [[NSTableColumn alloc] initWithIdentifier:@"url"];
+	url.title = @"URL";
+	url.width = 370;
+	[table addTableColumn:name];
+	[table addTableColumn:url];
+	table.dataSource = p;
+	table.delegate = p;
+	table.usesAlternatingRowBackgroundColors = YES;
+	table.columnAutoresizingStyle = NSTableViewLastColumnOnlyAutoresizingStyle;
+	p.table = table;
+	NSScrollView *peerScroll = [[NSScrollView alloc] init];
+	peerScroll.documentView = table;
+	peerScroll.hasVerticalScroller = YES;
+	peerScroll.borderType = NSBezelBorder;
+	[peerScroll.widthAnchor constraintEqualToConstant:540].active = YES;
+	[peerScroll.heightAnchor constraintEqualToConstant:80].active = YES;
+	NSButton *add = smallButton(NSImageNameAddTemplate, @"Add a peer", p, @selector(addPeer:));
+	NSButton *remove = smallButton(NSImageNameRemoveTemplate, @"Remove the selected peer", p, @selector(removePeer:));
+
+	p.key = [[NSPopUpButton alloc] init];
+	p.key.target = p;
+	p.key.action = @selector(keyChanged:);
+
+	p.filter = [[NSSearchField alloc] init];
+	p.filter.placeholderString = @"Filter";
+	p.filter.sendsSearchStringImmediately = YES;
+	p.filter.target = p;
+	p.filter.action = @selector(filterChanged:);
+	p.filter.delegate = p;
+	[p.filter.widthAnchor constraintEqualToConstant:200].active = YES;
+	p.fetch = [NSButton buttonWithTitle:@"Fetch Models" target:p action:@selector(fetch:)];
+	p.spinner = [[NSProgressIndicator alloc] init];
+	p.spinner.style = NSProgressIndicatorStyleSpinning;
+	p.spinner.controlSize = NSControlSizeSmall;
+	p.spinner.displayedWhenStopped = NO;
+	// On its own line, the tab's width, up to two lines. Two lines of text
+	// to start with, so the tab is sized for them; showSelected clears it.
+	p.status = [NSTextField wrappingLabelWithString:@" \n "];
+	p.status.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+	p.status.textColor = NSColor.secondaryLabelColor;
+	p.status.maximumNumberOfLines = 2;
+	p.status.lineBreakMode = NSLineBreakByTruncatingTail;
+	p.status.preferredMaxLayoutWidth = 540;
+
+	NSTableView *list = [[NSTableView alloc] init];
+	NSTableColumn *on = [[NSTableColumn alloc] initWithIdentifier:@"on"];
+	on.title = @"";
+	on.width = 22;
+	NSTableColumn *model = [[NSTableColumn alloc] initWithIdentifier:@"id"];
+	model.title = @"Model";
+	model.width = 490;
+	[list addTableColumn:on];
+	[list addTableColumn:model];
+	list.dataSource = p;
+	list.delegate = p;
+	list.usesAlternatingRowBackgroundColors = YES;
+	list.columnAutoresizingStyle = NSTableViewLastColumnOnlyAutoresizingStyle;
+	p.list = list;
+	NSScrollView *listScroll = [[NSScrollView alloc] init];
+	listScroll.documentView = list;
+	listScroll.hasVerticalScroller = YES;
+	listScroll.borderType = NSBezelBorder;
+	[listScroll.widthAnchor constraintEqualToConstant:540].active = YES;
+	[listScroll.heightAnchor constraintEqualToConstant:170].active = YES;
+
+	NSButton *tick = [NSButton buttonWithTitle:@"Tick All Shown" target:p action:@selector(tickShown:)];
+	NSButton *untick = [NSButton buttonWithTitle:@"Untick All Shown" target:p action:@selector(untickShown:)];
+	p.count = label(@"");
+	p.count.textColor = NSColor.secondaryLabelColor;
+	p.addField = field(@"", @"A model it doesn't list", 260);
+	p.addField.delegate = p;
+	NSButton *addModel = [NSButton buttonWithTitle:@"Add" target:p action:@selector(addModel:)];
+
+	// The longer of its two texts, for sizing the tab; setManaged sets the
+	// real one.
+	p.managedHint = hint(@"The app writes these to llama-swap's peers, in its managed config folder. Keep each peer in one place: "
+	                     @"a peer also in your own config stops llama-swap from loading.");
+	p.detail = @[ remove, p.key, p.filter, p.fetch, list, tick, untick, p.addField, addModel ];
+	p.all = @[ table, add ];
+
+	NSTextField *keyHint = label(@"one of the secret variables on the Secrets tab, or None");
+	keyHint.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+	keyHint.textColor = NSColor.secondaryLabelColor;
+	NSTextField *title = label(@"Peers");
+	title.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
+	NSStackView *v = column(@[
+		title,
+		hint(@"Other llama-swaps, or servers with the same API, whose models llama-swap offers as name/model."),
+		peerScroll,
+		row(@[ add, remove ]),
+		row(@[ label(@"Key:"), p.key, keyHint ]),
+		row(@[ label(@"Models:"), p.filter, p.fetch, p.spinner ]),
+		p.status,
+		listScroll,
+		row(@[ tick, untick, p.count ]),
+		row(@[ p.addField, addModel ]),
+		p.managedHint,
+	]);
+	[v setCustomSpacing:12 afterView:v.views[3]];
+	[v setCustomSpacing:12 afterView:v.views[4]];
+	return v;
+}
+
 char *lsl_preferences(const char *json, int *result) {
 	NSData *data = [str(json) dataUsingEncoding:NSUTF8StringEncoding];
 	NSDictionary *in = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
@@ -616,6 +1119,9 @@ char *lsl_preferences(const char *json, int *result) {
 		};
 		c.vars = [[LSLSecretTable alloc] initWithRows:in[@"secretEnv"]];
 		c.vars.placeholder = @"HF_TOKEN";
+		c.vars.namesChanged = ^{
+			[weak.peers refreshKeys]; // a peer's key is one of these
+		};
 		c.appKey = [[NSPopUpButton alloc] init];
 		[c refreshAppKey];
 		NSInteger chosen = [c.appKey indexOfItemWithRepresentedObject:string(in, @"appApiKey")];
@@ -646,11 +1152,17 @@ char *lsl_preferences(const char *json, int *result) {
 		]);
 		[secrets setCustomSpacing:16 afterView:secrets.views[5]];
 
+		// Peers.
+		c.peers = [[LSLPeers alloc] initWithRows:in[@"peers"]];
+		c.peers.vars = c.vars;
+		NSView *peersView = peersTab(c.peers);
+
 		// The tabs, sized to fit the larger page: an alert sizes itself to
 		// its accessory view's frame.
 		NSTabView *tabs = [[NSTabView alloc] init];
 		[tabs addTabViewItem:tab(@"general", @"General", general)];
 		[tabs addTabViewItem:tab(@"secrets", @"Secrets", secrets)];
+		[tabs addTabViewItem:tab(@"peers", @"Peers", peersView)];
 		[tabs addTabViewItem:tab(@"logs", @"Logs", logs)];
 		NSSize content = NSZeroSize;
 		for (NSTabViewItem *item in tabs.tabViewItems) {
@@ -660,9 +1172,13 @@ char *lsl_preferences(const char *json, int *result) {
 		tabs.frame = NSMakeRect(0, 0, 100, 100);
 		NSSize chrome = NSMakeSize(100 - tabs.contentRect.size.width, 100 - tabs.contentRect.size.height);
 		tabs.frame = NSMakeRect(0, 0, content.width + chrome.width, content.height + chrome.height);
+		if (c.peers.peers.count > 0) {
+			[c.peers.table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+		}
+		[c.peers showSelected];
 		[c dirModeChanged:nil];
 		NSString *first = string(in, @"tab");
-		if ([first isEqual:@"secrets"] || [first isEqual:@"logs"]) {
+		if ([first isEqual:@"secrets"] || [first isEqual:@"peers"] || [first isEqual:@"logs"]) {
 			[tabs selectTabViewItemWithIdentifier:first];
 		}
 
@@ -678,8 +1194,9 @@ char *lsl_preferences(const char *json, int *result) {
 		[alert layout];
 		NSString *shown = tabs.selectedTabViewItem.identifier;
 		alert.window.initialFirstResponder = [shown isEqual:@"secrets"] ? (NSView *)c.keys.table
-		                                     : [shown isEqual:@"logs"] ? (NSView *)c.launcherLog
-		                                                                : (NSView *)c.binary;
+		                                     : [shown isEqual:@"peers"] ? (NSView *)c.peers.table
+		                                     : [shown isEqual:@"logs"]  ? (NSView *)c.launcherLog
+		                                                                 : (NSView *)c.binary;
 		[NSApp activate];
 		NSModalResponse r = lsl_run_modal(alert);
 		res = r == NSAlertFirstButtonReturn ? 1 : 0; // Cancel, or closed by lsl_close_dialogs
@@ -705,6 +1222,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@"apiKeys" : [c.keys json],
 			@"appApiKey" : c.appKey.selectedItem.representedObject ?: @"",
 			@"secretEnv" : [c.vars json],
+			@"peers" : [c.peers json],
 			@"launcherLog" : c.launcherLog.stringValue,
 			@"llamaSwapLog" : c.logMode.selectedItem.representedObject ?: @"launcher",
 			@"llamaSwapLogFile" : c.ownLog.stringValue,

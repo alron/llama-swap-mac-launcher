@@ -114,6 +114,19 @@ func TestValidate(t *testing.T) {
 		{"managed config folder", Prefs{ConfigDirMode: ConfigDirManaged, ManageAPIKeys: true}, true},
 		{"folder kept while off", Prefs{ConfigDirMode: ConfigDirOff, ConfigDir: "config.d"}, true},
 		{"unknown config folder mode", Prefs{ConfigDirMode: "shared"}, false},
+		{"peer", Prefs{SecretEnv: []string{"PEER_KEY"}, Peers: []Peer{{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "PEER_KEY", Models: []string{"a", "org/b"}}}}, true},
+		{"peer without a key", Prefs{Peers: []Peer{{Name: "openrouter.ai", URL: "https://openrouter.ai/api", Models: []string{"x"}}}}, true},
+		{"peer name with a slash", Prefs{Peers: []Peer{{Name: "a/b", URL: "http://h", Models: []string{"x"}}}}, false},
+		{"peer name with a space", Prefs{Peers: []Peer{{Name: "my peer", URL: "http://h", Models: []string{"x"}}}}, false},
+		{"peer twice", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}}, {Name: "a", URL: "http://g", Models: []string{"y"}}}}, false},
+		{"peer key not a secret variable", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", KeyVariable: "GONE", Models: []string{"x"}}}}, false},
+		{"peer key variable llama-swap can't name", Prefs{SecretEnv: []string{"my.key"}, Peers: []Peer{{Name: "a", URL: "http://h", KeyVariable: "my.key", Models: []string{"x"}}}}, false},
+		{"peer without models", Prefs{Peers: []Peer{{Name: "a", URL: "http://h"}}}, false},
+		{"peer tailcat URL", Prefs{Peers: []Peer{{Name: "a", URL: "tailcat://tcTOKEN", Models: []string{"x"}}}}, false},
+		{"peer URL without a host", Prefs{Peers: []Peer{{Name: "a", URL: "http://", Models: []string{"x"}}}}, false},
+		{"peer URL with a variable", Prefs{Peers: []Peer{{Name: "a", URL: "http://${env.HOST}", Models: []string{"x"}}}}, false},
+		{"peer model twice", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x", "x"}}}}, false},
+		{"peer model with a variable", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"${env.X}"}}}}, false},
 	} {
 		if err := tt.p.Validate(); (err == nil) != tt.ok {
 			t.Errorf("%s: got %v, want ok=%v", tt.name, err, tt.ok)

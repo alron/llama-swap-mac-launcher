@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -97,5 +98,48 @@ peers:
 		case took > peerTimeout+time.Second:
 			t.Errorf("%s took %s", model, took)
 		}
+	}
+}
+
+func TestFetchPeerModels(t *testing.T) {
+	var gotAuth, gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotKey = r.Header.Get("Authorization"), r.Header.Get("x-api-key")
+		switch {
+		case r.URL.Path != "/api/v1/models":
+			http.NotFound(w, r)
+		case gotKey != "sk-peer":
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			// As another llama-swap answers: its own peers' models are marked.
+			w.Write([]byte(`{"object":"list","data":[
+				{"id":"zeta-7b","meta":{"llamaswap":{"type":"model"}}},
+				{"id":"farther/far-1","meta":{"llamaswap":{"peerID":"farther","type":"peer"}}},
+				{"id":"Alpha-31b"},
+				{"id":"org/beta"},
+				{"id":"zeta-7b"}]}`))
+		}
+	}))
+	defer srv.Close()
+
+	ids, err := fetchPeerModels(context.Background(), srv.URL+"/api/", "sk-peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Alpha-31b", "org/beta", "zeta-7b"}; !slices.Equal(ids, want) {
+		t.Errorf("got %q, want %q", ids, want)
+	}
+	if gotAuth != "Bearer sk-peer" {
+		t.Errorf("Authorization: %q", gotAuth)
+	}
+
+	if _, err := fetchPeerModels(context.Background(), srv.URL+"/api", ""); err == nil || !strings.Contains(err.Error(), "wants an API key") {
+		t.Errorf("without a key: got %v", err)
+	}
+	if _, err := fetchPeerModels(context.Background(), srv.URL+"/api", "wrong"); err == nil || !strings.Contains(err.Error(), "didn't accept the key") {
+		t.Errorf("with the wrong key: got %v", err)
+	}
+	if _, err := fetchPeerModels(context.Background(), srv.URL+"/elsewhere", ""); err == nil || !strings.Contains(err.Error(), "HTTP 404") {
+		t.Errorf("not there: got %v", err)
 	}
 }
