@@ -43,6 +43,10 @@ func (p Paths) Socket() string  { return filepath.Join(p.SupportDir, "ctl") }
 func (p Paths) Prefs() string   { return filepath.Join(p.SupportDir, "prefs.json") }
 func (p Paths) PidFile() string { return filepath.Join(p.SupportDir, "llama-swap.pid") }
 
+// ManagedConfigDir is the config folder the app manages for llama-swap
+// (-config-dir), with the settings it writes for it.
+func (p Paths) ManagedConfigDir() string { return filepath.Join(p.SupportDir, "llama-swap.d") }
+
 // OldSocket is where versions up to 0.1.2 put the control socket. llsl only
 // checks it to recognise an older app still running after an upgrade.
 func (p Paths) OldSocket() string { return filepath.Join(p.SupportDir, "control.sock") }

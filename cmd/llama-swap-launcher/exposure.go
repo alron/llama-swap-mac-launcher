@@ -40,14 +40,27 @@ func openWarning(p prefs.Prefs, st supervisor.Status, snap health.Snapshot) stri
 		return ""
 	}
 	switch {
+	case len(p.APIKeys) > 0 && p.ManagesAPIKeys():
+		// Saved since llama-swap started; the managed file is written at
+		// the next start.
+		return "llama-swap isn't asking for API keys yet. Restart it, and it will require the app's keys"
 	case len(p.APIKeys) > 0:
-		return "llama-swap isn't asking for API keys, though the app has some: its config needs " +
-			`apiKeys: ["${env.` + prefs.KeyPrefix + `NAME}"]. Until then anyone who can reach it can use it`
+		return "llama-swap isn't asking for API keys, though the app has some. Turn on Require these keys " +
+			`under Settings… → Secrets, or list them in its config as apiKeys: ["${env.` + prefs.KeyPrefix + `NAME}"]`
 	case exposed(st.Listen):
 		return "llama-swap is open to the network without an API key: anyone who can reach this Mac " +
 			"can use it, unload its models and read its logs. Add a key under Settings… → Secrets"
 	}
 	return ""
+}
+
+// stopsRequiringKeys reports whether going from old to p stops llama-swap
+// requiring the app's keys while it listens beyond this Mac: they were in
+// the managed folder, and won't be. Its own config may list them too, so
+// the Save is confirmed rather than refused.
+func stopsRequiringKeys(old, p prefs.Prefs) bool {
+	required := func(q prefs.Prefs) bool { return q.ManagesAPIKeys() && len(q.APIKeys) > 0 }
+	return exposed(p.ListenAddr()) && required(old) && !required(p)
 }
 
 // opensWithoutKey reports whether going from old to p opens llama-swap to

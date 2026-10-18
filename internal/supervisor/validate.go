@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -24,6 +25,19 @@ var ErrInvalidConfig = errors.New("the llama-swap config isn't valid")
 // older llama-swap without -validate, or a binary that won't run at all
 // (starting it then reports the real problem).
 func Validate(spec Spec) error {
+	// The app's own files in the config folder are checked in a copy of it,
+	// so the real folder only ever gets files that passed; its messages
+	// name the real folder.
+	shown := func(s string) string { return s }
+	if len(spec.ConfigFiles) > 0 {
+		tmp, err := stageConfigDir(spec)
+		if err != nil {
+			return fmt.Errorf("can't check the config folder: %w", err)
+		}
+		defer os.RemoveAll(tmp)
+		spec.Args = withConfigDir(spec.Args, tmp)
+		shown = func(s string) string { return strings.ReplaceAll(s, tmp, spec.ConfigDir) }
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), validateTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, spec.Binary, append(slices.Clone(spec.Args), "-validate")...) // #nosec G204 -- the user's chosen llama-swap, run with -validate
@@ -39,7 +53,7 @@ func Validate(spec Spec) error {
 	if err == nil || !errors.As(err, &exit) {
 		return nil
 	}
-	msg := strings.TrimSpace(string(out))
+	msg := shown(strings.TrimSpace(string(out)))
 	if strings.Contains(msg, "flag provided but not defined: -validate") {
 		return nil
 	}

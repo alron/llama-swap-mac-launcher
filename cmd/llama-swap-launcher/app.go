@@ -327,15 +327,34 @@ func (a *app) spec() (supervisor.Spec, error) {
 	maps.Copy(env, secrets) // can't clash: the preferences can't name a variable twice
 
 	listen := p.ListenAddr()
-	args := append([]string{"-config", config, "-listen", listen}, p.Args...)
+	args := []string{"-config", config, "-listen", listen}
+	if p.WatchConfig {
+		args = append(args, "-watch-config")
+	}
+	var files map[string][]byte
+	dir := p.ConfigDirPath(a.paths.ManagedConfigDir())
+	switch p.ConfigDirSetting() {
+	case prefs.ConfigDirOwn:
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			return supervisor.Spec{}, fmt.Errorf("the config folder %s isn't there. Choose it again in Settings…", dir)
+		}
+	case prefs.ConfigDirManaged:
+		files = managedFiles(p)
+	}
+	if dir != "" {
+		args = append(args, "-config-dir", dir)
+	}
+	args = append(args, p.Args...)
 	return supervisor.Spec{
-		Binary:  bin,
-		Args:    args,
-		Env:     supervisor.BuildEnv(os.Environ(), home, filepath.Dir(bin), env),
-		Dir:     filepath.Dir(config),
-		Listen:  listen,
-		Version: v,
-		APIKey:  appKey,
+		Binary:      bin,
+		Args:        args,
+		Env:         supervisor.BuildEnv(os.Environ(), home, filepath.Dir(bin), env),
+		Dir:         filepath.Dir(config),
+		Listen:      listen,
+		Version:     v,
+		APIKey:      appKey,
+		ConfigDir:   dir,
+		ConfigFiles: files,
 	}, nil
 }
 

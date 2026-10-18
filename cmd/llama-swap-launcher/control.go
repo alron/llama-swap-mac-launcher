@@ -14,6 +14,7 @@ import (
 
 	"github.com/alron/llama-swap-mac-launcher/internal/control"
 	"github.com/alron/llama-swap-mac-launcher/internal/health"
+	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
 	"github.com/alron/llama-swap-mac-launcher/internal/supervisor"
 )
 
@@ -332,10 +333,13 @@ func (a *app) controlStatus() *control.Status {
 		Message:     message(st, snap),
 		Binary:      bin,
 		Config:      p.ConfigPath(),
+		ConfigDir:   p.ConfigDirPath(a.paths.ManagedConfigDir()),
 		LogFile:     output,
 		LauncherLog: launcherLog,
 		Models:      []control.Model{},
 	}
+	s.ManagedConfig = p.ConfigDirSetting() == prefs.ConfigDirManaged
+	s.APIKeysRequired = p.ManagesAPIKeys() && len(p.APIKeys) > 0
 	a.mu.Lock()
 	s.LastGPUFault = a.lastFault
 	a.mu.Unlock()

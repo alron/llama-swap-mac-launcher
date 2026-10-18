@@ -22,8 +22,11 @@ type PreferencesForm struct {
 	Binary                    string `json:"binary"`
 	Config                    string `json:"config"`
 	Listen                    string `json:"listen"`
-	Args                      string `json:"args"` // one per line
+	Args                      string `json:"args"` // one per line; not shown, only kept
 	Env                       string `json:"env"`  // NAME=value, one per line
+	WatchConfig               bool   `json:"watchConfig"`
+	ConfigDirMode             string `json:"configDirMode"` // "off", "own" or "managed"
+	ConfigDir                 string `json:"configDir"`
 	HealthCheckSeconds        string `json:"healthCheckSeconds"`
 	HealthCheckSkipWhenActive bool   `json:"healthCheckSkipWhenActive"`
 	UnloadOnGPUFault          bool   `json:"unloadOnGpuFault"`
@@ -31,9 +34,10 @@ type PreferencesForm struct {
 	AutoStart                 bool   `json:"autoStart"`
 	// The Secrets tab: the API keys and the name of the one the app uses,
 	// and the secret environment variables.
-	APIKeys   []SecretField `json:"apiKeys"`
-	AppAPIKey string        `json:"appApiKey"`
-	SecretEnv []SecretField `json:"secretEnv"`
+	APIKeys       []SecretField `json:"apiKeys"`
+	AppAPIKey     string        `json:"appApiKey"`
+	ManageAPIKeys bool          `json:"manageApiKeys"`
+	SecretEnv     []SecretField `json:"secretEnv"`
 	// The Logs tab.
 	LauncherLog      string `json:"launcherLog"`
 	LlamaSwapLog     string `json:"llamaSwapLog"` // "launcher", "file" or "off"
@@ -47,6 +51,9 @@ type PreferencesForm struct {
 	File        string `json:"file"`        // the preferences file
 	Error       string `json:"error"`       // why the last Save didn't work
 	KeyPrefix   string `json:"keyPrefix"`   // shown before each key's name
+	// The app's own config folder, shown greyed out with "Managed by the
+	// app".
+	ManagedConfigDir string `json:"managedConfigDir"`
 	// The logs' default paths, greyed out in their empty fields.
 	DefaultLauncherLog  string `json:"defaultLauncherLog"`
 	DefaultLlamaSwapLog string `json:"defaultLlamaSwapLog"`

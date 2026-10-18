@@ -57,6 +57,7 @@ func (a *app) editPreferences(tab string) (restart bool) {
 	form.Tab = tab
 	form.DefaultLauncherLog, form.DefaultLlamaSwapLog = prefs.Prefs{}.LogPaths(a.paths.LogDir)
 	form.FoundBinary = supervisor.FindBinary("llama-swap", supervisor.SearchDirs(home))
+	form.ManagedConfigDir = a.paths.ManagedConfigDir()
 	form.File = a.paths.Prefs()
 
 	for {
@@ -96,6 +97,14 @@ func (a *app) editPreferences(tab string) (restart bool) {
 			form = edited
 			form.Error = ""
 			form.Tab = "general"
+			continue
+		} else if stopsRequiringKeys(old, p) && !macos.Confirm("Stop requiring the API keys?",
+			"llama-swap listens on "+p.ListenAddr()+", where other machines can reach it. Without the keys the app "+
+				"manages, it asks for none unless its own config lists some, and anyone who can reach it can use it.",
+			"Save Anyway", "Back") {
+			form = edited
+			form.Error = ""
+			form.Tab = "secrets"
 			continue
 		}
 		// The secrets first: preferences naming one the keychain lacks
@@ -146,7 +155,9 @@ func (a *app) applyPrefs(old, p prefs.Prefs, secretsChanged bool) (restart bool)
 // so the app keeps using the one it started llama-swap with.
 func llamaSwapChanged(old, p prefs.Prefs) bool {
 	return old.Binary != p.Binary || old.Config != p.Config || old.ListenAddr() != p.ListenAddr() ||
-		!slices.Equal(old.Args, p.Args) || !maps.Equal(old.Env, p.Env) ||
+		!slices.Equal(old.Args, p.Args) || old.WatchConfig != p.WatchConfig ||
+		old.ConfigDirPath("") != p.ConfigDirPath("") || old.ConfigDirSetting() != p.ConfigDirSetting() ||
+		old.ManagesAPIKeys() != p.ManagesAPIKeys() || !maps.Equal(old.Env, p.Env) ||
 		!slices.Equal(old.APIKeys, p.APIKeys) || old.AppKey() != p.AppKey() ||
 		!slices.Equal(old.SecretEnv, p.SecretEnv)
 }
@@ -183,6 +194,10 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		Listen:                    p.Listen,
 		Args:                      strings.Join(p.Args, "\n"),
 		Env:                       strings.Join(env, "\n"),
+		WatchConfig:               p.WatchConfig,
+		ConfigDirMode:             p.ConfigDirSetting(),
+		ConfigDir:                 p.ConfigDir,
+		ManageAPIKeys:             p.ManageAPIKeys,
 		HealthCheckSeconds:        seconds,
 		HealthCheckSkipWhenActive: p.HealthCheckSkipWhenActive,
 		UnloadOnGPUFault:          p.UnloadOnGPUFault,
@@ -291,6 +306,10 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 		Listen:                    strings.TrimSpace(f.Listen),
 		Args:                      []string{},
 		Env:                       map[string]string{},
+		WatchConfig:               f.WatchConfig,
+		ConfigDirMode:             f.ConfigDirMode,
+		ConfigDir:                 strings.TrimSpace(f.ConfigDir),
+		ManageAPIKeys:             f.ManageAPIKeys,
 		AutoStart:                 f.AutoStart,
 		HealthCheckSkipWhenActive: f.HealthCheckSkipWhenActive,
 		UnloadOnGPUFault:          f.UnloadOnGPUFault,
@@ -299,8 +318,13 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 		LlamaSwapLog:              f.LlamaSwapLog,
 		LlamaSwapLogFile:          strings.TrimSpace(f.LlamaSwapLogFile),
 	}
+	// Not in the dialog any more, but kept as the file has them, for flags
+	// newer than the app.
 	for _, line := range lines(f.Args) {
 		p.Args = append(p.Args, strings.TrimSpace(line))
+	}
+	if p.ConfigDirMode == prefs.ConfigDirOwn && p.ConfigDir == "" {
+		return p, errors.New("config folder: choose your folder, or pick None or Managed by the app")
 	}
 	for i, line := range lines(f.Env) {
 		name, value, ok := strings.Cut(line, "=")
@@ -339,8 +363,14 @@ func lines(s string) []string {
 	return out
 }
 
-// checkPaths checks that the binary and config, if set, are there.
+// checkPaths checks that the binary, config and config folder, if set,
+// are there.
 func checkPaths(p prefs.Prefs) error {
+	if p.ConfigDirSetting() == prefs.ConfigDirOwn {
+		if info, err := os.Stat(p.ConfigDirPath("")); err != nil || !info.IsDir() {
+			return fmt.Errorf("config folder: %s isn't a folder", p.ConfigDir)
+		}
+	}
 	if p.Binary != "" && !supervisor.IsExecutable(p.BinaryPath()) {
 		return fmt.Errorf("llama-swap binary: %s isn't an executable file", p.Binary)
 	}

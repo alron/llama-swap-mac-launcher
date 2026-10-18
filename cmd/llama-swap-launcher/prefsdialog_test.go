@@ -17,7 +17,11 @@ func TestFormRoundTrip(t *testing.T) {
 		Binary:                    "/opt/homebrew/bin/llama-swap",
 		Config:                    "/x/llama-swap.yaml",
 		Listen:                    "0.0.0.0:8080",
-		Args:                      []string{"-watch-config", "-log-prefix", "/x/My Logs"},
+		Args:                      []string{"-log-prefix", "/x/My Logs"},
+		WatchConfig:               true,
+		ConfigDirMode:             prefs.ConfigDirOwn,
+		ConfigDir:                 "~/llama-swap/config.d",
+		ManageAPIKeys:             true,
 		Env:                       map[string]string{"HF_TOKEN": "a=b", "B": ""},
 		AutoStart:                 true,
 		HealthCheckSeconds:        30,
@@ -59,13 +63,13 @@ func TestPrefsFromKeys(t *testing.T) {
 
 func TestPrefsFromDefaultsAndBlanks(t *testing.T) {
 	got, _, err := prefsFrom(macos.PreferencesForm{
-		Args: "\n  -watch-config  \n\n",
+		Args: "\n  -log-prefix  \n\n",
 		Env:  "\r\nA=1\r\n",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.Args, []string{"-watch-config"}) || got.Env["A"] != "1" || len(got.Env) != 1 {
+	if !reflect.DeepEqual(got.Args, []string{"-log-prefix"}) || got.Env["A"] != "1" || len(got.Env) != 1 {
 		t.Errorf("got args %q, env %v", got.Args, got.Env)
 	}
 	if got.HealthCheckSeconds != 0 || got.HealthCheckInterval() != prefs.DefaultHealthCheckSeconds*1e9 {

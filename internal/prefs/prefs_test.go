@@ -33,12 +33,16 @@ func TestLoadFillsMissingKeysWithDefaults(t *testing.T) {
 func TestSaveLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "prefs.json")
 	want := Prefs{
-		Binary:    "/opt/homebrew/bin/llama-swap",
-		Config:    "/x/llama-swap.yaml",
-		Listen:    "127.0.0.1:9090",
-		Args:      []string{"-watch-config"},
-		Env:       map[string]string{"HF_TOKEN": "t"},
-		AutoStart: false,
+		Binary:        "/opt/homebrew/bin/llama-swap",
+		Config:        "/x/llama-swap.yaml",
+		Listen:        "127.0.0.1:9090",
+		Args:          []string{"--log-format=json"},
+		WatchConfig:   true,
+		ConfigDirMode: ConfigDirManaged,
+		ConfigDir:     "~/llama-swap/config.d",
+		ManageAPIKeys: true,
+		Env:           map[string]string{"HF_TOKEN": "t"},
+		AutoStart:     false,
 	}
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
@@ -84,7 +88,8 @@ func TestValidate(t *testing.T) {
 		{"key twice", Prefs{APIKeys: []string{"A", "A"}}, false},
 		{"app key not listed", Prefs{APIKeys: []string{"A"}, AppAPIKey: "B"}, false},
 		{"secret variables", Prefs{SecretEnv: []string{"HF_TOKEN", "http_proxy"}}, true},
-		{"ordinary args", Prefs{Args: []string{"-watch-config", "--log-level=debug", "value"}}, true},
+		{"ordinary args", Prefs{Args: []string{"--log-level=debug", "value"}}, true},
+		{"-watch-config in args", Prefs{Args: []string{"-watch-config"}}, false},
 		{"-listen in args", Prefs{Args: []string{"-listen", "0.0.0.0:9000"}}, false},
 		{"--config= in args", Prefs{Args: []string{"--config=/x.yaml"}}, false},
 		{"-listen with its value on one line", Prefs{Args: []string{"-listen 0.0.0.0:9000"}}, false},
@@ -103,6 +108,12 @@ func TestValidate(t *testing.T) {
 		{"secret variable with the key prefix", Prefs{SecretEnv: []string{"LLSL_A"}}, false},
 		{"secret variable twice", Prefs{SecretEnv: []string{"A", "A"}}, false},
 		{"secret variable in env too", Prefs{Env: map[string]string{"A": "1"}, SecretEnv: []string{"A"}}, false},
+		{"own config folder", Prefs{ConfigDirMode: ConfigDirOwn, ConfigDir: "~/llama-swap/config.d"}, true},
+		{"own config folder, not given", Prefs{ConfigDirMode: ConfigDirOwn}, false},
+		{"own config folder, relative", Prefs{ConfigDirMode: ConfigDirOwn, ConfigDir: "config.d"}, false},
+		{"managed config folder", Prefs{ConfigDirMode: ConfigDirManaged, ManageAPIKeys: true}, true},
+		{"folder kept while off", Prefs{ConfigDirMode: ConfigDirOff, ConfigDir: "config.d"}, true},
+		{"unknown config folder mode", Prefs{ConfigDirMode: "shared"}, false},
 	} {
 		if err := tt.p.Validate(); (err == nil) != tt.ok {
 			t.Errorf("%s: got %v, want ok=%v", tt.name, err, tt.ok)
@@ -142,5 +153,57 @@ func TestLogPaths(t *testing.T) {
 	l, s = Prefs{LauncherLog: "~/a.log", LlamaSwapLogFile: "/b.log"}.LogPaths("/logs")
 	if l != filepath.Join(home, "a.log") || s != "/b.log" {
 		t.Errorf("set: %q %q", l, s)
+	}
+}
+
+func TestLoadLiftsWatchConfig(t *testing.T) {
+	for _, tt := range []struct {
+		name, file string
+		watch      bool
+		args       []string
+		err        string
+	}{
+		{"old style", `{"args": ["-watch-config", "-x"]}`, true, []string{"-x"}, ""},
+		{"two dashes", `{"args": ["--watch-config"]}`, true, []string{}, ""},
+		{"with a value", `{"args": ["-watch-config=false"]}`, false, []string{}, ""},
+		{"the last counts", `{"args": ["-watch-config", "-watch-config=0"]}`, false, []string{}, ""},
+		{"agrees with the setting", `{"watchConfig": true, "args": ["-watch-config"]}`, true, []string{}, ""},
+		{"setting alone", `{"watchConfig": true}`, true, []string{}, ""},
+		{"disagrees with the setting", `{"watchConfig": false, "args": ["-watch-config"]}`, false, nil, "keep only watchConfig"},
+		{"value on the same line", `{"args": ["-watch-config true"]}`, false, nil, "use the watchConfig setting"},
+		{"not a boolean", `{"args": ["-watch-config=yes"]}`, false, nil, "use the watchConfig setting"},
+	} {
+		path := filepath.Join(t.TempDir(), "prefs.json")
+		os.WriteFile(path, []byte(tt.file), 0o600)
+		p, err := Load(path)
+		switch {
+		case tt.err != "":
+			if err == nil || !strings.Contains(err.Error(), tt.err) {
+				t.Errorf("%s: got %v, want an error with %q", tt.name, err, tt.err)
+			}
+		case err != nil:
+			t.Errorf("%s: %v", tt.name, err)
+		case p.WatchConfig != tt.watch || !reflect.DeepEqual(p.Args, tt.args):
+			t.Errorf("%s: got watchConfig %v, args %q; want %v, %q", tt.name, p.WatchConfig, p.Args, tt.watch, tt.args)
+		}
+	}
+}
+
+func TestConfigDir(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	for _, tt := range []struct {
+		p       Prefs
+		dir     string
+		manages bool
+	}{
+		{Defaults(), "", false},
+		{Prefs{ConfigDir: "/x", ManageAPIKeys: true}, "", false},
+		{Prefs{ConfigDirMode: ConfigDirOwn, ConfigDir: "~/c", ManageAPIKeys: true}, filepath.Join(home, "c"), false},
+		{Prefs{ConfigDirMode: ConfigDirManaged, ConfigDir: "/x"}, "/managed", false},
+		{Prefs{ConfigDirMode: ConfigDirManaged, ManageAPIKeys: true}, "/managed", true},
+	} {
+		if dir := tt.p.ConfigDirPath("/managed"); dir != tt.dir || tt.p.ManagesAPIKeys() != tt.manages {
+			t.Errorf("%+v: got %q, manages %v; want %q, %v", tt.p, dir, tt.p.ManagesAPIKeys(), tt.dir, tt.manages)
+		}
 	}
 }

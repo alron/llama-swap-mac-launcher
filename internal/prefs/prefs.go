@@ -1,7 +1,7 @@
 // Package prefs stores the app's settings as a JSON file. The app's
-// Preferences dialog edits it, and so can a person or a script: the file is
-// meant to be readable, and the dialog's Open File… button opens it in a
-// text editor. It's reread whenever llama-swap starts.
+// Settings dialog edits it, and so can a person or a script: the file is
+// meant to be readable in a text editor. It's reread whenever llama-swap
+// starts.
 package prefs
 
 import (
@@ -30,8 +30,23 @@ type Prefs struct {
 	// Listen is passed to llama-swap as -listen, and is where the app
 	// expects to find it.
 	Listen string `json:"listen"`
-	// Args are extra llama-swap arguments, such as "-watch-config".
+	// Args are extra llama-swap arguments, for flags newer than the app.
+	// The dialog doesn't show them; every flag the app knows is a setting.
 	Args []string `json:"args"`
+	// WatchConfig runs llama-swap with -watch-config, so it reloads its
+	// config when the file, or the config folder, changes.
+	WatchConfig bool `json:"watchConfig"`
+	// ConfigDirMode is whether llama-swap also reads a folder of config
+	// files (-config-dir): ConfigDirOff, ConfigDirOwn (ConfigDir) or
+	// ConfigDirManaged (the app's own folder, where it writes the settings
+	// it manages). Empty means ConfigDirOff.
+	ConfigDirMode string `json:"configDirMode"`
+	// ConfigDir is the folder for ConfigDirOwn. The app never writes there.
+	ConfigDir string `json:"configDir"`
+	// ManageAPIKeys makes llama-swap require the API keys, by listing them
+	// in its apiKeys through a file in the managed config folder. It applies
+	// only with ConfigDirManaged.
+	ManageAPIKeys bool `json:"manageApiKeys"`
 	// Env adds to, or overrides, the environment llama-swap starts with.
 	Env map[string]string `json:"env"`
 	// AutoStart starts llama-swap when the app launches.
@@ -87,6 +102,39 @@ const (
 	DefaultLauncherLog  = "launcher.log"
 	DefaultLlamaSwapLog = "llama-swap.log"
 )
+
+// Whether llama-swap reads a config folder (ConfigDirMode).
+const (
+	ConfigDirOff     = "off"     // no -config-dir
+	ConfigDirOwn     = "own"     // the user's folder, ConfigDir
+	ConfigDirManaged = "managed" // the app's folder, with the settings it manages
+)
+
+// ConfigDirSetting returns ConfigDirMode, with empty meaning ConfigDirOff.
+func (p Prefs) ConfigDirSetting() string {
+	if p.ConfigDirMode == "" {
+		return ConfigDirOff
+	}
+	return p.ConfigDirMode
+}
+
+// ConfigDirPath returns the folder llama-swap reads as -config-dir, given
+// the app's managed folder, or "" for none.
+func (p Prefs) ConfigDirPath(managed string) string {
+	switch p.ConfigDirSetting() {
+	case ConfigDirOwn:
+		return ExpandHome(p.ConfigDir)
+	case ConfigDirManaged:
+		return managed
+	}
+	return ""
+}
+
+// ManagesAPIKeys reports whether the app writes the API keys into
+// llama-swap's apiKeys: ManageAPIKeys, with the managed folder.
+func (p Prefs) ManagesAPIKeys() bool {
+	return p.ManageAPIKeys && p.ConfigDirSetting() == ConfigDirManaged
+}
 
 // LogMode returns LlamaSwapLog, with empty meaning LogToLauncher.
 func (p Prefs) LogMode() string {
@@ -158,6 +206,7 @@ func Defaults() Prefs {
 		Env:                       map[string]string{},
 		APIKeys:                   []string{},
 		LlamaSwapLog:              LogToLauncher,
+		ConfigDirMode:             ConfigDirOff,
 		SecretEnv:                 []string{},
 		AutoStart:                 true,
 		HealthCheckSeconds:        DefaultHealthCheckSeconds,
@@ -192,10 +241,54 @@ func Load(path string) (Prefs, error) {
 	if err := d.Decode(&p); err != nil {
 		return Defaults(), fmt.Errorf("%s: %w", path, err)
 	}
+	var set struct {
+		WatchConfig *bool `json:"watchConfig"`
+	}
+	_ = json.Unmarshal(b, &set) // the strict decode above already read it
+	if err := p.liftWatchConfig(set.WatchConfig); err != nil {
+		return Defaults(), fmt.Errorf("%s: %w", path, err)
+	}
 	if err := p.Validate(); err != nil {
 		return Defaults(), fmt.Errorf("%s: %w", path, err)
 	}
 	return p, nil
+}
+
+// liftWatchConfig moves a -watch-config in Args, from before it was a
+// setting, into WatchConfig, in any form Go's flag package reads: -flag,
+// --flag, -flag=value. Like that package, the last one counts. set is the
+// watchConfig key's value if the file has one; if it disagrees, the file
+// says two things, and that's an error rather than a guess.
+func (p *Prefs) liftWatchConfig(set *bool) error {
+	var kept []string
+	found, value := false, false
+	for _, arg := range p.Args {
+		if flagName(arg) != "watch-config" {
+			kept = append(kept, arg)
+			continue
+		}
+		rest := strings.TrimLeft(strings.TrimSpace(arg), "-")[len("watch-config"):]
+		v := true
+		if rest != "" {
+			b, err := strconv.ParseBool(strings.TrimPrefix(rest, "="))
+			if !strings.HasPrefix(rest, "=") || err != nil {
+				return fmt.Errorf("args: %q: use the watchConfig setting (true or false) instead", strings.TrimSpace(arg))
+			}
+			v = b
+		}
+		found, value = true, v
+	}
+	if !found {
+		return nil
+	}
+	if set != nil && *set != value {
+		return fmt.Errorf("watchConfig is %v, but args has -watch-config=%v; keep only watchConfig", *set, value)
+	}
+	if kept == nil {
+		kept = []string{}
+	}
+	p.Args, p.WatchConfig = kept, value
+	return nil
 }
 
 // Validate reports the first setting that can't be used as it is.
@@ -260,6 +353,21 @@ func (p Prefs) Validate() error {
 	if launcher, own := p.LogPaths("/"); p.LogMode() == LogToFile && filepath.Clean(launcher) == filepath.Clean(own) {
 		return fmt.Errorf("llamaSwapLogFile: it's the launcher log too; give llama-swap's output its own file, or put it in the launcher log")
 	}
+	switch p.ConfigDirSetting() {
+	case ConfigDirOff, ConfigDirManaged:
+	case ConfigDirOwn:
+		// Whether it's there is checked when llama-swap starts, like the
+		// logs: a folder on a disk that isn't connected mustn't make the
+		// whole file unreadable.
+		if p.ConfigDir == "" {
+			return fmt.Errorf("configDir: give the folder, with configDirMode %q", ConfigDirOwn)
+		}
+		if !filepath.IsAbs(ExpandHome(p.ConfigDir)) {
+			return fmt.Errorf("configDir: %q isn't a full path, such as ~/llama-swap/config.d", p.ConfigDir)
+		}
+	default:
+		return fmt.Errorf("configDirMode: %q isn't one of %q, %q or %q", p.ConfigDirMode, ConfigDirOff, ConfigDirOwn, ConfigDirManaged)
+	}
 	if p.AppAPIKey != "" && !seen[p.AppAPIKey] {
 		return fmt.Errorf("appApiKey: %q isn't one of the API keys", p.AppAPIKey)
 	}
@@ -274,7 +382,8 @@ func (p Prefs) Validate() error {
 var reservedFlags = map[string]string{
 	"config":         "is set by the app, from the config file preference",
 	"listen":         "is set by the app, from the listen address preference",
-	"config-dir":     "isn't supported: the app validates and watches the one config file",
+	"config-dir":     "is set by the app, from the config folder setting",
+	"watch-config":   "is a setting: watchConfig, or Reload the config when it changes in Settings",
 	"tls-cert-file":  "isn't supported: the app watches llama-swap over plain HTTP, so it couldn't follow it serving HTTPS",
 	"tls-key-file":   "isn't supported: the app watches llama-swap over plain HTTP, so it couldn't follow it serving HTTPS",
 	"listen-tailcat": "isn't supported: a second listener, which the app can't watch or check for API keys",

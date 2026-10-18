@@ -341,7 +341,7 @@ func clean(s string) string {
 func cleaned(s *control.Status) *control.Status {
 	c := *s
 	for _, f := range []*string{&c.AppVersion, &c.BundleID, &c.State, &c.Listen, &c.Version, &c.Message,
-		&c.Warning, &c.Binary, &c.Config, &c.LogFile, &c.LauncherLog} {
+		&c.Warning, &c.Binary, &c.Config, &c.ConfigDir, &c.LogFile, &c.LauncherLog} {
 		*f = clean(*f)
 	}
 	c.Models = slices.Clone(s.Models)
@@ -380,6 +380,16 @@ func printStatus(w io.Writer, s *control.Status) {
 		fmt.Fprintln(w, "warning:    "+s.Warning)
 	}
 	fmt.Fprintln(w, "config:     "+orNone(s.Config))
+	if s.ConfigDir != "" {
+		folder := s.ConfigDir
+		if s.ManagedConfig {
+			folder += " (managed by the app)"
+		}
+		fmt.Fprintln(w, "folder:     "+folder)
+	}
+	if s.APIKeysRequired {
+		fmt.Fprintln(w, "api keys:   required, as the app manages them")
+	}
 	fmt.Fprintln(w, "binary:     "+orNone(s.Binary))
 	if len(s.Models) == 0 {
 		fmt.Fprintln(w, "models:     none loaded")

@@ -199,6 +199,9 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
     "version": "v265 (d1e743f)",
     "binary": "/opt/homebrew/bin/llama-swap",
     "config": "/path/to/llama-swap.yaml",
+    "configDir": "/Users/you/Library/Application Support/com.my-wang.llama-swap-launcher/llama-swap.d",
+    "managedConfig": true,
+    "apiKeysRequired": true,
     "logFile": "/Users/you/Library/Logs/com.my-wang.llama-swap-launcher/launcher.log",
     "launcherLog": "/Users/you/Library/Logs/com.my-wang.llama-swap-launcher/launcher.log",
     "models": [
@@ -225,6 +228,10 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
 - `warning`, when llama-swap can be used without an API key and it
   matters: the app has keys that llama-swap's config doesn't list, or it
   listens beyond this Mac with none. It doesn't change the exit code.
+- `configDir` is the config folder llama-swap reads, if any.
+  `managedConfig` means it's the app's own, and `apiKeysRequired` that the
+  app lists its API keys there for llama-swap to require (see
+  [Config folder](#config-folder)).
 - `logFile` is where llama-swap's output goes (`""` when it isn't saved), and
   `launcherLog` the app's own log; they're the same file by default.
 - A failure's reply has `output`: llama-swap's last lines (up to 20).
@@ -279,9 +286,9 @@ config says.
 ## Settings
 
 **Settings…** in the menu edits them, and saves them as preferences. The **General** tab has the
-llama-swap binary and config (each with a **Choose…** button), the listen
-address, extra arguments and environment variables (one per line), and the
-settings below; the **Secrets** tab has llama-swap's API keys and secret
+llama-swap binary and config (each with a **Choose…** button), the config
+folder (see [Config folder](#config-folder)), the listen address,
+environment variables (one per line), and the settings below; the **Secrets** tab has llama-swap's API keys and secret
 environment variables, and the **Logs** tab where the logs go (see below). Save checks
 them first: if something's wrong, an alert says what, and the dialog comes back
 with your entries and the problem shown until it's fixed. If llama-swap is
@@ -302,7 +309,11 @@ misspelling, is reported as an error rather than ignored.
 | `binary` | `""` | The llama-swap executable. Empty: look in the usual install locations. Like every path here, it may start with `~/`. |
 | `config` | `""` | llama-swap's config file. |
 | `listen` | `"127.0.0.1:8080"` | Passed to llama-swap as `-listen`. Use `"0.0.0.0:8080"` for other machines to reach it; they can then use all of it, including unloading models and reading logs, unless its config sets API keys (see [API keys](#api-keys)). |
-| `args` | `[]` | Extra llama-swap arguments, e.g. `["-watch-config"]`. Not `-config` or `-listen`, which the app sets from the preferences above, nor `-config-dir`, the TLS flags, `-validate` or `-version`. |
+| `watchConfig` | `false` | Pass `-watch-config`, so llama-swap reloads its config when the file, or the config folder, changes. It checks every 2 seconds. |
+| `configDirMode` | `"off"` | Whether llama-swap also reads a folder of config files (`-config-dir`): `"off"`, `"own"` (`configDir`) or `"managed"` (the app's own folder). See [Config folder](#config-folder). |
+| `configDir` | `""` | Your own config folder, with `"own"`. The app never writes there. |
+| `manageApiKeys` | `false` | With the managed folder, list the API keys in llama-swap's `apiKeys` for it, so it requires them. See [API keys](#api-keys). |
+| `args` | `[]` | Extra llama-swap arguments, for flags newer than the app. Settings doesn't show them. Not `-config`, `-listen`, `-config-dir` or `-watch-config`, which are settings above, nor the TLS flags, `-validate` or `-version`. A `-watch-config` here from an earlier version becomes `watchConfig` when the file is read. |
 | `env` | `{}` | Environment variables for llama-swap and the commands its config runs, e.g. `{"HF_TOKEN": "…"}`. Values are used exactly as typed, quotes included; for a path with spaces, see [Good to know](#good-to-know). |
 | `autoStart` | `true` | Start llama-swap when the app opens. |
 | `healthCheckSeconds` | `60` | How often to check that llama-swap still answers. |
@@ -324,6 +335,38 @@ through that `PATH`. Anything else your config relies on from your shell
 belongs in `env`. llama-swap runs in the config file's folder, so relative
 paths in the config work.
 
+### Config folder
+
+Besides its config file, llama-swap can read a folder of config files, and
+**Config folder** on the General tab chooses one:
+
+- **None:** just the config file.
+- **Your own folder:** a folder you choose, for splitting your config into
+  several files. The app never writes there.
+- **Managed by the app:** the app's own folder,
+  `~/Library/Application Support/com.my-wang.llama-swap-launcher/llama-swap.d/`.
+  The app writes the settings it manages for llama-swap there, each time it
+  starts llama-swap, such as **Require these keys in llama-swap** (see
+  [API keys](#api-keys)). **Show in Finder** opens it. Files of your own
+  there are read too, and left alone; the app won't overwrite a file with
+  one of its names that it didn't write.
+
+How llama-swap combines them: the config file first, then the folder's
+`.yaml` and `.yml` files (not those in subfolders), in name order.
+
+- **Lists add up.** An `apiKeys` list in the config and another in the
+  folder: either file's keys work.
+- **Sections merge**, key by key.
+- **A single value set differently in two files is an error.** So is the
+  same model, group, peer or profile ID in two files. llama-swap names the
+  file, and Start and Restart report it, leaving the running llama-swap as
+  it was.
+- **Names must match exactly.** llama-swap ignores a key it doesn't know,
+  silently: `apikeys:` in lower case does nothing.
+
+With **Reload the config when it changes**, llama-swap rereads the folder
+too.
+
 ### API keys
 
 Without `apiKeys` in its config, llama-swap answers anyone who can reach it:
@@ -342,6 +385,12 @@ apiKeys:
   - "${env.LLSL_ADMIN}"
   - "${env.LLSL_CLAUDE}"
 ```
+
+**Or let the app list them.** With **Config folder** set to **Managed by the
+app** on the General tab, tick **Require these keys in llama-swap** on the
+Secrets tab. The app then writes that list into its config folder each time
+it starts llama-swap, so your config needs no `apiKeys` at all. Keys your
+own config lists keep working alongside them.
 
 ![Settings, Secrets tab: API keys and secret environment variables](docs/images/settings-secrets.png)
 
@@ -367,7 +416,8 @@ apiKeys:
   `llsl status` (`warning`) say so when it matters: the app has keys that
   llama-swap's config doesn't list (so it ignores them), or llama-swap
   listens beyond this Mac with no key at all. Saving settings that would
-  open it to the network without a key asks first.
+  open it to the network without a key asks first, and so does turning off
+  the managed keys while other machines can reach it.
 - `llsl` never needs a key: it asks the app, which sends one.
 - The keychain keeps each key encrypted on disk, and other programs can only
   read it with your permission. While llama-swap runs, the keys are in its

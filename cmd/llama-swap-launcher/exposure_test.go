@@ -26,6 +26,7 @@ func TestOpenWarning(t *testing.T) {
 		return supervisor.Status{State: supervisor.Running, Listen: listen}
 	}
 	keys := prefs.Prefs{APIKeys: []string{"ADMIN"}}
+	managed := prefs.Prefs{APIKeys: []string{"ADMIN"}, ConfigDirMode: prefs.ConfigDirManaged, ManageAPIKeys: true}
 	for _, tt := range []struct {
 		name string
 		p    prefs.Prefs
@@ -34,6 +35,8 @@ func TestOpenWarning(t *testing.T) {
 		want string
 	}{
 		{"keys not in the config", keys, running("127.0.0.1:8080"), open, "isn't asking for API keys"},
+		{"keys not in the config: says how to require them", keys, running("127.0.0.1:8080"), open, "Turn on Require these keys"},
+		{"managed keys, not restarted yet", managed, running("127.0.0.1:8080"), open, "Restart it"},
 		{"open to the network", prefs.Prefs{}, running("0.0.0.0:8080"), open, "open to the network"},
 		{"loopback without keys", prefs.Prefs{}, running("127.0.0.1:8080"), open, ""},
 		{"asking for keys", keys, running("0.0.0.0:8080"), health.Snapshot{Healthy: true}, ""},
@@ -63,6 +66,54 @@ func TestOpensWithoutKey(t *testing.T) {
 	} {
 		if got := opensWithoutKey(tt.old, tt.p); got != tt.want {
 			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestStopsRequiringKeys(t *testing.T) {
+	required := prefs.Prefs{Listen: "0.0.0.0:8080", APIKeys: []string{"A"}, ConfigDirMode: prefs.ConfigDirManaged, ManageAPIKeys: true}
+	off := required
+	off.ManageAPIKeys = false
+	ownFolder := required
+	ownFolder.ConfigDirMode = prefs.ConfigDirOwn
+	noKeys := required
+	noKeys.APIKeys = nil
+	local := required
+	local.Listen = "127.0.0.1:8080"
+	localOff := off
+	localOff.Listen = "127.0.0.1:8080"
+	for _, tt := range []struct {
+		name   string
+		old, p prefs.Prefs
+		want   bool
+	}{
+		{"unticked", required, off, true},
+		{"folder no longer managed", required, ownFolder, true},
+		{"keys removed", required, noKeys, true},
+		{"no change", required, required, false},
+		{"turned on", off, required, false},
+		{"only on this Mac", local, localOff, false},
+	} {
+		if got := stopsRequiringKeys(tt.old, tt.p); got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestManagedFiles(t *testing.T) {
+	p := prefs.Prefs{APIKeys: []string{"ADMIN", "CLAUDE"}, ConfigDirMode: prefs.ConfigDirManaged, ManageAPIKeys: true}
+	got := string(managedFiles(p)["api-keys.yaml"])
+	want := managedHeader + "apiKeys:\n  - \"${env.LLSL_ADMIN}\"\n  - \"${env.LLSL_CLAUDE}\"\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	// Not managed, or no keys: only the note, so the setting turns off.
+	for _, q := range []prefs.Prefs{
+		{APIKeys: []string{"ADMIN"}, ConfigDirMode: prefs.ConfigDirManaged},
+		{ConfigDirMode: prefs.ConfigDirManaged, ManageAPIKeys: true},
+	} {
+		if got := string(managedFiles(q)["api-keys.yaml"]); got != managedHeader {
+			t.Errorf("%+v: got %q, want only the note", q, got)
 		}
 	}
 }

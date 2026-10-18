@@ -22,7 +22,7 @@ char *lsl_choose_file(const char *title, const char *start_dir, int show_hidden,
 		ensure_edit_menu();
 		NSOpenPanel *panel = [NSOpenPanel openPanel];
 		panel.message = titleStr;
-		panel.canChooseFiles = YES;
+		panel.canChooseFiles = dirs != 2;
 		panel.canChooseDirectories = dirs != 0;
 		panel.canCreateDirectories = dirs != 0;
 		panel.allowsMultipleSelection = NO;

@@ -1,8 +1,8 @@
 // C interface to the Objective-C in dialogs.m. See dialogs.go.
 
-// lsl_choose_file shows an Open panel, for a file or, with dirs, a file or
-// a folder. It returns the chosen path, which the caller must free(), or
-// NULL if the user cancelled.
+// lsl_choose_file shows an Open panel: for a file (dirs 0), a file or a
+// folder (1), or a folder (2). It returns the chosen path, which the caller
+// must free(), or NULL if the user cancelled.
 char *lsl_choose_file(const char *title, const char *start_dir, int show_hidden, int dirs);
 
 // lsl_save_file shows a Save panel starting in dir with name filled in. It

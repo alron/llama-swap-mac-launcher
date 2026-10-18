@@ -114,6 +114,18 @@ func (a *app) diagnosticFiles() ([]diagnostics.File, error) {
 			add("llama-swap config/"+filepath.Base(config), b)
 		}
 	}
+	// The config folder's files, as llama-swap reads them: the top-level
+	// *.yaml and *.yml.
+	if dir := p.ConfigDirPath(a.paths.ManagedConfigDir()); dir != "" {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			if name := e.Name(); !e.IsDir() && (strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml")) {
+				if b, err := os.ReadFile(filepath.Join(dir, name)); err == nil { // #nosec G304 -- llama-swap's config folder, from the preferences
+					add("llama-swap config/"+filepath.Base(dir)+"/"+name, b)
+				}
+			}
+		}
+	}
 	launcher, output := a.logs.paths()
 	logs := []string{launcher}
 	if output != "" && output != launcher {
@@ -163,6 +175,13 @@ func (a *app) diagnosticSummary(p prefs.Prefs, secrets map[string]string) string
 		line("", "%s", msg)
 	}
 	line("Config", "%s", orUnknown(p.ConfigPath()))
+	switch dir := p.ConfigDirPath(a.paths.ManagedConfigDir()); p.ConfigDirSetting() {
+	case prefs.ConfigDirOwn:
+		line("Config folder", "%s", dir)
+	case prefs.ConfigDirManaged:
+		line("Config folder", "%s, managed; API keys required: %v", dir, p.ManagesAPIKeys() && len(p.APIKeys) > 0)
+	}
+	line("Reload on change", "%v", p.WatchConfig)
 	line("Listen", "%s", p.ListenAddr())
 	launcher, output := a.logs.paths()
 	line("Logs", "launcher %s; llama-swap's output %s", launcher, describeOutput(p.LogMode(), output))

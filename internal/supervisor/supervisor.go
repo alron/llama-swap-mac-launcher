@@ -81,6 +81,11 @@ type Spec struct {
 	// if its config sets apiKeys. The supervisor only hands it on, in the
 	// status, so requests use the key this llama-swap was started with.
 	APIKey string
+	// ConfigDir is llama-swap's -config-dir, if any, and ConfigFiles the
+	// files the app manages there, by name. They're written just before
+	// llama-swap starts, and Validate checks them in a copy of the folder.
+	ConfigDir   string
+	ConfigFiles map[string][]byte
 }
 
 type Options struct {
@@ -272,6 +277,9 @@ func (s *Supervisor) launch() error {
 	spec := s.spec
 	s.output.reset() // so a failure never shows an earlier run's output
 	if err := checkPortFree(spec.Listen); err != nil {
+		return s.fail(notStarted{err})
+	}
+	if err := writeConfigFiles(spec); err != nil {
 		return s.fail(notStarted{err})
 	}
 

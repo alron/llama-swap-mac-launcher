@@ -1,8 +1,8 @@
 // The Preferences dialog, for the Go code in prefs.go.
 //
 // It's an alert (Save, Cancel) with tabs as its accessory view: General, a
-// grid of labels and fields, and Secrets, two tables of named secrets (API
-// keys and secret environment variables). The values go in and come back
+// grid of labels and fields; Secrets, two tables of named secrets (API keys
+// and secret environment variables); and Logs. The values go in and come back
 // out as JSON, so the C interface is a single function and all the
 // checking stays in Go. If what the user entered doesn't check out, Go
 // shows the dialog again with their entries and the error.
@@ -212,6 +212,19 @@ static NSString *newKey(void) {
 @property(strong) LSLSecretTable *keys;
 @property(strong) LSLSecretTable *vars;
 @property(strong) NSPopUpButton *appKey;
+// The config folder: the menu, the field, and the user's own folder, kept
+// while the field shows the app's managed one.
+@property(strong) NSPopUpButton *dirMode;
+@property(strong) NSTextField *configDir;
+@property(strong) NSButton *chooseDir;
+@property(strong) NSButton *showDir;
+@property(copy) NSString *ownDir;
+@property(copy) NSString *managedDir;
+@property(copy) NSString *lastMode;
+// Require these keys, which needs the managed folder, and the hint under it.
+@property(strong) NSButton *manageKeys;
+@property(strong) NSTextField *manageKeysHint;
+@property(copy) NSString *keysExample;
 @end
 
 @implementation LSLPrefsController
@@ -226,6 +239,54 @@ static NSString *newKey(void) {
 }
 - (void)chooseOwnLog:(id)sender {
 	[self chooseLog:@"Choose llama-swap's log, or a folder to put it in" into:self.ownLog];
+}
+- (void)chooseConfigDir:(id)sender {
+	NSString *start = self.configDir.stringValue.length > 0 ? self.configDir.stringValue.stringByExpandingTildeInPath : NSHomeDirectory();
+	char *path = lsl_choose_file("Choose the folder of config files for llama-swap", start.UTF8String, 0, 2);
+	if (path != NULL) {
+		self.configDir.stringValue = [NSString stringWithUTF8String:path].stringByAbbreviatingWithTildeInPath;
+		free(path);
+	}
+}
+// showConfigDir opens the folder in the Finder. The managed one may not
+// exist until llama-swap first starts with it, so it's made here if need be,
+// readable by the user alone, as the app makes it.
+- (void)showConfigDir:(id)sender {
+	NSString *dir = self.configDir.stringValue.stringByExpandingTildeInPath;
+	if (dir.length == 0) {
+		return;
+	}
+	if ([dir isEqual:self.managedDir]) {
+		[NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES
+		                                         attributes:@{NSFilePosixPermissions : @0700} error:nil];
+	}
+	[NSWorkspace.sharedWorkspace openURL:[NSURL fileURLWithPath:dir isDirectory:YES]];
+}
+// dirModeChanged sets up the field for the folder chosen in the menu: the
+// user's own, editable; the app's, greyed out; or none. Require these keys,
+// on the Secrets tab, works only with the app's folder.
+- (void)dirModeChanged:(id)sender {
+	NSString *mode = self.dirMode.selectedItem.representedObject;
+	if ([self.lastMode isEqual:@"own"]) {
+		self.ownDir = self.configDir.stringValue; // kept for switching back
+	}
+	self.lastMode = mode;
+	BOOL own = [mode isEqual:@"own"], managed = [mode isEqual:@"managed"];
+	self.configDir.stringValue = own ? self.ownDir : managed ? self.managedDir.stringByAbbreviatingWithTildeInPath : @"";
+	self.configDir.enabled = own;
+	self.configDir.toolTip = managed ? self.managedDir : nil; // the field may cut it short
+	self.chooseDir.enabled = own;
+	self.showDir.enabled = own || managed;
+	self.manageKeys.enabled = managed;
+	self.manageKeysHint.stringValue = managed
+		? [NSString stringWithFormat:@"The app lists them in llama-swap's apiKeys, in its managed config folder. "
+		                             @"Otherwise, list them in llama-swap's config yourself:\n%@", self.keysExample]
+		: [NSString stringWithFormat:@"Needs Config folder: Managed by the app, on the General tab. "
+		                             @"Until then, list them in llama-swap's config yourself:\n%@", self.keysExample];
+}
+// ownDirValue is the user's own folder, whichever folder the field shows.
+- (NSString *)ownDirValue {
+	return [self.lastMode isEqual:@"own"] ? self.configDir.stringValue : self.ownDir;
 }
 // choose opens a file panel (from dialogs.m) over the Preferences dialog,
 // starting where the field's current path is, and puts the choice in field.
@@ -469,9 +530,24 @@ char *lsl_preferences(const char *json, int *result) {
 		NSButton *chooseBinary = [NSButton buttonWithTitle:@"Choose…" target:c action:@selector(chooseBinary:)];
 		NSButton *chooseConfig = [NSButton buttonWithTitle:@"Choose…" target:c action:@selector(chooseConfig:)];
 		NSTextField *listen = field(string(in, @"listen"), @"127.0.0.1:8080", 180);
-		NSTextView *args, *env;
-		NSScrollView *argsArea = area(string(in, @"args"), c, &args);
+		NSTextView *env;
 		NSScrollView *envArea = area(string(in, @"env"), c, &env);
+		c.dirMode = [[NSPopUpButton alloc] init];
+		NSArray *dirModes = @[ @[ @"off", @"None" ], @[ @"own", @"Your own folder" ], @[ @"managed", @"Managed by the app" ] ];
+		for (NSArray *m in dirModes) {
+			[c.dirMode addItemWithTitle:m[1]];
+			c.dirMode.lastItem.representedObject = m[0];
+		}
+		NSInteger dirMode = [c.dirMode indexOfItemWithRepresentedObject:string(in, @"configDirMode")];
+		[c.dirMode selectItemAtIndex:dirMode >= 0 ? dirMode : 0];
+		c.dirMode.target = c;
+		c.dirMode.action = @selector(dirModeChanged:);
+		c.configDir = field(@"", @"", 340);
+		c.ownDir = string(in, @"configDir");
+		c.managedDir = string(in, @"managedConfigDir");
+		c.chooseDir = [NSButton buttonWithTitle:@"Choose…" target:c action:@selector(chooseConfigDir:)];
+		c.showDir = [NSButton buttonWithTitle:@"Show in Finder" target:c action:@selector(showConfigDir:)];
+		NSButton *watch = checkbox(@"Reload the config when it changes", in[@"watchConfig"]);
 		NSTextField *seconds = field(string(in, @"healthCheckSeconds"), @"60", 60);
 		NSButton *skip = checkbox(@"Skip a check when llama-swap has been busy since the last one", in[@"healthCheckSkipWhenActive"]);
 		NSButton *autoStart = checkbox(@"Start llama-swap when the app opens", in[@"autoStart"]);
@@ -482,11 +558,14 @@ char *lsl_preferences(const char *json, int *result) {
 			@[ label(@"llama-swap binary:"), row(@[ c.binary, chooseBinary ]) ],
 			@[ empty, hint(@"Leave empty to look in the usual install locations.") ],
 			@[ label(@"Config file:"), row(@[ c.config, chooseConfig ]) ],
+			@[ label(@"Config folder:"), c.dirMode ],
+			@[ empty, row(@[ c.configDir, c.chooseDir, c.showDir ]) ],
+			@[ empty, hint(@"llama-swap also reads the folder's .yaml files. Managed by the app is a folder the app keeps "
+			                @"for the settings it writes for llama-swap, such as Require these keys (Secrets tab).") ],
+			@[ empty, watch ],
 			@[ label(@"Listen address:"), listen ],
 			@[ empty, hint(@"Use 0.0.0.0:8080 for other machines to reach llama-swap. They can then use all of it, "
 			                @"including unloading models and reading logs, unless its config sets API keys (Secrets tab).") ],
-			@[ label(@"Extra arguments:"), argsArea ],
-			@[ empty, hint(@"Passed to llama-swap, one per line, e.g. -watch-config.") ],
 			@[ label(@"Environment:"), envArea ],
 			@[ empty, hint(@"NAME=value, one per line, e.g. HF_TOKEN=…. Used exactly as typed, quotes included: "
 			                @"for a path with spaces, quote it where llama-swap's config uses it.") ],
@@ -496,8 +575,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@[ empty, markUpdated ],
 			@[ empty, autoStart ],
 		]);
-		topAligned(general, 5);
-		topAligned(general, 7);
+		topAligned(general, 9);
 
 		// Logs.
 		c.launcherLog = field(string(in, @"launcherLog"), string(in, @"defaultLauncherLog"), 340);
@@ -544,7 +622,12 @@ char *lsl_preferences(const char *json, int *result) {
 		if (chosen >= 0) {
 			[c.appKey selectItemAtIndex:chosen];
 		}
-		NSString *example = [NSString stringWithFormat:@"In llama-swap's config: apiKeys: [\"${env.%@NAME}\", …]", c.keys.prefix];
+		c.keysExample = [NSString stringWithFormat:@"apiKeys: [\"${env.%@NAME}\", …]", c.keys.prefix];
+		c.manageKeys = checkbox(@"Require these keys in llama-swap", in[@"manageApiKeys"]);
+		// The longer of its two texts, for sizing the tab; dirModeChanged
+		// sets the real one.
+		c.manageKeysHint = hint([NSString stringWithFormat:@"Needs Config folder: Managed by the app, on the General tab. "
+		                                                   @"Until then, list them in llama-swap's config yourself:\n%@", c.keysExample]);
 		NSTextField *keysTitle = label(@"API keys");
 		keysTitle.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
 		NSTextField *varsTitle = label(@"Secret environment variables");
@@ -552,7 +635,8 @@ char *lsl_preferences(const char *json, int *result) {
 		NSStackView *secrets = column(@[
 			keysTitle,
 			secretTable(c.keys, @"Variable", @"Key", 110),
-			hint(example),
+			c.manageKeys,
+			c.manageKeysHint,
 			row(@[ label(@"The app uses:"), c.appKey ]),
 			hint(@"Any of the keys works; the app sends this one on its own requests."),
 			varsTitle,
@@ -560,7 +644,7 @@ char *lsl_preferences(const char *json, int *result) {
 			hint(@"Like Environment on the General tab, for values to keep out of files, such as HF_TOKEN."),
 			hint(@"All of these are kept in your login keychain."),
 		]);
-		[secrets setCustomSpacing:16 afterView:secrets.views[4]];
+		[secrets setCustomSpacing:16 afterView:secrets.views[5]];
 
 		// The tabs, sized to fit the larger page: an alert sizes itself to
 		// its accessory view's frame.
@@ -576,6 +660,7 @@ char *lsl_preferences(const char *json, int *result) {
 		tabs.frame = NSMakeRect(0, 0, 100, 100);
 		NSSize chrome = NSMakeSize(100 - tabs.contentRect.size.width, 100 - tabs.contentRect.size.height);
 		tabs.frame = NSMakeRect(0, 0, content.width + chrome.width, content.height + chrome.height);
+		[c dirModeChanged:nil];
 		NSString *first = string(in, @"tab");
 		if ([first isEqual:@"secrets"] || [first isEqual:@"logs"]) {
 			[tabs selectTabViewItemWithIdentifier:first];
@@ -605,8 +690,11 @@ char *lsl_preferences(const char *json, int *result) {
 			@"binary" : c.binary.stringValue,
 			@"config" : c.config.stringValue,
 			@"listen" : listen.stringValue,
-			@"args" : args.string,
 			@"env" : env.string,
+			@"watchConfig" : watch.state == NSControlStateValueOn ? @YES : @NO,
+			@"configDirMode" : c.dirMode.selectedItem.representedObject ?: @"off",
+			@"configDir" : [c ownDirValue] ?: @"",
+			@"manageApiKeys" : c.manageKeys.state == NSControlStateValueOn ? @YES : @NO,
 			@"healthCheckSeconds" : seconds.stringValue,
 			// @YES and @NO, not @(a == b): a boxed comparison is a number,
 			// which becomes JSON 1 or 0, and Go won't decode that into a bool.

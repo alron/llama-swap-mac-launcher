@@ -81,7 +81,13 @@ type Status struct {
 	Warning string `json:"warning,omitempty"`
 	Binary  string `json:"binary,omitempty"`
 	Config  string `json:"config,omitempty"`
-	LogFile string `json:"logFile"` // where llama-swap's output goes; "" when it isn't saved
+	// ConfigDir is the folder of config files llama-swap also reads, if
+	// any; ManagedConfig says the app manages it, and APIKeysRequired that
+	// the app's API keys are listed there for llama-swap to require.
+	ConfigDir       string `json:"configDir,omitempty"`
+	ManagedConfig   bool   `json:"managedConfig,omitempty"`
+	APIKeysRequired bool   `json:"apiKeysRequired,omitempty"`
+	LogFile         string `json:"logFile"` // where llama-swap's output goes; "" when it isn't saved
 	// LauncherLog is the app's own log, which also has llama-swap's
 	// output unless the preferences give it its own file.
 	LauncherLog string  `json:"launcherLog"`
