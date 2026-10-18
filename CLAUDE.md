@@ -243,12 +243,12 @@ From use after publishing:
     - **Plan:**
       - A Peers tab in Settings, with a table of peers: name, URL, key (secure, optional) and models.
       - The app writes them to `peers.yaml` in the managed folder, which it requires, like Require these keys.
-      - Each key goes in the keychain and reaches llama-swap as a variable such as `LLSL_PEER_<NAME>`, named from the peer's name: capitals, with `_` for anything but letters and digits. Two names that map to one variable are refused, and API key names can't start with `PEER_`, so the two kinds can't collide.
+      - **A peer's key is one of the Secrets tab's secret environment variables** (the maintainer's call, 2026-10-18), picked from a menu (None, or the variables). There's no second kind of secret: `peers.yaml` gets `apiKey: "${env.NAME}"`, as written by hand, and an existing peer whose key is already a secret variable moves over unchanged. The menu follows the Secrets table while the dialog is open, as "The app uses" follows the keys; a peer whose variable is gone is refused at Save. Plain Environment variables aren't offered.
       - URLs are `http://` or `https://` (Tailcat later).
       - Collect Diagnostics redacts the peer keys like the others; `peers.yaml` holds only URLs and variable names.
     - **To settle when building:**
       - the table's layout, since a provider like OpenRouter lists many models;
-      - a **Fetch models** button, which asks the peer's `/v1/models` (with its key) and offers what it serves to tick. That's the friendly part for less technical users. It runs from the app, which has the Local Network permission, but the dialog would need to call Go, or do the request itself in Objective-C.
+      - **Fetch models** (wanted, 2026-10-18): asks the peer's `/v1/models` and offers what it serves. The request is made in Go (the dialog calls back into it), with the proxy-free client, sending the chosen variable's value as it stands in the Secrets table (unsaved edits included) as `Authorization: Bearer` and `x-api-key`, as llama-swap does. It runs from the app, which has the Local Network permission. Check what another llama-swap's `/v1/models` lists for its own peers' models before deciding whether to offer them.
 37. **Tailcat** (the maintainer, 2026-10-18; later, not planned yet, as the maintainer doesn't use it). llama-swap's own tunnel: a peer whose `proxy` is `tailcat://<token>`, with an optional `tailcatKey` file, and the `-listen-tailcat` flag (refused in `args` today, item 32). Peers (item 36) start with `http://` and `https://` only; Tailcat peers, and perhaps the listener, can follow.
 
 Considered for 0.3 and set aside (the maintainer, 2026-10-18):
