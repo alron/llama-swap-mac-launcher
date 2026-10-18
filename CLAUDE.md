@@ -230,6 +230,31 @@ From use after publishing:
     - **Later:** generating a self-signed certificate. Go's `crypto/x509` can make the key and certificate itself, so no `openssl` is needed. Store them `0600` in the app's folder.
     - **Pie in the sky:** Let's Encrypt. It needs a public DNS name. For a llama-swap on a LAN, only the DNS-01 challenge works, through a DNS provider's API. Renewals would need a llama-swap reload or restart.
 
+36. **Managed peers** (decided with the maintainer 2026-10-18, the next 0.3 item; not built yet).
+    - **What llama-swap takes** (v265's `internal/config/peer.go` and `docs/config.example.yaml`): `peers` maps a peer's name to:
+      - `proxy`, a URL (required);
+      - `apiKey` (optional), sent to the peer as `Authorization: Bearer` and `x-api-key`;
+      - `models`, the models it serves (required, not empty);
+      - optionally `filters` (`stripParams`, `setParams`) and `timeouts`;
+      - `tailcatKey`, for `tailcat://` proxies (item 37).
+
+      A peer is another llama-swap or any server with the `/v1/` API (the example uses OpenRouter). Its models are `peer/model`, or the bare name when only one peer has it.
+    - **The whole peer lives in one place.** `peers` is merged by name (item 34), so a peer's name can appear in only one file: the app can't add a key to a peer from the user's config, and a managed peer can't take filters or timeouts from it. So a peer is either the app's, with what the UI offers, or the user's. Advanced options stay in the user's config until the app offers them.
+    - **Plan:**
+      - A Peers tab in Settings, with a table of peers: name, URL, key (secure, optional) and models.
+      - The app writes them to `peers.yaml` in the managed folder, which it requires, like Require these keys.
+      - Each key goes in the keychain and reaches llama-swap as a variable such as `LLSL_PEER_<NAME>`, named from the peer's name: capitals, with `_` for anything but letters and digits. Two names that map to one variable are refused, and API key names can't start with `PEER_`, so the two kinds can't collide.
+      - URLs are `http://` or `https://` (Tailcat later).
+      - Collect Diagnostics redacts the peer keys like the others; `peers.yaml` holds only URLs and variable names.
+    - **To settle when building:**
+      - the table's layout, since a provider like OpenRouter lists many models;
+      - a **Fetch models** button, which asks the peer's `/v1/models` (with its key) and offers what it serves to tick. That's the friendly part for less technical users. It runs from the app, which has the Local Network permission, but the dialog would need to call Go, or do the request itself in Objective-C.
+37. **Tailcat** (the maintainer, 2026-10-18; later, not planned yet, as the maintainer doesn't use it). llama-swap's own tunnel: a peer whose `proxy` is `tailcat://<token>`, with an optional `tailcatKey` file, and the `-listen-tailcat` flag (refused in `args` today, item 32). Peers (item 36) start with `http://` and `https://` only; Tailcat peers, and perhaps the listener, can follow.
+
+Considered for 0.3 and set aside (the maintainer, 2026-10-18):
+- **Preloading models at startup** (`hooks.on_startup.preload`, a list, so it would merge safely): it names models the app doesn't manage, which can change between starts and reloads. It belongs with a managed model config, if one comes. The maintainer has ideas for that, from their own configs, but it needs a fully managed config, macros included; not now.
+- **Single values** such as `logLevel`: llama-swap refuses to load when two files set one differently, so they'd need a "here or in your config, not both" hint. Hold until one is needed.
+
 **Publishing checklist** from the same assessment (not code):
 - **Tag the release commit** (**done 2026-10-04**: `v0.2.1`, with the zip's SHA-256 in its message; `make publish` now creates the tag when there isn't one and checks it when there is) (`v0.2.0`, or the next version's). The binary embeds `vcs.revision`, which should be a commit people can find; 0.2.0's is on `main`, and there are no tags yet. In the release notes: the zip's SHA-256, and how to check a download (`spctl -a -vv`, and Team ID `P56KW9H72P` in `codesign -dv`).
 - **Made public 2026-10-04**, after a last check of everything on GitHub (only `main` and `v0.2.1`; every commit's tree and message, the tag and the release notes clean). The settings 1 to 4 below survived the switch. Then turned on: private vulnerability reporting, secret scanning with push protection, Dependabot alerts and security updates (no alerts), approval for every outside contributor's workflow runs, and a ruleset `main` that blocks deletion and force-pushes, with no one able to bypass it (not required checks: the maintainer pushes to `main` directly, and CI skips Markdown-only changes, so a required check would wait for ever).
