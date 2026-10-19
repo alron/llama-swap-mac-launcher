@@ -316,6 +316,16 @@ From use after publishing:
         - a trailing slash, `*` and a word for the cache time each refused with its own message;
         - the tab greyed out without the managed folder.
 
+47. **The next configuration push** (the maintainer, 2026-10-18; not planned in detail yet, "a lot more work").
+    - **The order follows the dependencies:** macros first, then models (which use macros), then routing (groups, matrix, profiles and selectors, which name models).
+    - **After those, the root single values:** `logLevel`, `logToStdout`, `logTimeFormat`, `logRequests`, `store`, `captureBuffer`, `startPort`, `globalTTL`, `healthCheckTimeout` and the rest.
+    - **Things to settle then:**
+      - `models`, `groups`, `profiles`, `selectors` and `matrix` merge by ID, so each entity lives wholly in one file, as peers do (item 36).
+      - `macros` merge by name, and a name set differently in two files is an error.
+      - Single values clash whenever the user's config sets them too, which may argue for a mode where the app writes the whole config rather than adding to the user's.
+    - **Preloading models at startup** (set aside below) belongs with the managed models.
+    - **Tailcat** stays later (item 37).
+
 Considered for 0.3 and set aside (the maintainer, 2026-10-18):
 - **Preloading models at startup** (`hooks.on_startup.preload`, a list, so it would merge safely): it names models the app doesn't manage, which can change between starts and reloads. It belongs with a managed model config, if one comes. The maintainer has ideas for that, from their own configs, but it needs a fully managed config, macros included; not now.
 - **Single values** such as `logLevel`: llama-swap refuses to load when two files set one differently, so they'd need a "here or in your config, not both" hint. Hold until one is needed.
