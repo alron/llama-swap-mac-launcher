@@ -3,7 +3,7 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
-## Unreleased
+## 0.3.0 (2026-10-18)
 
 The start of the 0.3 series: settings the app manages for llama-swap, so
 less of it needs editing by hand.
@@ -27,14 +27,17 @@ less of it needs editing by hand.
   cache time can be set for the pages listed.
 - **Reload the config when it changes** replaces the Extra arguments field,
   whose only use was `-watch-config`. Other arguments, for flags newer than
-  the app, can still go in `prefs.json` by hand.
+  the app, can still go in `prefs.json` by hand, and Settings shows them.
 - `llsl status` shows the config folder, and its JSON has `configDir`,
-  `managedConfig` and `apiKeysRequired`.
+  `managedConfig` and `apiKeysRequired`, as the running llama-swap was
+  started.
+- Saving settings that open llama-swap to other machines asks first when
+  the app has API keys it isn't listing for llama-swap.
 
 Upgrading: an existing `-watch-config` becomes the new checkbox, ticked.
 Going back to 0.2 afterwards means removing the new keys from `prefs.json`
-by hand (`watchConfig`, `configDirMode`, `configDir`, `manageApiKeys`): 0.2
-refuses keys it doesn't know.
+by hand (`watchConfig`, `configDirMode`, `configDir`, `manageApiKeys`,
+`peers`, `cors`): 0.2 refuses keys it doesn't know.
 
 ## 0.2.2 (2026-10-15)
 
