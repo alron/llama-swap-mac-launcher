@@ -596,6 +596,11 @@ Also make sure the main executable has a **unique Mach-O UUID** (TN3179 notes lo
   - The maintainer's reasoning: a leak through GitHub (a fault there, an intrusion, a compromised action) is likelier than a remote compromise of their own Mac, so the private halves of the Developer ID certificate and the notary key stay off it.
   - That may change if releases become frequent. Then: a second Developer ID Application certificate and App Store Connect API key issued for GitHub alone, each revocable without touching the others. Builds signed with the second certificate keep users' Local Network grants, since the designated requirement is the bundle ID plus the team ID, with no certificate hash. The signing job would run only on tags, in a protected environment that waits for the maintainer's approval, with actions pinned by commit.
 - **Later:** Homebrew cask. Official casks now must pass Gatekeeper, meaning signed and notarized. Use the cask `binary` stanza to symlink `llsl` onto `PATH`. The official cask repo also has popularity requirements, so start with our own tap.
+  - **A `.dmg` alongside the zip** (the maintainer, 2026-10-18). The zip stays: it's the quick download for terminal users, the maintainer's own preference, and it already unpacks cleanly with `unzip` (item 23). The DMG is the Apple-ecosystem staple:
+    - it holds the app, the drag-to-`/Applications` shortcut, `README.md` and `LICENSE`, which are useful there rather than left on disk as they would be from a zip;
+    - it's built from the already stapled app, then signed, notarized and stapled itself, so a release has two notarizations;
+    - `make publish` uploads both, with both SHA-256s in the notes;
+    - the cask uses the DMG. Homebrew copies only what the cask names (`app`, and `binary` for `llsl`), so the README and LICENSE are for people installing by hand.
 - **Later / optional:** Sparkle for in-app updates.
 
 ### Development builds
@@ -621,7 +626,7 @@ Also make sure the main executable has a **unique Mach-O UUID** (TN3179 notes lo
 4. `.app` bundling, Info.plist, launch-at-login. Done 2026-09-28 with placeholder icons; see "Milestone 4 results".
 5. Release signing (release bundle ID, secure timestamp) + notarization in the Makefile; verify the Local Network prompt appears under the app's name and the grant survives a rebuild. Done 2026-09-28; see "Milestone 5 results". The grant surviving a rebuild was shown with the Developer ID-signed dev build in milestone 0, and the release build uses the same identity scheme.
 6. GitHub Actions: CI, and publishing releases from the Mac. Done 2026-10-04; see "Milestone 6 results".
-7. Homebrew cask.
+7. Homebrew cask, from our own tap, with a `.dmg` alongside the zip (see Signing, notarization, distribution). After the repository has been public a while without major problems.
 
 ## Milestone 0 results (2026-09-28)
 
