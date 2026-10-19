@@ -264,6 +264,11 @@ From use after publishing:
       - unit tests;
       - `TestManagedPeersReal` against v265: llama-swap reads `peers.yaml`, offers `studio/big-model` and `studio/org/other`, sends the stand-in peer `Bearer` plus `x-api-key` from the secret variable, and refuses a peer defined in both places;
       - a test program with a stand-in fetch of 3,000 models (off the main thread; the filter, the ticks, Return in Add, greyed out without the managed folder, the reply checked).
+    - **HTTPS peers** (checked 2026-10-18, before 0.3.0, at the maintainer's question):
+      - Fetch Models fetched OpenRouter's public list over HTTPS: 471 models, none left out.
+      - llama-swap v265, given the same peer as the app writes it, proxied a request to OpenRouter over HTTPS and got OpenRouter's own 401 for the missing key.
+      - A self-signed peer is refused by both: llama-swap with a 502 ("peer proxy error: tls: failed to verify certificate: x509: certificate signed by unknown authority"), Fetch Models with a plain message saying a self-signed certificate needs macOS to trust it (`tls.CertificateVerificationError`; tested).
+      - Go verifies through macOS, so a certificate trusted in Keychain Access should do for both; that wasn't tried, to leave the keychain alone.
     - **Found while building:** a llama-swap's `/v1/models` needs the key when it has `apiKeys` (401 without), marks its own peers' models (`meta.llamaswap.type: "peer"`, left out by Fetch), and leaves out `unlisted` models (hence Add). A server that isn't llama-swap has no `meta`, and all its models are offered.
     - **What llama-swap takes** (v265's `internal/config/peer.go` and `docs/config.example.yaml`): `peers` maps a peer's name to:
       - `proxy`, a URL (required);

@@ -400,6 +400,9 @@ starts llama-swap; the key goes in as `${env.NAME}`, never the key itself.
 llama-swap sends that key to the peer with every request, so choose a
 variable meant for that peer. With an `http://` URL, the key crosses the
 network unencrypted, as llama-swap's own keys do (see [Security](#security)).
+An `https://` peer works when macOS trusts its certificate: a public
+service's does; a self-signed one has to be trusted on this Mac first, or
+both Fetch Models and llama-swap refuse it.
 A user name or password in the URL is refused: put the key under Secrets
 instead. Fetch Models doesn't follow a redirect, since it would carry the
 key elsewhere; give the address the peer redirects to.

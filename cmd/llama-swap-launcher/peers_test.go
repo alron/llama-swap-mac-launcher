@@ -184,3 +184,16 @@ func TestFetchPeerModelsNoRedirects(t *testing.T) {
 		t.Errorf("on the same server: got %v", err)
 	}
 }
+
+// An HTTPS peer whose certificate macOS doesn't trust gets a plain
+// explanation, not Go's.
+func TestFetchPeerModelsUntrustedCertificate(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"id":"m"}]}`))
+	}))
+	defer srv.Close()
+	_, _, err := fetchPeerModels(context.Background(), srv.URL, "")
+	if err == nil || !strings.Contains(err.Error(), "doesn't trust the peer's certificate") || !strings.Contains(err.Error(), "self-signed") {
+		t.Errorf("got %v", err)
+	}
+}

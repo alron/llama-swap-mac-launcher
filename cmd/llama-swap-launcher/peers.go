@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -168,7 +169,14 @@ func fetchPeerModels(ctx context.Context, base, key string) (ids []string, skipp
 		req.Header.Set("x-api-key", key)
 	}
 	resp, err := noRedirects.Do(req)
-	if err != nil {
+	var cert *tls.CertificateVerificationError
+	switch {
+	case errors.As(err, &cert):
+		// Go checks it through macOS, as llama-swap does (checked against
+		// v265, which refuses a self-signed peer with this same error).
+		return nil, 0, fmt.Errorf("this Mac doesn't trust the peer's certificate (%v). A self-signed one needs macOS "+
+			"to trust it first; llama-swap would refuse it too", cert.Err)
+	case err != nil:
 		return nil, 0, err
 	}
 	defer resp.Body.Close()
