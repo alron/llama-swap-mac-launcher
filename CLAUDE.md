@@ -323,6 +323,15 @@ From use after publishing:
       - `models`, `groups`, `profiles`, `selectors` and `matrix` merge by ID, so each entity lives wholly in one file, as peers do (item 36).
       - `macros` merge by name, and a name set differently in two files is an error.
       - Single values clash whenever the user's config sets them too, which may argue for a mode where the app writes the whole config rather than adding to the user's.
+    - **The maintainer's direction (2026-10-18):**
+      - Keep the folder (`llama-swap.d`) for every section except the root config, one file per section, numbered: `01-macros.yaml`, `02-api-keys.yaml`, `03-security.yaml`, `04-models.yaml`, `05-routing.yaml`, `06-peers.yaml`.
+      - In fully managed mode, the root config sits beside `prefs.json` in Application Support, and so does llama-swap's SQLite `store` when it's on. The logs stay in `~/Library/Logs`.
+      - Fully managed means conflicts are resolved in Settings before anything is written. llama-swap's `-validate` stays the check before every start.
+    - **Checked against v265's `merge.go`:**
+      - The folder's files are read in name order (`sort.Strings`), so the numbers set it.
+      - The order matters only for where list entries land (API keys, origins): macros are resolved after the merge, on the whole document, so a model in `04-` can use a macro from `01-` whatever the order.
+      - The numbers are mainly for whoever opens the folder.
+    - **Renaming today's files** (`api-keys.yaml`, `peers.yaml`, `security.yaml`) needs the app to delete its own old-named ones, those starting with its note, when it switches. Otherwise llama-swap reads both, and a peer defined twice stops it loading.
     - **Preloading models at startup** (set aside below) belongs with the managed models.
     - **Tailcat** stays later (item 37).
 
