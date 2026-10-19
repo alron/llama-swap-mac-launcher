@@ -79,6 +79,8 @@ The app doesn't include llama-swap; install that separately.
   llama-swap's version while it runs), **Settings…**, **Launch at Login**,
   **Quit** (which stops llama-swap).
 
+![About Llama Swap Launcher: the app's version, llama-swap's, and the build date](docs/images/about.png)
+
 In the menu bar, the app shows **L→S**, and the arrow's colour is the status:
 
 - **the same colour as the letters:** llama-swap is working;
@@ -90,8 +92,8 @@ In the menu bar, the app shows **L→S**, and the arrow's colour is the status:
 When llama-swap is stopped, the whole **L→S** is faded.
 
 <p>
-  <img src="docs/images/menu-stopped.png" width="272" alt="The menu with llama-swap stopped: L→S faded, Stop and Restart greyed out">
-  <img src="docs/images/menu-loading.png" width="311" alt="The menu while a model loads: the arrow grey">
+  <img src="docs/images/menu-stopped.png" width="354" alt="The menu with llama-swap stopped: L→S faded, Stop and Restart greyed out">
+  <img src="docs/images/menu-loading.png" width="364" alt="The menu while a model loads: the arrow grey">
 </p>
 
 ## `llsl`
@@ -379,6 +381,8 @@ with the same API (OpenRouter, say), whose models llama-swap offers as
 `name/model`. The **Peers** tab manages them for you, with **Config folder**
 set to **Managed by the app**:
 
+![Settings, Peers tab: a peer with its key, timeouts and models](docs/images/settings-peers.png)
+
 1. Click **+**, and give the peer a name (letters, digits, dots, dashes and
    underscores) and its URL, such as `http://192.168.1.20:8080`.
 2. If it needs a key, add the key under **Secrets → Secret environment
@@ -421,6 +425,8 @@ from the config and add it on the Peers tab. A peer that needs llama-swap's
 By default llama-swap lets any web page use it, including pages open in
 your browser right now. The **Security** tab, with **Config folder** set to
 **Managed by the app**, limits that:
+
+![Settings, Security tab: the web pages allowed to use llama-swap](docs/images/settings-security.png)
 
 - **Only let these web pages use llama-swap:** the pages allowed, one per
   line, as the browser shows them: `http://localhost:3000`, with no path and
