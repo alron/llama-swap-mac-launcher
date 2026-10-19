@@ -62,6 +62,10 @@ type Status struct {
 	// APIKey is the key for requests to the running llama-swap, from its
 	// Spec. It's a secret: never show it.
 	APIKey string
+	// ConfigDir and KeysRequired are the running llama-swap's, from its
+	// Spec: what it was started with, which a later Save doesn't change.
+	ConfigDir    string
+	KeysRequired bool
 }
 
 // Spec is everything needed to start llama-swap.
@@ -86,6 +90,9 @@ type Spec struct {
 	// llama-swap starts, and Validate checks them in a copy of the folder.
 	ConfigDir   string
 	ConfigFiles map[string][]byte
+	// KeysRequired says the app listed its API keys there for llama-swap
+	// to require. Like APIKey, it's only handed on, in the status.
+	KeysRequired bool
 }
 
 type Options struct {
@@ -325,7 +332,8 @@ func (s *Supervisor) launch() error {
 		name += " " + spec.Version
 	}
 	s.Logf("started %s (pid %d): %s", name, pid, strings.Join(cmd.Args, " "))
-	s.setStatus(Status{State: Running, Pid: pid, Listen: spec.Listen, Version: spec.Version, APIKey: spec.APIKey})
+	s.setStatus(Status{State: Running, Pid: pid, Listen: spec.Listen, Version: spec.Version, APIKey: spec.APIKey,
+		ConfigDir: spec.ConfigDir, KeysRequired: spec.KeysRequired})
 	go r.watchTree()
 	go s.wait(r)
 	return nil

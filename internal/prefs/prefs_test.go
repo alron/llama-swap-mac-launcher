@@ -137,6 +137,13 @@ func TestValidate(t *testing.T) {
 		{"cors origin without a scheme", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"localhost:3000"}}}, false},
 		{"cors origin twice", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"http://a.example", "http://A.example"}}}, false},
 		{"cors maxAge negative", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"http://a.example"}, MaxAge: seconds(-1)}}, false},
+		{"peer URL with a password", Prefs{Peers: []Peer{{Name: "a", URL: "http://user:pass@h", Models: []string{"x"}}}}, false},
+		{"peer URL with a user name", Prefs{Peers: []Peer{{Name: "a", URL: "https://user@h", Models: []string{"x"}}}}, false},
+		{"peer model with DEL", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x\x7f"}}}}, false},
+		{"peer model with a C1 control", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x\u0090"}}}}, false},
+		{"peer model with a tab", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"a\tb"}}}}, false},
+		{"peer model too long", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{strings.Repeat("m", MaxModelID+1)}}}}, false},
+		{"peer model, long but not too long, and odd", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{strings.Repeat("é", MaxModelID), "- a: b #c [d] {e} 'f' \"g\""}}}}, true},
 		{"peer model with a variable", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"${env.X}"}}}}, false},
 	} {
 		if err := tt.p.Validate(); (err == nil) != tt.ok {

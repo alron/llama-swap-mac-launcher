@@ -168,7 +168,7 @@ func TestTildePaths(t *testing.T) {
 	}
 	defer os.Remove(config)
 	p := prefs.Prefs{Config: "~/.lsl-tilde-test.yaml"}
-	if err := checkPaths(p); err != nil {
+	if err := checkPaths(p, t.TempDir()); err != nil {
 		t.Errorf("checkPaths: %v", err)
 	}
 	if p.ConfigPath() != config {
@@ -191,8 +191,10 @@ func TestPrefsFromPeerErrors(t *testing.T) {
 		{"key gone", macos.PeerField{Name: "studio", URL: "http://h", KeyVariable: "GONE", Models: []string{"a"}}, "isn't one of the secret variables"},
 		{"timeout not a number", macos.PeerField{Name: "studio", URL: "http://h", Models: []string{"a"}, ResponseHeader: "ten"}, "isn't a whole number of seconds"},
 		{"timeout negative", macos.PeerField{Name: "studio", URL: "http://h", Models: []string{"a"}, Connect: "-5"}, "isn't a whole number of seconds"},
+		{"key with ${", macos.PeerField{Name: "studio", URL: "http://h", KeyVariable: "SPLICE", Models: []string{"a"}}, "has ${ in it"},
 	} {
-		_, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok, tt.peer}})
+		_, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok, tt.peer},
+			SecretEnv: []macos.SecretField{{Name: "SPLICE", Value: "x${env.OTHER}"}}})
 		if !errors.As(err, new(peerError)) || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: got %v, want a peer error with %q", tt.name, err, tt.want)
 		}
@@ -235,6 +237,22 @@ func TestPrefsFromCORS(t *testing.T) {
 	} {
 		if _, _, err := prefsFrom(f); !errors.As(err, new(corsError)) {
 			t.Errorf("%+v: got %v, want a Security tab error", f, err)
+		}
+	}
+}
+
+// The app's managed folder can't be chosen as the user's own, however it's
+// written.
+func TestOwnFolderIsntTheManagedOne(t *testing.T) {
+	managed := t.TempDir()
+	other := t.TempDir()
+	for _, tt := range []struct {
+		dir  string
+		want bool
+	}{{managed, false}, {managed + "/.", false}, {other, true}} {
+		p := prefs.Prefs{ConfigDirMode: prefs.ConfigDirOwn, ConfigDir: tt.dir}
+		if err := checkPaths(p, managed); (err == nil) != tt.want {
+			t.Errorf("%s: got %v", tt.dir, err)
 		}
 	}
 }

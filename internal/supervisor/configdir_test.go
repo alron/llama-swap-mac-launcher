@@ -97,3 +97,17 @@ func TestWithConfigDir(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// A YAML name in the folder that can't be read fails the check, as it
+// would fail llama-swap's start.
+func TestValidateUnreadableConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	os.Symlink(filepath.Join(dir, "gone.yaml"), filepath.Join(dir, "dangling.yaml"))
+	bin := filepath.Join(t.TempDir(), "llama-swap")
+	os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	err := Validate(Spec{Binary: bin, Args: []string{"-config-dir", dir}, ConfigDir: dir,
+		ConfigFiles: map[string][]byte{"api-keys.yaml": []byte(header)}})
+	if err == nil || !strings.Contains(err.Error(), "dangling.yaml") {
+		t.Errorf("got %v, want an error naming dangling.yaml", err)
+	}
+}

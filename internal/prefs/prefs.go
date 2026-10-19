@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 const DefaultListen = "127.0.0.1:8080"
@@ -164,6 +166,19 @@ func (p Prefs) ManagesPeers() bool {
 // dots, dashes and underscores, starting with a letter or digit.
 var validPeerName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
+// MaxModelID is the longest model ID the app accepts for a peer, in
+// characters: far beyond any real one, short enough to be harmless.
+const MaxModelID = 1000
+
+// UsableModelID reports whether id can name a peer's model in the file the
+// app writes: not empty, no space at either end, no control characters
+// (YAML refuses some even quoted, and a peer could send any), not too
+// long, and no "${", which llama-swap would fill in.
+func UsableModelID(id string) bool {
+	return id != "" && strings.TrimSpace(id) == id && !strings.ContainsFunc(id, unicode.IsControl) &&
+		utf8.RuneCountInString(id) <= MaxModelID && !strings.Contains(id, "${")
+}
+
 // configVariable is a variable name llama-swap fills in as ${env.NAME}.
 var configVariable = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
@@ -192,6 +207,12 @@ func (p Prefs) checkPeers() error {
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.Contains(peer.URL, "${") {
 			return fmt.Errorf("peers: %s's URL %q isn't an http:// or https:// address", peer.Name, peer.URL)
 		}
+		// A password here would be a secret outside the keychain, and
+		// llama-swap's proxy drops it anyway.
+		if u.User != nil {
+			return fmt.Errorf("peers: %s's URL has a user name or password in it. Put the key under Secrets, "+
+				"as a secret variable, and choose that as the peer's key", peer.Name)
+		}
 		for _, t := range []struct {
 			name string
 			v    *int
@@ -203,7 +224,7 @@ func (p Prefs) checkPeers() error {
 		models := map[string]bool{}
 		for _, m := range peer.Models {
 			switch {
-			case strings.TrimSpace(m) != m || m == "" || strings.ContainsAny(m, "\n\r") || strings.Contains(m, "${"):
+			case !UsableModelID(m):
 				return fmt.Errorf("peers: %s has a model named %q, which llama-swap can't use", peer.Name, m)
 			case models[m]:
 				return fmt.Errorf("peers: %s lists %s twice", peer.Name, m)

@@ -63,6 +63,14 @@ func stopsRequiringKeys(old, p prefs.Prefs) bool {
 	return exposed(p.ListenAddr()) && required(old) && !required(p)
 }
 
+// opensWithUnlistedKeys reports whether going from old to p opens
+// llama-swap to other machines while the app has API keys but isn't
+// listing them for llama-swap to require. They protect it only if its own
+// config lists them, which the app can't see, so the Save is confirmed.
+func opensWithUnlistedKeys(old, p prefs.Prefs) bool {
+	return exposed(p.ListenAddr()) && !exposed(old.ListenAddr()) && len(p.APIKeys) > 0 && !p.ManagesAPIKeys()
+}
+
 // opensWithoutKey reports whether going from old to p opens llama-swap to
 // other machines with no API key, so the Save is worth confirming. It's
 // asked once, when that starts, not on every Save after.

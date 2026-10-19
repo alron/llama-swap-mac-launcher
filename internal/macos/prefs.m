@@ -304,6 +304,13 @@ static NSString *newKey(void) {
 		[NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES
 		                                         attributes:@{NSFilePosixPermissions : @0700} error:nil];
 	}
+	// Only a folder: opening a file would run whatever opens it, as a
+	// double-click would, and a path typed by hand could name one.
+	BOOL folder = NO;
+	if (![NSFileManager.defaultManager fileExistsAtPath:dir isDirectory:&folder] || !folder) {
+		NSBeep();
+		return;
+	}
 	[NSWorkspace.sharedWorkspace openURL:[NSURL fileURLWithPath:dir isDirectory:YES]];
 }
 // dirModeChanged sets up the field for the folder chosen in the menu: the
@@ -453,10 +460,28 @@ static NSTextField *field(NSString *value, NSString *placeholder, CGFloat width)
 // area is a multi-line field, for one argument or variable per line. It
 // uses a fixed-width font, and turns off smart quotes and dashes, so what's
 // typed is exactly what llama-swap gets. The controller handles its Tab key.
+// minWidth gives v a width of w that a tab may stretch: at least w, and w
+// unless something wider asks (see stretched).
+static void minWidth(NSView *v, CGFloat w) {
+	[v.widthAnchor constraintGreaterThanOrEqualToConstant:w].active = YES;
+	NSLayoutConstraint *natural = [v.widthAnchor constraintEqualToConstant:w];
+	natural.priority = NSLayoutPriorityDefaultLow;
+	natural.active = YES;
+}
+
+// stretched makes views as wide as stack, on a tab that fills the dialog's
+// width (see padded): the dialog is as wide as its widest tab, and a list
+// on a narrower one would otherwise leave an empty band beside it.
+static void stretched(NSStackView *stack, NSArray<NSView *> *views) {
+	for (NSView *v in views) {
+		[v.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+	}
+}
+
 static NSScrollView *area(NSString *value, LSLPrefsController *controller, NSTextView **text) {
 	NSScrollView *scroll = [NSTextView scrollableTextView];
 	scroll.borderType = NSBezelBorder;
-	[scroll.widthAnchor constraintEqualToConstant:420].active = YES;
+	minWidth(scroll, 420);
 	[scroll.heightAnchor constraintEqualToConstant:64].active = YES;
 	NSTextView *t = scroll.documentView;
 	t.string = value;
@@ -539,7 +564,7 @@ static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *val
 	scroll.documentView = table;
 	scroll.hasVerticalScroller = YES;
 	scroll.borderType = NSBezelBorder;
-	[scroll.widthAnchor constraintEqualToConstant:540].active = YES;
+	minWidth(scroll, 540);
 	[scroll.heightAnchor constraintEqualToConstant:height].active = YES;
 
 	t.show = [NSButton buttonWithTitle:@"Show" target:t action:@selector(showValue:)];
@@ -551,28 +576,32 @@ static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *val
 		[buttons addObject:[NSButton buttonWithTitle:@"Generate" target:t action:@selector(generate:)]];
 	}
 	[buttons addObject:t.show];
-	return column(@[ scroll, row(buttons) ]);
+	NSStackView *v = column(@[ scroll, row(buttons) ]);
+	stretched(v, @[ scroll ]);
+	return v;
 }
 
 // padded puts view in a container with a margin, pinned to its top left,
-// so a tab shows it there rather than stretched to the tab's size.
-static NSView *padded(NSView *view) {
+// so a tab shows it there rather than stretched to the tab's size; with
+// wide, it's as wide as the tab, so lists on it can fill it (stretched).
+static NSView *padded(NSView *view, BOOL wide) {
 	NSView *box = [[NSView alloc] init];
 	view.translatesAutoresizingMaskIntoConstraints = NO;
 	[box addSubview:view];
 	[NSLayoutConstraint activateConstraints:@[
 		[view.leadingAnchor constraintEqualToAnchor:box.leadingAnchor constant:16],
 		[view.topAnchor constraintEqualToAnchor:box.topAnchor constant:16],
-		[box.trailingAnchor constraintGreaterThanOrEqualToAnchor:view.trailingAnchor constant:16],
+		wide ? [box.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:16]
+		     : [box.trailingAnchor constraintGreaterThanOrEqualToAnchor:view.trailingAnchor constant:16],
 		[box.bottomAnchor constraintGreaterThanOrEqualToAnchor:view.bottomAnchor constant:16],
 	]];
 	return box;
 }
 
-static NSTabViewItem *tab(NSString *identifier, NSString *title, NSView *view) {
+static NSTabViewItem *tab(NSString *identifier, NSString *title, NSView *view, BOOL wide) {
 	NSTabViewItem *item = [[NSTabViewItem alloc] initWithIdentifier:identifier];
 	item.label = title;
-	item.view = padded(view);
+	item.view = padded(view, wide);
 	return item;
 }
 
@@ -894,7 +923,7 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 	__weak NSMutableDictionary *weakPeer = peer;
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
 		char *reply = lsl_fetch_peer_models((char *)url.UTF8String, (char *)key.UTF8String);
-		NSString *json = reply != NULL ? [NSString stringWithUTF8String:reply] : @"{}";
+		NSString *json = reply != NULL ? str(reply) : @"{}";
 		free(reply);
 		main_async(^{
 			[weak fetched:json forPeer:weakPeer];
@@ -932,7 +961,13 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 	if (peer == self.selected) {
 		[self applyFilter];
 	}
-	[self say:[NSString stringWithFormat:@"It serves %lu models; %lu new, unticked.", (unsigned long)ids.count, (unsigned long)added]];
+	NSInteger skipped = [reply[@"skipped"] isKindOfClass:[NSNumber class]] ? [reply[@"skipped"] integerValue] : 0;
+	NSString *message = [NSString stringWithFormat:@"It serves %lu models; %lu new, unticked.", (unsigned long)ids.count, (unsigned long)added];
+	if (skipped > 0) {
+		message = [message stringByAppendingFormat:@" %ld left out, with names llama-swap's config can't take "
+		                                           @"(control characters, or too long).", (long)skipped];
+	}
+	[self say:message];
 }
 
 - (void)addPeer:(id)sender {
@@ -999,7 +1034,7 @@ static NSView *peersTab(LSLPeers *p) {
 	peerScroll.documentView = table;
 	peerScroll.hasVerticalScroller = YES;
 	peerScroll.borderType = NSBezelBorder;
-	[peerScroll.widthAnchor constraintEqualToConstant:540].active = YES;
+	minWidth(peerScroll, 540);
 	[peerScroll.heightAnchor constraintEqualToConstant:80].active = YES;
 	NSButton *add = smallButton(NSImageNameAddTemplate, @"Add a peer", p, @selector(addPeer:));
 	NSButton *remove = smallButton(NSImageNameRemoveTemplate, @"Remove the selected peer", p, @selector(removePeer:));
@@ -1025,8 +1060,11 @@ static NSView *peersTab(LSLPeers *p) {
 	p.status = [NSTextField wrappingLabelWithString:@" \n "];
 	p.status.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
 	p.status.textColor = NSColor.secondaryLabelColor;
+	// Wraps, and truncates only the second line: a truncating line break
+	// mode would keep it to one.
 	p.status.maximumNumberOfLines = 2;
-	p.status.lineBreakMode = NSLineBreakByTruncatingTail;
+	p.status.lineBreakMode = NSLineBreakByWordWrapping;
+	p.status.cell.truncatesLastVisibleLine = YES;
 	p.status.preferredMaxLayoutWidth = 540;
 
 	NSTableView *list = [[NSTableView alloc] init];
@@ -1047,7 +1085,7 @@ static NSView *peersTab(LSLPeers *p) {
 	listScroll.documentView = list;
 	listScroll.hasVerticalScroller = YES;
 	listScroll.borderType = NSBezelBorder;
-	[listScroll.widthAnchor constraintEqualToConstant:540].active = YES;
+	minWidth(listScroll, 540);
 	[listScroll.heightAnchor constraintEqualToConstant:150].active = YES;
 
 	NSButton *tick = [NSButton buttonWithTitle:@"Tick All Shown" target:p action:@selector(tickShown:)];
@@ -1089,7 +1127,7 @@ static NSView *peersTab(LSLPeers *p) {
 	p.detail = @[ remove, p.key, p.responseHeader, p.connect, p.keepalive, p.filter, p.fetch, list, tick, untick, p.addField, addModel ];
 	p.all = @[ table, add ];
 
-	NSTextField *keyHint = label(@"one of the secret variables on the Secrets tab, or None");
+	NSTextField *keyHint = label(@"a secret variable (Secrets tab), sent to this peer with every request");
 	keyHint.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
 	keyHint.textColor = NSColor.secondaryLabelColor;
 	NSTextField *title = label(@"Peers");
@@ -1110,6 +1148,7 @@ static NSView *peersTab(LSLPeers *p) {
 	]);
 	[v setCustomSpacing:12 afterView:v.views[3]];
 	[v setCustomSpacing:12 afterView:v.views[5]];
+	stretched(v, @[ peerScroll, listScroll ]);
 	return v;
 }
 
@@ -1159,8 +1198,10 @@ char *lsl_preferences(const char *json, int *result) {
 			@[ label(@"llama-swap binary:"), row(@[ c.binary, chooseBinary ]) ],
 			@[ empty, hint(@"Leave empty to look in the usual install locations.") ],
 			@[ label(@"Config file:"), row(@[ c.config, chooseConfig ]) ],
-			@[ label(@"Config folder:"), c.dirMode ],
-			@[ empty, row(@[ c.configDir, c.chooseDir, c.showDir ]) ],
+			// Show in Finder beside the menu, so the folder's row is no wider
+			// than the binary's and config's, which set the dialog's width.
+			@[ label(@"Config folder:"), row(@[ c.dirMode, c.showDir ]) ],
+			@[ empty, row(@[ c.configDir, c.chooseDir ]) ],
 			@[ empty, hint(@"llama-swap also reads the folder's .yaml files. Managed by the app is a folder the app keeps "
 			                @"for the settings it writes for llama-swap, such as Require these keys (Secrets tab).") ],
 			@[ empty, watch ],
@@ -1177,6 +1218,20 @@ char *lsl_preferences(const char *json, int *result) {
 			@[ empty, autoStart ],
 		]);
 		topAligned(general, 9);
+		// args has no field any more (TODO item 34), but it still changes
+		// what llama-swap runs, so it's shown when there are any.
+		NSString *extra = [[string(in, @"args") componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]
+			componentsJoinedByString:@" "];
+		extra = [extra stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+		if (extra.length > 0) {
+			NSTextField *args = label(extra);
+			args.textColor = NSColor.secondaryLabelColor;
+			args.lineBreakMode = NSLineBreakByTruncatingMiddle;
+			args.toolTip = extra;
+			[args.widthAnchor constraintLessThanOrEqualToConstant:420].active = YES;
+			[general addRowWithViews:@[ label(@"Extra arguments:"), args ]];
+			[general addRowWithViews:@[ empty, hint(@"From prefs.json, for llama-swap flags newer than the app; change them there.") ]];
+		}
 
 		// Logs.
 		c.launcherLog = field(string(in, @"launcherLog"), string(in, @"defaultLauncherLog"), 340);
@@ -1249,6 +1304,7 @@ char *lsl_preferences(const char *json, int *result) {
 			hint(@"All of these are kept in your login keychain."),
 		]);
 		[secrets setCustomSpacing:16 afterView:secrets.views[5]];
+		stretched(secrets, @[ secrets.views[1], secrets.views[7] ]); // the two tables
 
 		// Security: which web pages may use llama-swap.
 		NSTextField *webTitle = label(@"Web pages");
@@ -1283,6 +1339,7 @@ char *lsl_preferences(const char *json, int *result) {
 		[security setCustomSpacing:12 afterView:security.views[1]];
 		[security setCustomSpacing:12 afterView:security.views[4]];
 		[security setCustomSpacing:12 afterView:security.views[7]];
+		stretched(security, @[ originsArea ]);
 
 		// Peers.
 		c.peers = [[LSLPeers alloc] initWithRows:in[@"peers"]];
@@ -1293,11 +1350,11 @@ char *lsl_preferences(const char *json, int *result) {
 		// The tabs, sized to fit the larger page: an alert sizes itself to
 		// its accessory view's frame.
 		NSTabView *tabs = [[NSTabView alloc] init];
-		[tabs addTabViewItem:tab(@"general", @"General", general)];
-		[tabs addTabViewItem:tab(@"secrets", @"Secrets", secrets)];
-		[tabs addTabViewItem:tab(@"peers", @"Peers", peersView)];
-		[tabs addTabViewItem:tab(@"security", @"Security", security)];
-		[tabs addTabViewItem:tab(@"logs", @"Logs", logs)];
+		[tabs addTabViewItem:tab(@"general", @"General", general, NO)];
+		[tabs addTabViewItem:tab(@"secrets", @"Secrets", secrets, YES)];
+		[tabs addTabViewItem:tab(@"peers", @"Peers", peersView, YES)];
+		[tabs addTabViewItem:tab(@"security", @"Security", security, YES)];
+		[tabs addTabViewItem:tab(@"logs", @"Logs", logs, NO)];
 		NSSize content = NSZeroSize;
 		for (NSTabViewItem *item in tabs.tabViewItems) {
 			NSSize s = item.view.fittingSize;
@@ -1305,7 +1362,19 @@ char *lsl_preferences(const char *json, int *result) {
 		}
 		tabs.frame = NSMakeRect(0, 0, 100, 100);
 		NSSize chrome = NSMakeSize(100 - tabs.contentRect.size.width, 100 - tabs.contentRect.size.height);
-		tabs.frame = NSMakeRect(0, 0, content.width + chrome.width, content.height + chrome.height);
+		// Whole points: the pages' fitting sizes can be fractional, and the
+		// tab labels, centred across the top, then land between pixels and
+		// look blurred.
+		tabs.frame = NSMakeRect(0, 0, ceil(content.width + chrome.width), ceil(content.height + chrome.height));
+		// The labels are centred: with an odd difference between their
+		// width and the tab view's, they'd sit half a point off, so the
+		// tab view is made a point wider.
+		[tabs layoutSubtreeIfNeeded];
+		for (NSView *v in tabs.subviews) {
+			if ([v isKindOfClass:[NSSegmentedControl class]] && v.frame.origin.x != floor(v.frame.origin.x)) {
+				tabs.frame = NSMakeRect(0, 0, tabs.frame.size.width + 1, tabs.frame.size.height);
+			}
+		}
 		if (c.peers.peers.count > 0) {
 			[c.peers.table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
 		}

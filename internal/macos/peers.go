@@ -18,12 +18,13 @@ import (
 
 var (
 	fetcherMu sync.Mutex
-	fetcher   func(url, key string) ([]string, error)
+	fetcher   func(url, key string) ([]string, int, error)
 )
 
 // SetPeerModelsFetcher sets what Fetch models runs: given a peer's URL and
-// its key ("" for none), it returns the peer's models.
-func SetPeerModelsFetcher(f func(url, key string) ([]string, error)) {
+// its key ("" for none), it returns the peer's models, and how many it left
+// out because their names couldn't be used.
+func SetPeerModelsFetcher(f func(url, key string) ([]string, int, error)) {
 	fetcherMu.Lock()
 	defer fetcherMu.Unlock()
 	fetcher = f
@@ -35,17 +36,18 @@ func lsl_fetch_peer_models(url, key *C.char) *C.char {
 	f := fetcher
 	fetcherMu.Unlock()
 	var reply struct {
-		Models []string `json:"models"`
-		Error  string   `json:"error,omitempty"`
+		Models  []string `json:"models"`
+		Skipped int      `json:"skipped"`
+		Error   string   `json:"error,omitempty"`
 	}
-	models, err := []string(nil), errors.New("fetching isn't set up")
+	models, skipped, err := []string(nil), 0, errors.New("fetching isn't set up")
 	if f != nil {
-		models, err = f(C.GoString(url), C.GoString(key))
+		models, skipped, err = f(C.GoString(url), C.GoString(key))
 	}
 	if err != nil {
 		reply.Error = err.Error()
 	}
-	reply.Models = models
+	reply.Models, reply.Skipped = models, skipped
 	b, _ := json.Marshal(reply) // strings always marshal
 	return C.CString(string(b))
 }

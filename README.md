@@ -397,6 +397,12 @@ set to **Managed by the app**:
 
 The app writes them to `peers.yaml` in its config folder each time it
 starts llama-swap; the key goes in as `${env.NAME}`, never the key itself.
+llama-swap sends that key to the peer with every request, so choose a
+variable meant for that peer. With an `http://` URL, the key crosses the
+network unencrypted, as llama-swap's own keys do (see [Security](#security)).
+A user name or password in the URL is refused: put the key under Secrets
+instead. Fetch Models doesn't follow a redirect, since it would carry the
+key elsewhere; give the address the peer redirects to.
 Another llama-swap also lists its own peers' models; Fetch Models leaves
 those out.
 
@@ -430,7 +436,10 @@ The last three apply only while the first is ticked, as llama-swap requires.
 
 **This isn't a lock.** A page that isn't listed can't read llama-swap's
 replies, or send it JSON, but it can still send a simple request, such as
-an unload. API keys stop that; see [API keys](#api-keys).
+an unload. API keys stop that; see [API keys](#api-keys). One exception: a
+browser that's logged in to llama-swap's UI may send that login along with
+another page's request, so on a Mac where the UI is used from a browser,
+keys don't fully protect against pages open in that same browser.
 
 The app writes this to `security.yaml` in its config folder. Pages your own
 config lists in `security.cors.allowedOrigins` are allowed too, but a switch

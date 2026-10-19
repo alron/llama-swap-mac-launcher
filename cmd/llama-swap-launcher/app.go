@@ -134,7 +134,7 @@ func (a *app) onReady() {
 	a.quitItem = systray.AddMenuItem("Quit", "")
 	// Without this, no menu item (not even Quit) works while a dialog is open.
 	// Settings' Fetch Models asks a peer for its models from Go.
-	macos.SetPeerModelsFetcher(func(url, key string) ([]string, error) {
+	macos.SetPeerModelsFetcher(func(url, key string) ([]string, int, error) {
 		return fetchPeerModels(context.Background(), url, key)
 	})
 	if !macos.MenuWorksDuringDialogs() {
@@ -359,6 +359,8 @@ func (a *app) spec() (supervisor.Spec, error) {
 		APIKey:      appKey,
 		ConfigDir:   dir,
 		ConfigFiles: files,
+		// What the keys file just made lists, for the status.
+		KeysRequired: p.ConfigDirSetting() == prefs.ConfigDirManaged && p.ManagesAPIKeys() && len(p.APIKeys) > 0,
 	}, nil
 }
 

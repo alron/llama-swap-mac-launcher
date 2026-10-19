@@ -117,29 +117,70 @@ func TestFetchPeerModels(t *testing.T) {
 				{"id":"farther/far-1","meta":{"llamaswap":{"peerID":"farther","type":"peer"}}},
 				{"id":"Alpha-31b"},
 				{"id":"org/beta"},
+				{"id":"bad\u007f"},
+				{"id":"tab\there"},
 				{"id":"zeta-7b"}]}`))
 		}
 	}))
 	defer srv.Close()
 
-	ids, err := fetchPeerModels(context.Background(), srv.URL+"/api/", "sk-peer")
+	ids, skipped, err := fetchPeerModels(context.Background(), srv.URL+"/api/", "sk-peer")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"Alpha-31b", "org/beta", "zeta-7b"}; !slices.Equal(ids, want) {
-		t.Errorf("got %q, want %q", ids, want)
+	if want := []string{"Alpha-31b", "org/beta", "zeta-7b"}; !slices.Equal(ids, want) || skipped != 2 {
+		t.Errorf("got %q, %d left out; want %q, 2", ids, skipped, want)
 	}
 	if gotAuth != "Bearer sk-peer" {
 		t.Errorf("Authorization: %q", gotAuth)
 	}
 
-	if _, err := fetchPeerModels(context.Background(), srv.URL+"/api", ""); err == nil || !strings.Contains(err.Error(), "wants an API key") {
+	if _, _, err := fetchPeerModels(context.Background(), srv.URL+"/api", ""); err == nil || !strings.Contains(err.Error(), "wants an API key") {
 		t.Errorf("without a key: got %v", err)
 	}
-	if _, err := fetchPeerModels(context.Background(), srv.URL+"/api", "wrong"); err == nil || !strings.Contains(err.Error(), "didn't accept the key") {
+	if _, _, err := fetchPeerModels(context.Background(), srv.URL+"/api", "wrong"); err == nil || !strings.Contains(err.Error(), "didn't accept the key") {
 		t.Errorf("with the wrong key: got %v", err)
 	}
-	if _, err := fetchPeerModels(context.Background(), srv.URL+"/elsewhere", ""); err == nil || !strings.Contains(err.Error(), "HTTP 404") {
+	withPassword := strings.Replace(srv.URL, "http://", "http://user:pass@", 1) + "/api"
+	gotAuth = ""
+	if _, _, err := fetchPeerModels(context.Background(), withPassword, ""); err == nil || !strings.Contains(err.Error(), "user name or password") || gotAuth != "" {
+		t.Errorf("a URL with a password: got %v, and the peer was sent %q", err, gotAuth)
+	}
+	if _, _, err := fetchPeerModels(context.Background(), srv.URL+"/elsewhere", ""); err == nil || !strings.Contains(err.Error(), "HTTP 404") {
 		t.Errorf("not there: got %v", err)
+	}
+}
+
+// A redirect isn't followed: the key would go with it, x-api-key included,
+// wherever the peer points.
+func TestFetchPeerModelsNoRedirects(t *testing.T) {
+	var reached []string
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = append(reached, r.Header.Get("x-api-key")+" "+r.Header.Get("Authorization"))
+		w.Write([]byte(`{"data":[{"id":"m"}]}`))
+	}))
+	defer elsewhere.Close()
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/other/v1/models":
+			http.Redirect(w, r, elsewhere.URL+"/v1/models", http.StatusFound)
+		case "/same/v1/models":
+			http.Redirect(w, r, "/moved/v1/models", http.StatusMovedPermanently)
+		default:
+			w.Write([]byte(`{"data":[{"id":"m"}]}`))
+		}
+	}))
+	defer peer.Close()
+
+	_, _, err := fetchPeerModels(context.Background(), peer.URL+"/other", "sk-secret")
+	if err == nil || !strings.Contains(err.Error(), "redirects to "+elsewhere.URL+"/v1/models") {
+		t.Errorf("to another server: got %v", err)
+	}
+	if len(reached) != 0 {
+		t.Errorf("the other server was reached with %q", reached)
+	}
+	_, _, err = fetchPeerModels(context.Background(), peer.URL+"/same", "sk-secret")
+	if err == nil || !strings.Contains(err.Error(), "redirects to "+peer.URL+"/moved/v1/models") || !strings.Contains(err.Error(), "HTTP 301") {
+		t.Errorf("on the same server: got %v", err)
 	}
 }

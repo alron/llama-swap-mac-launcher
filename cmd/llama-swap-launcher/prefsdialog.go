@@ -71,7 +71,7 @@ func (a *app) editPreferences(tab string) (restart bool) {
 		}
 		p, secrets, err := prefsFrom(edited)
 		if err == nil {
-			err = checkPaths(p)
+			err = checkPaths(p, a.paths.ManagedConfigDir())
 		}
 		if err != nil {
 			form = edited
@@ -97,6 +97,15 @@ func (a *app) editPreferences(tab string) (restart bool) {
 				"anyone who can reach it, on this network or any other this Mac joins, can use it: run and unload "+
 				"models, and read its logs. To require a key, add one under Secrets, and list it in llama-swap's "+
 				`config as apiKeys: ["${env.`+prefs.KeyPrefix+`NAME}"].`,
+			"Save Anyway", "Back") {
+			form = edited
+			form.Error = ""
+			form.Tab = "general"
+			continue
+		} else if opensWithUnlistedKeys(old, p) && !macos.Confirm("Open llama-swap to the network?",
+			"Listening on "+p.ListenAddr()+", llama-swap can be reached from other machines. The app has API keys, "+
+				"but isn't listing them for llama-swap (Require these keys in llama-swap, on the Secrets tab, is off), "+
+				"so they protect it only if its own config lists them. Otherwise anyone who can reach it can use it.",
 			"Save Anyway", "Back") {
 			form = edited
 			form.Error = ""
@@ -303,6 +312,9 @@ func prefsFrom(f macos.PreferencesForm) (prefs.Prefs, map[string]string, error) 
 			return p, nil, secretError{fmt.Errorf("API keys: %s has no key. Type or paste one, or use Generate", v)}
 		case strings.ContainsFunc(value, unicode.IsSpace):
 			return p, nil, secretError{fmt.Errorf("API keys: %s's key has spaces in it", v)}
+		case strings.Contains(value, "${"):
+			// llama-swap fills in ${…} in its config, values included.
+			return p, nil, secretError{fmt.Errorf("API keys: %s's key has ${ in it, which llama-swap would try to fill in", v)}
 		}
 		secrets[v] = value
 		p.APIKeys = append(p.APIKeys, name)
@@ -351,6 +363,11 @@ func prefsFrom(f macos.PreferencesForm) (prefs.Prefs, map[string]string, error) 
 		}
 		if peer.Timeouts.KeepAlive, err = timeoutFrom(peer.Name, "keep-alive", f.KeepAlive, prefs.DefaultKeepAlive); err != nil {
 			return p, nil, err
+		}
+		if strings.Contains(secrets[peer.KeyVariable], "${") {
+			// llama-swap fills in ${…} in the key it sends.
+			return p, nil, peerError{fmt.Errorf("peers: %s's key, the secret variable %s, has ${ in it, which llama-swap would try to fill in",
+				peer.Name, peer.KeyVariable)}
 		}
 		p.Peers = append(p.Peers, peer)
 	}
@@ -453,6 +470,20 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 	return p, nil
 }
 
+// sameFolder reports whether a and b are the same folder, however each is
+// written.
+func sameFolder(a, b string) (bool, error) {
+	ia, err := os.Stat(a)
+	if err != nil {
+		return false, err
+	}
+	ib, err := os.Stat(b)
+	if err != nil {
+		return false, err
+	}
+	return os.SameFile(ia, ib), nil
+}
+
 // sentence capitalizes s's first letter, for showing an error on its own.
 func sentence(s string) string {
 	r := []rune(s)
@@ -474,11 +505,16 @@ func lines(s string) []string {
 }
 
 // checkPaths checks that the binary, config and config folder, if set,
-// are there.
-func checkPaths(p prefs.Prefs) error {
+// are there, and that the user's own folder isn't the app's managed one,
+// whose files would then apply with their settings greyed out.
+func checkPaths(p prefs.Prefs, managed string) error {
 	if p.ConfigDirSetting() == prefs.ConfigDirOwn {
-		if info, err := os.Stat(p.ConfigDirPath("")); err != nil || !info.IsDir() {
+		dir := p.ConfigDirPath("")
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			return fmt.Errorf("config folder: %s isn't a folder", p.ConfigDir)
+		}
+		if same, err := sameFolder(dir, managed); err == nil && same {
+			return errors.New("config folder: that's the app's own folder; choose Managed by the app instead")
 		}
 	}
 	if p.Binary != "" && !supervisor.IsExecutable(p.BinaryPath()) {

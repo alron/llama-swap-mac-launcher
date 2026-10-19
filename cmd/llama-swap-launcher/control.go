@@ -14,7 +14,6 @@ import (
 
 	"github.com/alron/llama-swap-mac-launcher/internal/control"
 	"github.com/alron/llama-swap-mac-launcher/internal/health"
-	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
 	"github.com/alron/llama-swap-mac-launcher/internal/supervisor"
 )
 
@@ -338,8 +337,14 @@ func (a *app) controlStatus() *control.Status {
 		LauncherLog: launcherLog,
 		Models:      []control.Model{},
 	}
-	s.ManagedConfig = p.ConfigDirSetting() == prefs.ConfigDirManaged
-	s.APIKeysRequired = p.ManagesAPIKeys() && len(p.APIKeys) > 0
+	// The folder and keys of the llama-swap that's running, which a Save
+	// since doesn't change; the preferences only while none is.
+	if st.State == supervisor.Running {
+		s.ConfigDir, s.APIKeysRequired = st.ConfigDir, st.KeysRequired
+	} else {
+		s.APIKeysRequired = p.ManagesAPIKeys() && len(p.APIKeys) > 0
+	}
+	s.ManagedConfig = s.ConfigDir != "" && s.ConfigDir == a.paths.ManagedConfigDir()
 	a.mu.Lock()
 	s.LastGPUFault = a.lastFault
 	a.mu.Unlock()

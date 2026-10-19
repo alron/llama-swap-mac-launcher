@@ -77,7 +77,10 @@ func stageConfigDir(spec Spec) (string, error) {
 		}
 		data, err := os.ReadFile(filepath.Join(spec.ConfigDir, name)) // #nosec G304 -- a file in llama-swap's config folder
 		if err != nil {
-			continue // a symlink to nothing, say; llama-swap will report it when it starts
+			// A symlink to nothing, or to a folder: llama-swap would fail
+			// on it too, so the check fails here rather than the start.
+			_ = os.RemoveAll(tmp) // best effort
+			return "", fmt.Errorf("llama-swap would read %s, and it can't be read: %w", filepath.Join(spec.ConfigDir, name), err)
 		}
 		files[name] = data
 	}

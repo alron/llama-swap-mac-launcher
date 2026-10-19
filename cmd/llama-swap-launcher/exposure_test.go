@@ -171,3 +171,27 @@ func TestSecurityFile(t *testing.T) {
 		}
 	}
 }
+
+func TestOpensWithUnlistedKeys(t *testing.T) {
+	local := prefs.Prefs{Listen: "127.0.0.1:8080", APIKeys: []string{"A"}}
+	open := local
+	open.Listen = "0.0.0.0:8080"
+	listed := open
+	listed.ConfigDirMode, listed.ManageAPIKeys = prefs.ConfigDirManaged, true
+	noKeys := open
+	noKeys.APIKeys = nil
+	for _, tt := range []struct {
+		name   string
+		old, p prefs.Prefs
+		want   bool
+	}{
+		{"opened with keys the app doesn't list", local, open, true},
+		{"opened with the keys listed", local, listed, false},
+		{"opened with no keys (the other question)", local, noKeys, false},
+		{"already open", open, open, false},
+	} {
+		if got := opensWithUnlistedKeys(tt.old, tt.p); got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}

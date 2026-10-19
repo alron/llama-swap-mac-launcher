@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/alron/llama-swap-mac-launcher/internal/control"
 	"github.com/alron/llama-swap-mac-launcher/internal/health"
+	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
 	"github.com/alron/llama-swap-mac-launcher/internal/supervisor"
 )
 
@@ -124,6 +126,17 @@ func escapeModel(id string) string {
 	return strings.Join(parts, "/")
 }
 
+// noRedirects is the client for Fetch Models: direct, but a redirect comes
+// back as it is. The request carries the peer's key, and Go drops only
+// Authorization when a redirect leaves the host, not x-api-key, so
+// following one could hand the key to wherever the peer points. llama-swap's
+// own proxy never follows a redirect either; a peer behind a load balancer
+// should be reached through it, at one address.
+var noRedirects = &http.Client{
+	Transport:     direct.Transport,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
 // fetchTimeout bounds Fetch models in Settings: long enough for a provider
 // with a big list, short enough for a peer that's switched off.
 const fetchTimeout = 15 * time.Second
@@ -134,35 +147,48 @@ const fetchTimeout = 15 * time.Second
 // peers' models, marked as such (meta.llamaswap.type "peer"); those are
 // left out, since a chain of peers is for the user to set up by hand. The
 // key, if any, is sent as llama-swap sends it to peers. The IDs come back
-// sorted, for finding one in a long list.
-func fetchPeerModels(ctx context.Context, base, key string) ([]string, error) {
+// sorted, for finding one in a long list, with the number left out because
+// they can't name a model in llama-swap's config (prefs.UsableModelID): a
+// peer could send anything.
+func fetchPeerModels(ctx context.Context, base, key string) (ids []string, skipped int, err error) {
+	// As Save refuses (TODO item 40): Go would send the URL's password as
+	// Basic authentication, a secret outside the keychain.
+	if u, err := url.Parse(base); err == nil && u.User != nil {
+		return nil, 0, errors.New("the URL has a user name or password in it. Put the key under Secrets, " +
+			"as a secret variable, and choose that as the peer's key")
+	}
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/v1/models", nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 		req.Header.Set("x-api-key", key)
 	}
-	resp, err := direct.Do(req)
+	resp, err := noRedirects.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20)) // a long list is still a few MB at most
 	switch {
+	case resp.StatusCode >= 300 && resp.StatusCode < 400:
+		if to, err := resp.Location(); err == nil {
+			return nil, 0, fmt.Errorf("the peer redirects to %s; use that address instead (HTTP %d)", to.Redacted(), resp.StatusCode)
+		}
+		return nil, 0, fmt.Errorf("the peer answered with a redirect (HTTP %d); use the address it moved to", resp.StatusCode)
 	case (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && key == "":
-		return nil, fmt.Errorf("the peer wants an API key (HTTP %d). Choose the secret variable that holds it", resp.StatusCode)
+		return nil, 0, fmt.Errorf("the peer wants an API key (HTTP %d). Choose the secret variable that holds it", resp.StatusCode)
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, fmt.Errorf("the peer didn't accept the key (HTTP %d)", resp.StatusCode)
+		return nil, 0, fmt.Errorf("the peer didn't accept the key (HTTP %d)", resp.StatusCode)
 	case resp.StatusCode != http.StatusOK:
 		msg := llamaSwapError(body)
 		if len(msg) > 300 {
 			msg = msg[:300] + "…"
 		}
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
+		return nil, 0, fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
 	}
 	var list struct {
 		Data []struct {
@@ -175,17 +201,20 @@ func fetchPeerModels(ctx context.Context, base, key string) ([]string, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("its reply isn't a /v1/models list: %w", err)
+		return nil, 0, fmt.Errorf("its reply isn't a /v1/models list: %w", err)
 	}
 	seen := map[string]bool{}
-	ids := []string{}
+	ids = []string{}
 	for _, m := range list.Data {
-		if m.ID == "" || m.Meta.LlamaSwap.Type == "peer" || seen[m.ID] {
-			continue
+		switch {
+		case m.ID == "" || m.Meta.LlamaSwap.Type == "peer" || seen[m.ID]:
+		case !prefs.UsableModelID(m.ID):
+			skipped++
+		default:
+			seen[m.ID] = true
+			ids = append(ids, m.ID)
 		}
-		seen[m.ID] = true
-		ids = append(ids, m.ID)
 	}
 	slices.SortFunc(ids, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
-	return ids, nil
+	return ids, skipped, nil
 }

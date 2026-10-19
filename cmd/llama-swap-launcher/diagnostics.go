@@ -182,6 +182,9 @@ func (a *app) diagnosticSummary(p prefs.Prefs, secrets map[string]string) string
 		line("Config folder", "%s, managed; API keys required: %v", dir, p.ManagesAPIKeys() && len(p.APIKeys) > 0)
 	}
 	line("Reload on change", "%v", p.WatchConfig)
+	if len(p.Args) > 0 {
+		line("Extra arguments", "%s", strings.Join(p.Args, " "))
+	}
 	line("Listen", "%s", p.ListenAddr())
 	launcher, output := a.logs.paths()
 	line("Logs", "launcher %s; llama-swap's output %s", launcher, describeOutput(p.LogMode(), output))
