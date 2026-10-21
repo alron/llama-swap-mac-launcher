@@ -335,6 +335,18 @@ From use after publishing:
     - **Preloading models at startup** (set aside below) belongs with the managed models.
     - **Tailcat** stays later (item 37).
 
+48. **Environment as a table, and the hints on hover** (the maintainer, 2026-10-20; not started).
+    - **Environment:** the General tab's Environment is the only set of name and value pairs typed into a multi-line `NAME=value` field. The API keys and secret variables on the Secrets tab are tables with + and −. The field works, but it's the odd one out, so make it a table like theirs:
+      - `LSLSecretTable` (`prefs.m`) with plain values: no dots and no Show, the value in the same fixed-width font, and the same + and −.
+      - The dialog sends `env` as rows of `name` and `value`, as it does `secretEnv`, so Go keeps every check, and an error names the variable rather than "environment, line 3". `prefs.json` keeps its map, so hand edits are unchanged.
+      - Item 33's advice on quoting a path with spaces moves into the table's tooltip (below). The README's `env` row keeps it, and its Settings intro's "one per line" changes.
+    - **Hints on hover:** most of the grey text under the fields explains what a field is for, and takes room every time the dialog opens. Move it into tooltips on the field and its label, and use the room to tidy the layout.
+      - **Into tooltips:** the explanations, such as "Leave empty to look in the usual install locations", the config folder's, the logs', "Any of the keys works…", "One per line, as the browser shows it…", and the Peers tab's description.
+      - **Kept on screen, shorter if need be:** the warnings, several of them added by security reviews so that they'd be seen: what `0.0.0.0` exposes (item 20), that a peer's key is sent with every request (item 46), and that a web page can still send a simple request such as an unload (item 38). The same goes for the hints that say why something is greyed out ("Needs Config folder: Managed by the app"), which change with the settings.
+      - **Tooltips are easy to miss:** they appear only after a pause and can't be reached from the keyboard. If that proves too hidden, the usual alternative is the round ? button beside a field, opening a popover with the text. Check first that a popover works inside the modal dialog.
+      - The dialog already uses tooltips: the Peers tab's timeout fields explain themselves in them, and the Extra arguments line shows its whole text. Confirm those appear while the dialog is open before moving the rest.
+    - **Then:** run the dialog test program (Components §1) and check for the Tab-order complaints. Every Settings screenshot in the README changes, the General tab's most, so retake them when the maintainer chooses.
+
 Considered for 0.3 and set aside (the maintainer, 2026-10-18):
 - **Preloading models at startup** (`hooks.on_startup.preload`, a list, so it would merge safely): it names models the app doesn't manage, which can change between starts and reloads. It belongs with a managed model config, if one comes. The maintainer has ideas for that, from their own configs, but it needs a fully managed config, macros included; not now.
 - **Single values** such as `logLevel`: llama-swap refuses to load when two files set one differently, so they'd need a "here or in your config, not both" hint. Hold until one is needed.
