@@ -3,6 +3,13 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
+## Unreleased
+
+- Built with Go 1.27.3, which refuses a list of intermediate certificates
+  that are no longer trustworthy, for the few systems whose own trust store
+  hasn't caught up. The app checks certificates only when Fetch Models asks
+  an HTTPS peer what it serves.
+
 ## 0.3.0 (2026-10-18)
 
 The start of the 0.3 series: settings the app manages for llama-swap, so
