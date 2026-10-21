@@ -5,8 +5,7 @@
 name: CI
 
 # Changes to Markdown alone (the README, CLAUDE.md, the changelog) don't
-# run it: nothing here checks them, and macOS minutes are dear while the
-# repository is private.
+# run it: nothing here checks them.
 on:
   push:
     branches: [main]
