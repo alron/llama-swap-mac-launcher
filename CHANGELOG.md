@@ -9,6 +9,7 @@ not published; they're listed for people who had them.
   that are no longer trustworthy, for the few systems whose own trust store
   hasn't caught up. The app checks certificates only when Fetch Models asks
   an HTTPS peer what it serves.
+- Tested with llama-swap v266.
 
 ## 0.3.0 (2026-10-18)
 

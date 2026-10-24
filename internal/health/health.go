@@ -28,7 +28,7 @@ import (
 // API, so the app notes in its log when it runs a newer llama-swap: after
 // an upgrade breaks something, that note is the first clue. Bump it
 // whenever that test passes against a newer release.
-const TestedVersion = 265
+const TestedVersion = 266
 
 // MinimumVersion is the oldest llama-swap release the app is known to work
 // with: v252 added -validate, and older ones lack parts of the API too.

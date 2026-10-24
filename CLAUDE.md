@@ -763,7 +763,7 @@ Releases stay on the development Mac (see Signing, notarization, distribution); 
 
 ## Verify before relying on it
 
-- Checked 2026-10-15: the real-llama-swap tests pass against v265, so `health.TestedVersion` is 265. Its release notes since v262 touch nothing the app uses (events, in-flight requests, activity, unload, upstream health, auth). (Before: v262, 2026-10-04.)
+- Checked 2026-10-24: the real-llama-swap tests pass against v266, so `health.TestedVersion` is 266. Its release notes touch nothing the app uses; the UI's paths became relative (for serving it behind a reverse proxy), and `/ui`, which Open llama-swap UI opens, still redirects to the UI. (Before: v265, 2026-10-15; v262, 2026-10-04.)
 - Checked 2026-09-28 against v260: llama-swap's HTTP endpoints and payloads (see Components §3), the config-watch flag (`-watch-config`) and `-validate`. Checked again 2026-10-02 against the v260 source: the auth-protected route list, the event message types and the flags in Components §3, and that llama-swap handles only SIGINT, SIGTERM and SIGHUP, so SIGPIPE ends it without cleanup.
 - Checked 2026-09-28: llama-swap starts each model server in its own process group (`Setpgid`), so killing llama-swap's group doesn't reach them; `mactop` stays in llama-swap's group. On SIGTERM, llama-swap stops its `llama-server`s itself. On SIGKILL, the `llama-server` is orphaned (parent becomes pid 1) and keeps running. The supervisor therefore snapshots the tree by parent pid before signalling.
 - `fyne.io/systray`: maintenance checked 2026-09-28 (active). Recheck its API when starting milestone 1.
