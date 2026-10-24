@@ -361,6 +361,17 @@ From use after publishing:
       - The work is in the rules. The key the app uses can't be off, nor a variable that a peer that's on uses as its key. A key or variable that's off but still named as `${env.…}` in the user's own config fails llama-swap's check ("environment variable … is not set"), which is right for something switched off, but needs a clear message.
       - The use that would justify it is turning a client's key off for a while, to lock that client out without losing its key.
 
+50. **No restart offer for what a watching llama-swap reloads itself** (the maintainer, 2026-10-24; not started). When "Reload the config when it changes" is on, and the running llama-swap was started with it, a Save should offer a restart only for changes a reload can't pick up. Today `llamaSwapChanged` (`prefsdialog.go`) offers one for any change to a setting llama-swap runs with.
+    - **Still a restart:**
+      - The environment, which llama-swap reads only when it starts: Environment, the secret variables, and the API keys' names and values.
+      - The flags: the binary, the config file, the config folder choice, the listen address, `args`, and the reload checkbox itself.
+      - Whether the running llama-swap watches comes from what was started (the spec, carried in the supervisor's status as `KeysRequired` is; item 44), not from the preferences.
+    - **Left to the reload:** what the app writes in its managed folder (the peers, Require these keys, and the Security tab), when nothing above changed with it.
+    - **This changes when the managed files are written.** Today they're written only just before a launch, after the old llama-swap has stopped, so a watching llama-swap never reads a file naming variables it wasn't started with (item 34). Without a restart, Save writes them instead: checked first in a staged copy with the running llama-swap's environment, then written in place, each through a temporary file and a rename as now. The environment hasn't changed, so the files can only name variables llama-swap already has.
+    - **Check first, against the installed llama-swap:** which sections a reload actually applies. If a reload re-reads `apiKeys`, `peers` and `security.cors` but leaves something as it started (CORS handling set up once, say), the changes it misses keep their restart. Test each by changing the file under a watching llama-swap and seeing it take effect: a 401, the new peer's models in `/v1/models`, a preflight's headers.
+    - **The status:** `llsl status`'s `apiKeysRequired` comes from what llama-swap started with (item 44). After a Save that only reloads, it has to follow what was written.
+    - **A failed reload** logs a warning in llama-swap's output and keeps the old config (item 34), and the app doesn't see it. The staged check makes it unlikely; whether the app watches the output for that warning and reports it is for when it's built.
+
 Considered for 0.3 and set aside (the maintainer, 2026-10-18):
 - **Preloading models at startup** (`hooks.on_startup.preload`, a list, so it would merge safely): it names models the app doesn't manage, which can change between starts and reloads. It belongs with a managed model config, if one comes. The maintainer has ideas for that, from their own configs, but it needs a fully managed config, macros included; not now.
 - **Single values** such as `logLevel`: llama-swap refuses to load when two files set one differently, so they'd need a "here or in your config, not both" hint. Hold until one is needed.
