@@ -35,6 +35,7 @@ func TestFormRoundTrip(t *testing.T) {
 		Peers: []prefs.Peer{
 			{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "GITHUB_TOKEN", Models: []string{"a", "org/b"}},
 			{Name: "open", URL: "https://example.com/api", Models: []string{"x"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: seconds(600), KeepAlive: seconds(0)}},
+			{Name: "away", URL: "http://192.168.1.30:8080", Models: []string{"y"}, Disabled: true},
 		},
 		LauncherLog:      "/tmp/launcher.log",
 		LlamaSwapLog:     prefs.LogToFile,
@@ -70,12 +71,12 @@ func TestPrefsFromKeys(t *testing.T) {
 func TestPrefsFromDefaultsAndBlanks(t *testing.T) {
 	got, _, err := prefsFrom(macos.PreferencesForm{
 		Args: "\n  -log-prefix  \n\n",
-		Env:  "\r\nA=1\r\n",
+		Env:  []macos.SecretField{{Name: " A ", Value: "1"}, {Name: "B", Value: " as typed "}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.Args, []string{"-log-prefix"}) || got.Env["A"] != "1" || len(got.Env) != 1 {
+	if !reflect.DeepEqual(got.Args, []string{"-log-prefix"}) || got.Env["A"] != "1" || got.Env["B"] != " as typed " || len(got.Env) != 2 {
 		t.Errorf("got args %q, env %v", got.Args, got.Env)
 	}
 	if got.HealthCheckSeconds != 0 || got.HealthCheckInterval() != prefs.DefaultHealthCheckSeconds*1e9 {
@@ -89,11 +90,13 @@ func TestPrefsFromErrors(t *testing.T) {
 		form macos.PreferencesForm
 		want string
 	}{
-		{"env without =", macos.PreferencesForm{Env: "A=1\nHF_TOKEN"}, "line 2"},
+		{"env without a name", envForm(macos.SecretField{Name: "A", Value: "1"}, macos.SecretField{Value: "x"}), "row 2"},
+		{"env twice", envForm(macos.SecretField{Name: "A", Value: "1"}, macos.SecretField{Name: "A", Value: "2"}), "listed twice"},
+		{"env with =", envForm(macos.SecretField{Name: "A=B", Value: "1"}), "valid variable name"},
 		{"interval not a number", macos.PreferencesForm{HealthCheckSeconds: "fast"}, "whole number"},
 		{"interval zero", macos.PreferencesForm{HealthCheckSeconds: "0"}, "whole number"},
 		{"bad listen", macos.PreferencesForm{Listen: "localhost"}, "listen"},
-		{"env with the key prefix", macos.PreferencesForm{Env: "LLSL_X=1"}, "kept for API keys"},
+		{"env with the key prefix", envForm(macos.SecretField{Name: "LLSL_X", Value: "1"}), "kept for API keys"},
 		{"key without a name", keysForm(macos.SecretField{Value: "sk"}), "row 1"},
 		{"key name in lower case", keysForm(macos.SecretField{Name: "admin", Value: "sk"}), "LLSL_admin can only"},
 		{"key twice", keysForm(macos.SecretField{Name: "A", Value: "sk"}, macos.SecretField{Name: "A", Value: "sk2"}), "twice"},
@@ -104,7 +107,7 @@ func TestPrefsFromErrors(t *testing.T) {
 		{"secret with the key prefix", varsForm(macos.SecretField{Name: "LLSL_X", Value: "x"}), "kept for API keys"},
 		{"secret without a value", varsForm(macos.SecretField{Name: "HF_TOKEN"}), "HF_TOKEN has no value"},
 		{"secret twice", varsForm(macos.SecretField{Name: "A", Value: "x"}, macos.SecretField{Name: "A", Value: "y"}), "twice"},
-		{"secret also plain", macos.PreferencesForm{Env: "A=1", SecretEnv: []macos.SecretField{{Name: "A", Value: "x"}}}, "Environment on the General tab too"},
+		{"secret also plain", macos.PreferencesForm{Env: []macos.SecretField{{Name: "A", Value: "1"}}, SecretEnv: []macos.SecretField{{Name: "A", Value: "x"}}}, "Environment on the General tab too"},
 		{"log with a relative path", macos.PreferencesForm{LauncherLog: "logs/x.log"}, "isn't a whole path"},
 		{"log in a missing folder", macos.PreferencesForm{LauncherLog: "/no/such/folder/x.log"}, "isn't there"},
 		{"log is a folder", macos.PreferencesForm{LauncherLog: "/tmp"}, "is a folder"},
@@ -134,6 +137,10 @@ func varsForm(vars ...macos.SecretField) macos.PreferencesForm {
 	return macos.PreferencesForm{SecretEnv: vars}
 }
 
+func envForm(env ...macos.SecretField) macos.PreferencesForm {
+	return macos.PreferencesForm{Env: env}
+}
+
 func TestLlamaSwapChanged(t *testing.T) {
 	p := prefs.Defaults()
 	health := p
@@ -155,6 +162,13 @@ func TestLlamaSwapChanged(t *testing.T) {
 	appKey.AppAPIKey = "B"
 	if !llamaSwapChanged(keys, appKey) {
 		t.Error("changing the key the app uses needs llama-swap restarted")
+	}
+	peer := p
+	peer.Peers = []prefs.Peer{{Name: "studio", URL: "http://h", Models: []string{"a"}}}
+	off := peer
+	off.Peers = []prefs.Peer{{Name: "studio", URL: "http://h", Models: []string{"a"}, Disabled: true}}
+	if !llamaSwapChanged(peer, off) {
+		t.Error("turning a peer off needs llama-swap restarted")
 	}
 }
 
@@ -201,6 +215,20 @@ func TestPrefsFromPeerErrors(t *testing.T) {
 	}
 	if _, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok}}); err != nil {
 		t.Errorf("a good peer: %v", err)
+	}
+	// A peer that's off isn't written, so its key's variable may be gone,
+	// or have ${ in it; the rest is still checked.
+	for _, off := range []macos.PeerField{
+		{Name: "studio", URL: "http://h", KeyVariable: "GONE", Models: []string{"a"}, Disabled: true},
+		{Name: "studio", URL: "http://h", KeyVariable: "SPLICE", Models: []string{"a"}, Disabled: true},
+	} {
+		if _, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok, off},
+			SecretEnv: []macos.SecretField{{Name: "SPLICE", Value: "x${env.OTHER}"}}}); err != nil {
+			t.Errorf("a peer that's off, key %s: %v", off.KeyVariable, err)
+		}
+	}
+	if _, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{{Name: "studio", URL: "h:8080", Models: []string{"a"}, Disabled: true}}}); err == nil {
+		t.Error("a peer that's off with a bad URL was accepted")
 	}
 }
 

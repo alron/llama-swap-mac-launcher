@@ -5,6 +5,14 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **Environment** (Settings → General) is a table with **+** and **−**, like
+  the secret variables, rather than a box of `NAME=value` lines. A name
+  listed twice is now refused instead of the last one winning.
+- **Turn a peer off** (Settings → Peers) with the checkbox beside its name,
+  without removing it: llama-swap stops offering its models, and the app
+  keeps everything else for when it's ticked again. Going back to 0.3.0
+  after turning one off means removing `"disabled": true` from
+  `prefs.json` by hand, since older versions refuse keys they don't know.
 - Built with Go 1.27.3, which refuses a list of intermediate certificates
   that are no longer trustworthy, for the few systems whose own trust store
   hasn't caught up. The app checks certificates only when Fetch Models asks

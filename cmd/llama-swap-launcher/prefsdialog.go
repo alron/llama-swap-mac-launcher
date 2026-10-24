@@ -179,6 +179,7 @@ func llamaSwapChanged(old, p prefs.Prefs) bool {
 func samePeer(a, b prefs.Peer) bool {
 	same := func(x, y *int) bool { return (x == nil) == (y == nil) && (x == nil || *x == *y) }
 	return a.Name == b.Name && a.URL == b.URL && a.KeyVariable == b.KeyVariable && slices.Equal(a.Models, b.Models) &&
+		a.Disabled == b.Disabled &&
 		same(a.Timeouts.ResponseHeader, b.Timeouts.ResponseHeader) && same(a.Timeouts.Connect, b.Timeouts.Connect) &&
 		same(a.Timeouts.KeepAlive, b.Timeouts.KeepAlive)
 }
@@ -238,15 +239,15 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 	peers := []macos.PeerField{}
 	for _, peer := range p.Peers {
 		peers = append(peers, macos.PeerField{
-			Name: peer.Name, URL: peer.URL, KeyVariable: peer.KeyVariable, Models: peer.Models,
+			Name: peer.Name, URL: peer.URL, KeyVariable: peer.KeyVariable, Models: peer.Models, Disabled: peer.Disabled,
 			ResponseHeader: shownTimeout(peer.Timeouts.ResponseHeader, prefs.DefaultResponseHeader),
 			Connect:        shownTimeout(peer.Timeouts.Connect, prefs.DefaultConnect),
 			KeepAlive:      shownTimeout(peer.Timeouts.KeepAlive, prefs.DefaultKeepAlive),
 		})
 	}
-	var env []string
+	env := []macos.SecretField{}
 	for _, name := range slices.Sorted(maps.Keys(p.Env)) {
-		env = append(env, name+"="+p.Env[name])
+		env = append(env, macos.SecretField{Name: name, Value: p.Env[name]})
 	}
 	seconds := ""
 	if p.HealthCheckSeconds > 0 {
@@ -257,7 +258,7 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		Config:                    p.Config,
 		Listen:                    p.Listen,
 		Args:                      strings.Join(p.Args, "\n"),
-		Env:                       strings.Join(env, "\n"),
+		Env:                       env,
 		WatchConfig:               p.WatchConfig,
 		ConfigDirMode:             p.ConfigDirSetting(),
 		ConfigDir:                 p.ConfigDir,
@@ -345,7 +346,8 @@ func prefsFrom(f macos.PreferencesForm) (prefs.Prefs, map[string]string, error) 
 	}
 	p.Peers = []prefs.Peer{}
 	for i, f := range f.Peers {
-		peer := prefs.Peer{Name: strings.TrimSpace(f.Name), URL: strings.TrimSpace(f.URL), KeyVariable: f.KeyVariable, Models: f.Models}
+		peer := prefs.Peer{Name: strings.TrimSpace(f.Name), URL: strings.TrimSpace(f.URL), KeyVariable: f.KeyVariable, Models: f.Models,
+			Disabled: f.Disabled}
 		switch {
 		case peer.Name == "":
 			return p, nil, peerError{fmt.Errorf("peers, row %d: give the peer a name", i+1)}
@@ -364,7 +366,7 @@ func prefsFrom(f macos.PreferencesForm) (prefs.Prefs, map[string]string, error) 
 		if peer.Timeouts.KeepAlive, err = timeoutFrom(peer.Name, "keep-alive", f.KeepAlive, prefs.DefaultKeepAlive); err != nil {
 			return p, nil, err
 		}
-		if strings.Contains(secrets[peer.KeyVariable], "${") {
+		if !peer.Disabled && strings.Contains(secrets[peer.KeyVariable], "${") {
 			// llama-swap fills in ${…} in the key it sends.
 			return p, nil, peerError{fmt.Errorf("peers: %s's key, the secret variable %s, has ${ in it, which llama-swap would try to fill in",
 				peer.Name, peer.KeyVariable)}
@@ -453,12 +455,16 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 	if p.ConfigDirMode == prefs.ConfigDirOwn && p.ConfigDir == "" {
 		return p, errors.New("config folder: choose your folder, or pick None or Managed by the app")
 	}
-	for i, line := range lines(f.Env) {
-		name, value, ok := strings.Cut(line, "=")
-		if !ok {
-			return p, fmt.Errorf("environment, line %d: %q needs to be NAME=value", i+1, line)
+	// prefs.Validate checks the names; a value is used exactly as typed.
+	for i, v := range f.Env {
+		name := strings.TrimSpace(v.Name)
+		if name == "" {
+			return p, fmt.Errorf("environment, row %d: give the variable a name", i+1)
 		}
-		p.Env[strings.TrimSpace(name)] = value
+		if _, twice := p.Env[name]; twice {
+			return p, fmt.Errorf("environment: %s is listed twice", name)
+		}
+		p.Env[name] = v.Value
 	}
 	if s := strings.TrimSpace(f.HealthCheckSeconds); s != "" {
 		n, err := strconv.Atoi(s)

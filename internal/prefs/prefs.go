@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -129,6 +130,10 @@ type Peer struct {
 	// Timeouts are those llama-swap's requests to the peer use instead of
 	// its defaults.
 	Timeouts PeerTimeouts `json:"timeouts"`
+	// Disabled keeps the peer in the preferences, but out of llama-swap's
+	// config, as commenting it out would. Only written when it's set, so a
+	// file from before it means every peer is on.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // PeerTimeouts are the peer timeouts the app offers, in seconds, by
@@ -156,9 +161,10 @@ const (
 )
 
 // ManagesPeers reports whether the app writes Peers into llama-swap's
-// config: there are some, and the managed folder is in use.
+// config: some are on, and the managed folder is in use.
 func (p Prefs) ManagesPeers() bool {
-	return len(p.Peers) > 0 && p.ConfigDirSetting() == ConfigDirManaged
+	on := slices.ContainsFunc(p.Peers, func(peer Peer) bool { return !peer.Disabled })
+	return on && p.ConfigDirSetting() == ConfigDirManaged
 }
 
 // validPeerName is a peer name that's safe in a variable-free YAML key and
@@ -182,7 +188,10 @@ func UsableModelID(id string) bool {
 // configVariable is a variable name llama-swap fills in as ${env.NAME}.
 var configVariable = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// checkPeers checks Peers, against the secret variables for their keys.
+// checkPeers checks Peers, against the secret variables for their keys. A
+// peer that's off is checked too, so turning it back on can't fail on
+// what's checked here, except that its key's variable may be gone: removing
+// a secret variable doesn't mean changing a peer that's off first.
 func (p Prefs) checkPeers() error {
 	secret := map[string]bool{}
 	for _, name := range p.SecretEnv {
@@ -195,7 +204,7 @@ func (p Prefs) checkPeers() error {
 			return fmt.Errorf("peers: %q can only have letters, digits, dots, dashes and underscores", peer.Name)
 		case seen[peer.Name]:
 			return fmt.Errorf("peers: %s is listed twice", peer.Name)
-		case peer.KeyVariable != "" && !secret[peer.KeyVariable]:
+		case peer.KeyVariable != "" && !secret[peer.KeyVariable] && !peer.Disabled:
 			return fmt.Errorf("peers: %s's key is %s, which isn't one of the secret variables", peer.Name, peer.KeyVariable)
 		case peer.KeyVariable != "" && !configVariable.MatchString(peer.KeyVariable):
 			return fmt.Errorf("peers: %s's key is %s, but llama-swap's config can only use variables named with letters, digits and underscores", peer.Name, peer.KeyVariable)

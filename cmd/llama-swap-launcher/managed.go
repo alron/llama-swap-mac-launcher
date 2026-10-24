@@ -50,13 +50,16 @@ func apiKeysFile(p prefs.Prefs) []byte {
 // JSON string, which YAML reads as a quoted string, so none of them can be
 // taken for YAML syntax; the preferences refuse "${" in them, which
 // llama-swap would fill in. A key is the secret variable holding it, which
-// llama-swap fills in from its environment.
+// llama-swap fills in from its environment. A peer that's off is left out.
 func peersFile(p prefs.Prefs) []byte {
 	var b strings.Builder
 	b.WriteString(managedHeader)
 	if p.ManagesPeers() {
 		b.WriteString("peers:\n")
 		for _, peer := range p.Peers {
+			if peer.Disabled {
+				continue
+			}
 			fmt.Fprintf(&b, "  %s:\n    proxy: %s\n", quoted(peer.Name), quoted(peer.URL))
 			if peer.KeyVariable != "" {
 				fmt.Fprintf(&b, "    apiKey: %s\n", quoted("${env."+peer.KeyVariable+"}"))

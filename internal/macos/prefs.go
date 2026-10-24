@@ -19,19 +19,19 @@ import (
 // preferences as text, as they appear in its fields. Checking the text is
 // up to the caller.
 type PreferencesForm struct {
-	Binary                    string `json:"binary"`
-	Config                    string `json:"config"`
-	Listen                    string `json:"listen"`
-	Args                      string `json:"args"` // one per line; not shown, only kept
-	Env                       string `json:"env"`  // NAME=value, one per line
-	WatchConfig               bool   `json:"watchConfig"`
-	ConfigDirMode             string `json:"configDirMode"` // "off", "own" or "managed"
-	ConfigDir                 string `json:"configDir"`
-	HealthCheckSeconds        string `json:"healthCheckSeconds"`
-	HealthCheckSkipWhenActive bool   `json:"healthCheckSkipWhenActive"`
-	UnloadOnGPUFault          bool   `json:"unloadOnGpuFault"`
-	MarkUpdatedModels         bool   `json:"markUpdatedModels"`
-	AutoStart                 bool   `json:"autoStart"`
+	Binary                    string        `json:"binary"`
+	Config                    string        `json:"config"`
+	Listen                    string        `json:"listen"`
+	Args                      string        `json:"args"` // one per line; not shown, only kept
+	Env                       []SecretField `json:"env"`  // the Environment table's rows
+	WatchConfig               bool          `json:"watchConfig"`
+	ConfigDirMode             string        `json:"configDirMode"` // "off", "own" or "managed"
+	ConfigDir                 string        `json:"configDir"`
+	HealthCheckSeconds        string        `json:"healthCheckSeconds"`
+	HealthCheckSkipWhenActive bool          `json:"healthCheckSkipWhenActive"`
+	UnloadOnGPUFault          bool          `json:"unloadOnGpuFault"`
+	MarkUpdatedModels         bool          `json:"markUpdatedModels"`
+	AutoStart                 bool          `json:"autoStart"`
 	// The Secrets tab: the API keys and the name of the one the app uses,
 	// and the secret environment variables.
 	APIKeys       []SecretField `json:"apiKeys"`
@@ -71,8 +71,9 @@ type PreferencesForm struct {
 	DefaultLlamaSwapLog string `json:"defaultLlamaSwapLog"`
 }
 
-// SecretField is one row of a table on the Secrets tab: the name (for an
-// API key, without the prefix) and the secret value.
+// SecretField is one row of a table of variables: the name (for an API
+// key, without the prefix) and the value. The Secrets tab's values are
+// secret; Environment's, on the General tab, are shown as typed.
 type SecretField struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
@@ -90,6 +91,8 @@ type PeerField struct {
 	ResponseHeader string `json:"responseHeader"`
 	Connect        string `json:"connect"`
 	KeepAlive      string `json:"keepalive"`
+	// Disabled is the peer turned off, with its checkbox in the table.
+	Disabled bool `json:"disabled"`
 }
 
 // PreferencesResult says how the dialog was closed.

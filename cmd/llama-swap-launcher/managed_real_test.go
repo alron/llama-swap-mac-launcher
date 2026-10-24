@@ -23,9 +23,9 @@ import (
 //
 //	LLAMA_SWAP_BIN=/opt/homebrew/bin/llama-swap go test ./cmd/llama-swap-launcher -run ManagedPeersReal -v
 //
-// llama-swap must read peers.yaml, offer the peer's models as name/model,
-// send the peer the key from the secret variable, and refuse a peer that
-// the user's own config defines too.
+// llama-swap must read peers.yaml, offer the peer's models as name/model
+// (not those of a peer that's off), send the peer the key from the secret
+// variable, and refuse a peer that the user's own config defines too.
 func TestManagedPeersReal(t *testing.T) {
 	bin := os.Getenv("LLAMA_SWAP_BIN")
 	if bin == "" {
@@ -60,6 +60,7 @@ func TestManagedPeersReal(t *testing.T) {
 		Peers: []prefs.Peer{
 			{Name: "studio", URL: peer.URL, KeyVariable: "STUDIO_KEY", Models: []string{"big-model", "org/other"}},
 			{Name: "slow", URL: slow.URL, Models: []string{"m"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: &one}},
+			{Name: "away", URL: peer.URL, KeyVariable: "GONE", Models: []string{"off-model"}, Disabled: true},
 		},
 	}
 	if err := p.Validate(); err != nil {
@@ -122,6 +123,9 @@ func TestManagedPeersReal(t *testing.T) {
 		if !slices.Contains(ids, want) {
 			t.Errorf("/v1/models lacks %s: %v", want, ids)
 		}
+	}
+	if slices.Contains(ids, "away/off-model") {
+		t.Errorf("/v1/models lists the peer that's off: %v", ids)
 	}
 	resp, err := http.Post(base+"/v1/chat/completions", "application/json",
 		strings.NewReader(`{"model":"studio/big-model","messages":[{"role":"user","content":"hi"}]}`))

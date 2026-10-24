@@ -129,6 +129,17 @@ func TestManagedFiles(t *testing.T) {
 	if got := string(managedFiles(peers)["peers.yaml"]); got != wantPeers {
 		t.Errorf("peers: got\n%s\nwant\n%s", got, wantPeers)
 	}
+	// A peer that's off is left out, as if commented out; with none on,
+	// the file is only the note.
+	off := peers
+	off.Peers = append([]prefs.Peer{{Name: "away", URL: "http://h", Models: []string{"y"}, Disabled: true}}, peers.Peers...)
+	if got := string(managedFiles(off)["peers.yaml"]); got != wantPeers {
+		t.Errorf("with a peer that's off: got\n%s\nwant\n%s", got, wantPeers)
+	}
+	off.Peers = off.Peers[:1]
+	if off.ManagesPeers() || string(managedFiles(off)["peers.yaml"]) != managedHeader {
+		t.Errorf("with every peer off: got %q, want only the note", managedFiles(off)["peers.yaml"])
+	}
 	unmanaged := peers
 	unmanaged.ConfigDirMode = prefs.ConfigDirOwn
 	if got := string(managedFiles(unmanaged)["peers.yaml"]); got != managedHeader {

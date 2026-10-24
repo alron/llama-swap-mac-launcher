@@ -290,7 +290,7 @@ config says.
 **Settings…** in the menu edits them, and saves them as preferences. The **General** tab has the
 llama-swap binary and config (each with a **Choose…** button), the config
 folder (see [Config folder](#config-folder)), the listen address,
-environment variables (one per line), and the settings below; the **Secrets** tab has llama-swap's API keys and secret
+environment variables (a table, with **+** and **−**), and the settings below; the **Secrets** tab has llama-swap's API keys and secret
 environment variables, the **Peers** tab the peers the app manages (see
 [Peers](#peers)), the **Security** tab which web pages may use llama-swap
 (see [Web pages](#web-pages)), and the **Logs** tab where the logs go (see
@@ -318,7 +318,7 @@ misspelling, is reported as an error rather than ignored.
 | `configDirMode` | `"off"` | Whether llama-swap also reads a folder of config files (`-config-dir`): `"off"`, `"own"` (`configDir`) or `"managed"` (the app's own folder). See [Config folder](#config-folder). |
 | `configDir` | `""` | Your own config folder, with `"own"`. The app never writes there. |
 | `manageApiKeys` | `false` | With the managed folder, list the API keys in llama-swap's `apiKeys` for it, so it requires them. See [API keys](#api-keys). |
-| `peers` | `[]` | The peers the app manages, each with `name`, `url`, `keyVariable` (a secret variable, or `""`), `models`, and optionally `timeouts` (`responseHeader`, `connect`, `keepalive`, in seconds, as llama-swap names them). Used with the managed folder; see [Peers](#peers). |
+| `peers` | `[]` | The peers the app manages, each with `name`, `url`, `keyVariable` (a secret variable, or `""`), `models`, optionally `timeouts` (`responseHeader`, `connect`, `keepalive`, in seconds, as llama-swap names them), and `"disabled": true` for one that's turned off. Used with the managed folder; see [Peers](#peers). |
 | `cors` | off | Which web pages may use llama-swap: `restrict`, `allowedOrigins`, `allowCredentials`, `allowPrivateNetwork` and `maxAge`, as llama-swap's `security.cors` names them. Used with the managed folder; see [Web pages](#web-pages). |
 | `args` | `[]` | Extra llama-swap arguments, for flags newer than the app. Settings doesn't show them. Not `-config`, `-listen`, `-config-dir` or `-watch-config`, which are settings above, nor the TLS flags, `-validate` or `-version`. A `-watch-config` here from an earlier version becomes `watchConfig` when the file is read. |
 | `env` | `{}` | Environment variables for llama-swap and the commands its config runs, e.g. `{"HF_TOKEN": "…"}`. Values are used exactly as typed, quotes included; for a path with spaces, see [Good to know](#good-to-know). |
@@ -398,6 +398,11 @@ set to **Managed by the app**:
    llama-swap's defaults; 0 means no limit, which llama-swap advises
    against. Only values you change are written.
 5. Save, and let the app restart llama-swap.
+
+The checkbox beside each peer's name turns it off without removing it, as
+commenting it out of a config would: llama-swap stops offering its models,
+and the app keeps its address, key, models and timeouts for when you tick
+it again. While it's off, its key's secret variable can be removed.
 
 The app writes them to `peers.yaml` in its config folder each time it
 starts llama-swap; the key goes in as `${env.NAME}`, never the key itself.

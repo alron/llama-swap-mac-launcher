@@ -13,8 +13,9 @@
 #include "dialogs.h"
 #include "prefs.h"
 
-// LSLSecretTable runs one table of named secrets and its buttons: the API
-// keys, or the secret environment variables. AppKit asks an object for a
+// LSLSecretTable runs one table of named values and its buttons: the API
+// keys and the secret environment variables, whose values are secret, or
+// Environment, whose values aren't (plain). AppKit asks an object for a
 // table's rows and cells, and reports edits and clicks to it, so each table
 // has one.
 @interface LSLSecretTable : NSObject <NSTableViewDataSource, NSTableViewDelegate>
@@ -23,6 +24,7 @@
 @property(strong) NSString *prefix; // shown before each name: LLSL_ for keys, none for variables
 @property BOOL capitals;            // names are turned into capitals (keys)
 @property BOOL generates;           // + fills in a new random key, and Generate makes another (keys)
+@property BOOL plain;               // values shown as typed, with no Show (Environment)
 @property(copy) NSString *placeholder;
 @property(copy) void (^namesChanged)(void); // after a name changes, or a row comes or goes
 @property(strong) NSTableView *table;
@@ -69,8 +71,8 @@
 		s.spacing = 0;
 		return s;
 	}
-	// The value: dots, unless it's the row Show revealed.
-	NSTextField *value = [self cellField:r[@"value"] secure:(row != self.revealed) action:@selector(valueEdited:)];
+	// The value: dots, unless it's plain or the row Show revealed.
+	NSTextField *value = [self cellField:r[@"value"] secure:(!self.plain && row != self.revealed) action:@selector(valueEdited:)];
 	value.font = [NSFont monospacedSystemFontOfSize:NSFont.smallSystemFontSize weight:NSFontWeightRegular];
 	return value;
 }
@@ -245,6 +247,7 @@ static NSString *newKey(void) {
 @property(strong) NSTextField *ownLog; // llama-swap's own log
 @property(strong) NSButton *chooseOwnLog;
 @property(strong) NSPopUpButton *logMode;
+@property(strong) LSLSecretTable *env; // Environment, on the General tab
 @property(strong) LSLSecretTable *keys;
 @property(strong) LSLSecretTable *vars;
 @property(strong) NSPopUpButton *appKey;
@@ -457,9 +460,6 @@ static NSTextField *field(NSString *value, NSString *placeholder, CGFloat width)
 	return f;
 }
 
-// area is a multi-line field, for one argument or variable per line. It
-// uses a fixed-width font, and turns off smart quotes and dashes, so what's
-// typed is exactly what llama-swap gets. The controller handles its Tab key.
 // minWidth gives v a width of w that a tab may stretch: at least w, and w
 // unless something wider asks (see stretched).
 static void minWidth(NSView *v, CGFloat w) {
@@ -478,6 +478,10 @@ static void stretched(NSStackView *stack, NSArray<NSView *> *views) {
 	}
 }
 
+// area is a multi-line field, for one entry per line (the Security tab's
+// origins). It uses a fixed-width font, and turns off smart quotes and
+// dashes, so what's typed is exactly what llama-swap gets. The controller
+// handles its Tab key.
 static NSScrollView *area(NSString *value, LSLPrefsController *controller, NSTextView **text) {
 	NSScrollView *scroll = [NSTextView scrollableTextView];
 	scroll.borderType = NSBezelBorder;
@@ -543,16 +547,16 @@ static NSButton *smallButton(NSString *image, NSString *description, id target, 
 	return b;
 }
 
-// secretTable is t's table in a scroll view, with + and −, Generate (for
-// keys) and Show under it.
-static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *valueTitle, CGFloat height) {
+// secretTable is t's table in a scroll view at least width wide, with +
+// and −, Generate (for keys) and Show (unless it's plain) under it.
+static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *valueTitle, CGFloat height, CGFloat width) {
 	NSTableView *table = [[NSTableView alloc] init];
 	NSTableColumn *name = [[NSTableColumn alloc] initWithIdentifier:@"name"];
 	name.title = nameTitle;
-	name.width = 190;
+	name.width = round(width * 0.35);
 	NSTableColumn *value = [[NSTableColumn alloc] initWithIdentifier:@"value"];
 	value.title = valueTitle;
-	value.width = 330;
+	value.width = width - name.width;
 	[table addTableColumn:name];
 	[table addTableColumn:value];
 	table.dataSource = t;
@@ -564,10 +568,9 @@ static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *val
 	scroll.documentView = table;
 	scroll.hasVerticalScroller = YES;
 	scroll.borderType = NSBezelBorder;
-	minWidth(scroll, 540);
+	minWidth(scroll, width);
 	[scroll.heightAnchor constraintEqualToConstant:height].active = YES;
 
-	t.show = [NSButton buttonWithTitle:@"Show" target:t action:@selector(showValue:)];
 	NSMutableArray *buttons = [@[
 		smallButton(NSImageNameAddTemplate, @"Add", t, @selector(addRow:)),
 		smallButton(NSImageNameRemoveTemplate, @"Remove the selected row", t, @selector(removeRow:)),
@@ -575,7 +578,10 @@ static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *val
 	if (t.generates) {
 		[buttons addObject:[NSButton buttonWithTitle:@"Generate" target:t action:@selector(generate:)]];
 	}
-	[buttons addObject:t.show];
+	if (!t.plain) {
+		t.show = [NSButton buttonWithTitle:@"Show" target:t action:@selector(showValue:)];
+		[buttons addObject:t.show];
+	}
 	NSStackView *v = column(@[ scroll, row(buttons) ]);
 	stretched(v, @[ scroll ]);
 	return v;
@@ -639,6 +645,7 @@ static NSString *sentenceCase(NSString *s) {
 				@"responseHeader" : string(r, @"responseHeader"),
 				@"connect" : string(r, @"connect"),
 				@"keepalive" : string(r, @"keepalive"),
+				@"disabled" : [r[@"disabled"] boolValue] ? @YES : @NO,
 			} mutableCopy]];
 		}
 	}
@@ -656,8 +663,19 @@ static NSString *sentenceCase(NSString *s) {
 
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)column row:(NSInteger)row {
 	if (tableView == self.table) {
+		NSDictionary *peer = self.peers[(NSUInteger)row];
+		BOOL off = [peer[@"disabled"] boolValue];
+		if ([column.identifier isEqual:@"on"]) {
+			NSButton *b = [NSButton checkboxWithTitle:@"" target:self action:@selector(peerToggled:)];
+			b.state = off ? NSControlStateValueOff : NSControlStateValueOn;
+			b.enabled = self.managed;
+			b.toolTip = @"Untick to turn the peer off without removing it";
+			b.accessibilityLabel = @"Use this peer";
+			return b;
+		}
 		BOOL name = [column.identifier isEqual:@"name"];
-		NSTextField *f = [NSTextField textFieldWithString:self.peers[(NSUInteger)row][name ? @"name" : @"url"]];
+		NSTextField *f = [NSTextField textFieldWithString:peer[name ? @"name" : @"url"]];
+		f.textColor = off ? NSColor.secondaryLabelColor : NSColor.controlTextColor;
 		f.placeholderString = name ? @"studio" : @"http://192.168.1.20:8080";
 		f.bordered = NO;
 		f.drawsBackground = NO;
@@ -695,6 +713,24 @@ static NSString *sentenceCase(NSString *s) {
 	NSInteger row = [self.table rowForView:sender];
 	if (row >= 0 && row < (NSInteger)self.peers.count) {
 		self.peers[(NSUInteger)row][@"url"] = [sender.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+	}
+}
+
+// peerToggled turns a peer on or off. One that's off keeps everything, but
+// isn't written to llama-swap's config; its name and URL are greyed, where
+// they are rather than replaced (see enable).
+- (void)peerToggled:(NSButton *)sender {
+	NSInteger row = [self.table rowForView:sender];
+	if (row < 0 || row >= (NSInteger)self.peers.count) {
+		return;
+	}
+	BOOL off = sender.state != NSControlStateValueOn;
+	self.peers[(NSUInteger)row][@"disabled"] = off ? @YES : @NO;
+	for (NSInteger col = 0; col < self.table.numberOfColumns; col++) {
+		NSView *v = [self.table viewAtColumn:col row:row makeIfNecessary:NO];
+		if ([v isKindOfClass:[NSTextField class]]) {
+			((NSTextField *)v).textColor = off ? NSColor.secondaryLabelColor : NSColor.controlTextColor;
+		}
 	}
 }
 
@@ -741,7 +777,8 @@ static NSString *sentenceCase(NSString *s) {
 	for (NSControl *c in self.detail) {
 		c.enabled = detail;
 	}
-	// The cells follow too: the peers' names and URLs, and the checkboxes.
+	// The cells follow too: the peers' names and URLs, and both tables'
+	// checkboxes.
 	// The cells on screen are changed where they are, not replaced: a
 	// replaced cell may still be in the window's Tab order, which AppKit
 	// then loses track of, and closing the window crashed. Cells made
@@ -753,7 +790,7 @@ static NSString *sentenceCase(NSString *s) {
 				if (t == self.table && [v isKindOfClass:[NSTextField class]]) {
 					((NSTextField *)v).editable = self.managed;
 					((NSTextField *)v).selectable = self.managed;
-				} else if (t == self.list && [v isKindOfClass:[NSButton class]]) {
+				} else if ([v isKindOfClass:[NSButton class]]) {
 					((NSButton *)v).enabled = self.managed;
 				}
 			}
@@ -977,11 +1014,12 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 		@"responseHeader" : string(self.timeoutDefaults, @"responseHeader"),
 		@"connect" : string(self.timeoutDefaults, @"connect"),
 		@"keepalive" : string(self.timeoutDefaults, @"keepalive"),
+		@"disabled" : @NO,
 	} mutableCopy]];
 	NSInteger row = (NSInteger)self.peers.count - 1;
 	[self.table reloadData];
 	[self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
-	[self.table editColumn:0 row:row withEvent:nil select:YES];
+	[self.table editColumn:[self.table columnWithIdentifier:@"name"] row:row withEvent:nil select:YES];
 }
 
 - (void)removePeer:(id)sender {
@@ -1008,6 +1046,7 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 		[out addObject:@{
 			@"name" : p[@"name"], @"url" : p[@"url"], @"keyVariable" : p[@"key"], @"models" : models,
 			@"responseHeader" : p[@"responseHeader"], @"connect" : p[@"connect"], @"keepalive" : p[@"keepalive"],
+			@"disabled" : [p[@"disabled"] boolValue] ? @YES : @NO,
 		}];
 	}
 	return out;
@@ -1017,12 +1056,18 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 // peersTab lays out the Peers tab for p.
 static NSView *peersTab(LSLPeers *p) {
 	NSTableView *table = [[NSTableView alloc] init];
+	// Whether each peer is on: a checkbox without a heading, like the
+	// models checklist's.
+	NSTableColumn *peerOn = [[NSTableColumn alloc] initWithIdentifier:@"on"];
+	peerOn.title = @"";
+	peerOn.width = 22;
 	NSTableColumn *name = [[NSTableColumn alloc] initWithIdentifier:@"name"];
 	name.title = @"Name";
 	name.width = 150;
 	NSTableColumn *url = [[NSTableColumn alloc] initWithIdentifier:@"url"];
 	url.title = @"URL";
-	url.width = 370;
+	url.width = 348;
+	[table addTableColumn:peerOn];
 	[table addTableColumn:name];
 	[table addTableColumn:url];
 	table.dataSource = p;
@@ -1096,8 +1141,6 @@ static NSView *peersTab(LSLPeers *p) {
 	p.addField.delegate = p;
 	NSButton *addModel = [NSButton buttonWithTitle:@"Add" target:p action:@selector(addModel:)];
 
-	// The longer of its two texts, for sizing the tab; setManaged sets the
-	// real one.
 	// The timeouts, filled in with llama-swap's defaults for a new peer.
 	NSTextField *(^seconds)(NSString *) = ^NSTextField *(NSString *tip) {
 		NSTextField *f = field(@"", @"", 52);
@@ -1122,6 +1165,8 @@ static NSView *peersTab(LSLPeers *p) {
 		[timeouts setCustomSpacing:16 afterView:unit];
 	}
 
+	// The longer of its two texts, for sizing the tab; setManaged sets the
+	// real one.
 	p.managedHint = hint(@"The app writes these to llama-swap's peers, in its managed config folder. Keep each peer in one place: "
 	                     @"a peer also in your own config stops llama-swap from loading.");
 	p.detail = @[ remove, p.key, p.responseHeader, p.connect, p.keepalive, p.filter, p.fetch, list, tick, untick, p.addField, addModel ];
@@ -1170,8 +1215,12 @@ char *lsl_preferences(const char *json, int *result) {
 		NSButton *chooseBinary = [NSButton buttonWithTitle:@"Choose…" target:c action:@selector(chooseBinary:)];
 		NSButton *chooseConfig = [NSButton buttonWithTitle:@"Choose…" target:c action:@selector(chooseConfig:)];
 		NSTextField *listen = field(string(in, @"listen"), @"127.0.0.1:8080", 180);
-		NSTextView *env;
-		NSScrollView *envArea = area(string(in, @"env"), c, &env);
+		c.env = [[LSLSecretTable alloc] initWithRows:in[@"env"]];
+		c.env.plain = YES;
+		c.env.placeholder = @"NAME";
+		// As wide as the fields above it (filling its grid cell, below), so
+		// it doesn't widen the dialog.
+		NSView *envTable = secretTable(c.env, @"Variable", @"Value", 90, 420);
 		c.dirMode = [[NSPopUpButton alloc] init];
 		NSArray *dirModes = @[ @[ @"off", @"None" ], @[ @"own", @"Your own folder" ], @[ @"managed", @"Managed by the app" ] ];
 		for (NSArray *m in dirModes) {
@@ -1208,9 +1257,9 @@ char *lsl_preferences(const char *json, int *result) {
 			@[ label(@"Listen address:"), listen ],
 			@[ empty, hint(@"Use 0.0.0.0:8080 for other machines to reach llama-swap. They can then use all of it, "
 			                @"including unloading models and reading logs, unless its config sets API keys (Secrets tab).") ],
-			@[ label(@"Environment:"), envArea ],
-			@[ empty, hint(@"NAME=value, one per line, e.g. HF_TOKEN=…. Used exactly as typed, quotes included: "
-			                @"for a path with spaces, quote it where llama-swap's config uses it.") ],
+			@[ label(@"Environment:"), envTable ],
+			@[ empty, hint(@"Values are used exactly as typed, quotes included: for a path with spaces, "
+			                @"quote it where llama-swap's config uses it.") ],
 			@[ label(@"Health check every:"), row(@[ seconds, label(@"seconds") ]) ],
 			@[ empty, skip ],
 			@[ empty, unloadFaulted ],
@@ -1218,6 +1267,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@[ empty, autoStart ],
 		]);
 		topAligned(general, 9);
+		[general cellForView:envTable].xPlacement = NSGridCellPlacementFill;
 		// args has no field any more (TODO item 34), but it still changes
 		// what llama-swap runs, so it's shown when there are any.
 		NSString *extra = [[string(in, @"args") componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]
@@ -1293,13 +1343,13 @@ char *lsl_preferences(const char *json, int *result) {
 		varsTitle.font = keysTitle.font;
 		NSStackView *secrets = column(@[
 			keysTitle,
-			secretTable(c.keys, @"Variable", @"Key", 110),
+			secretTable(c.keys, @"Variable", @"Key", 110, 540),
 			c.manageKeys,
 			c.manageKeysHint,
 			row(@[ label(@"The app uses:"), c.appKey ]),
 			hint(@"Any of the keys works; the app sends this one on its own requests."),
 			varsTitle,
-			secretTable(c.vars, @"Variable", @"Value", 90),
+			secretTable(c.vars, @"Variable", @"Value", 90, 540),
 			hint(@"Like Environment on the General tab, for values to keep out of files, such as HF_TOKEN."),
 			hint(@"All of these are kept in your login keychain."),
 		]);
@@ -1411,7 +1461,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@"binary" : c.binary.stringValue,
 			@"config" : c.config.stringValue,
 			@"listen" : listen.stringValue,
-			@"env" : env.string,
+			@"env" : [c.env json],
 			@"watchConfig" : watch.state == NSControlStateValueOn ? @YES : @NO,
 			@"configDirMode" : c.dirMode.selectedItem.representedObject ?: @"off",
 			@"configDir" : [c ownDirValue] ?: @"",
