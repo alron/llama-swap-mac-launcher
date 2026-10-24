@@ -4,6 +4,7 @@ package main
 // fields and back, checking what was entered, and applying it.
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"maps"
@@ -143,18 +144,36 @@ func (a *app) editPreferences(tab string) (restart bool) {
 	}
 }
 
-// applyPrefs puts changed settings into effect. If anything llama-swap
-// runs with changed, it offers to restart a running llama-swap and reports
-// whether the user wants that; if only the health settings did, it
-// restarts the health monitor.
+// applyPrefs puts changed settings into effect. If llama-swap is running
+// and something it runs with changed, either a watching llama-swap reloads
+// the app's files itself (reloadConfigFiles), or the app offers to restart
+// it and reports whether the user wants that. If only the health settings
+// changed, it restarts the health monitor.
 func (a *app) applyPrefs(old, p prefs.Prefs, secretsChanged bool) (restart bool) {
-	st := a.sup.Status().State
-	if st != supervisor.Running && st != supervisor.Waiting {
+	st := a.sup.Status()
+	if st.State != supervisor.Running && st.State != supervisor.Waiting {
 		return false // the next start uses the new settings
 	}
-	if (llamaSwapChanged(old, p) || secretsChanged) &&
-		macos.Confirm("Restart llama-swap with the new settings?",
-			"It keeps running with the old ones until it restarts.", "Restart Now", "Later") {
+	detail := "It keeps running with the old ones until it restarts."
+	switch {
+	case restartNeeded(old, p) || secretsChanged:
+	case !managedFilesChanged(old, p):
+		detail = ""
+	case st.State == supervisor.Running && st.WatchConfig:
+		// llama-swap would reload the files itself, but a reload cuts off
+		// requests in progress, where a restart lets them finish (v266).
+		// So it only reloads while idle; otherwise, or if the app can't
+		// tell, it asks as before.
+		snap, ok := a.healthFor(st.Pid)
+		if ok && snap.Healthy && len(snap.InFlight) == 0 {
+			a.reloadConfigFiles()
+			detail = ""
+		} else if busy := snap.Busy(""); ok && len(busy) > 0 {
+			detail = "llama-swap would reload them itself, but that would cut off " + describeRequests(busy) +
+				"; a restart lets them finish first. Until it restarts, it keeps running with the old settings."
+		}
+	}
+	if detail != "" && macos.Confirm("Restart llama-swap with the new settings?", detail, "Restart Now", "Later") {
 		return true
 	}
 	if old.HealthCheckSeconds != p.HealthCheckSeconds || old.HealthCheckSkipWhenActive != p.HealthCheckSkipWhenActive {
@@ -163,31 +182,40 @@ func (a *app) applyPrefs(old, p prefs.Prefs, secretsChanged bool) (restart bool)
 	return false
 }
 
-// llamaSwapChanged reports whether a setting llama-swap runs with changed.
-// The key the app uses counts: llama-swap's keys come from its environment,
-// so the app keeps using the one it started llama-swap with.
-func llamaSwapChanged(old, p prefs.Prefs) bool {
+// reloadConfigFiles writes the app's files in its config folder for a
+// running llama-swap that watches it, which reloads them. They're checked
+// first, as for a restart, so a bad one leaves llama-swap as it was.
+func (a *app) reloadConfigFiles() {
+	spec, err := a.prepare()
+	if err == nil {
+		err = a.sup.UpdateConfigFiles(spec)
+	}
+	if err != nil {
+		a.problem("Can't apply the new settings", fmt.Errorf("%w. llama-swap was left running as it was", err))
+		return
+	}
+	a.sup.Logf("updated the files in llama-swap's config folder; llama-swap reloads them itself")
+}
+
+// restartNeeded reports whether a setting changed that llama-swap only
+// reads when it starts: its binary, flags or environment, the last
+// including the API keys and secret variables (whose values the caller
+// compares). The key the app uses counts: the app keeps using the one it
+// started llama-swap with.
+func restartNeeded(old, p prefs.Prefs) bool {
 	return old.Binary != p.Binary || old.Config != p.Config || old.ListenAddr() != p.ListenAddr() ||
 		!slices.Equal(old.Args, p.Args) || old.WatchConfig != p.WatchConfig ||
 		old.ConfigDirPath("") != p.ConfigDirPath("") || old.ConfigDirSetting() != p.ConfigDirSetting() ||
-		old.ManagesAPIKeys() != p.ManagesAPIKeys() || !maps.Equal(old.Env, p.Env) ||
-		!slices.Equal(old.APIKeys, p.APIKeys) || old.AppKey() != p.AppKey() ||
-		!slices.Equal(old.SecretEnv, p.SecretEnv) || !slices.EqualFunc(old.Peers, p.Peers, samePeer) ||
-		!sameCORS(old.CORS, p.CORS)
+		!maps.Equal(old.Env, p.Env) || !slices.Equal(old.APIKeys, p.APIKeys) || old.AppKey() != p.AppKey() ||
+		!slices.Equal(old.SecretEnv, p.SecretEnv)
 }
 
-func samePeer(a, b prefs.Peer) bool {
-	same := func(x, y *int) bool { return (x == nil) == (y == nil) && (x == nil || *x == *y) }
-	return a.Name == b.Name && a.URL == b.URL && a.KeyVariable == b.KeyVariable && slices.Equal(a.Models, b.Models) &&
-		a.Disabled == b.Disabled &&
-		same(a.Timeouts.ResponseHeader, b.Timeouts.ResponseHeader) && same(a.Timeouts.Connect, b.Timeouts.Connect) &&
-		same(a.Timeouts.KeepAlive, b.Timeouts.KeepAlive)
-}
-
-func sameCORS(a, b prefs.CORS) bool {
-	return a.Restrict == b.Restrict && slices.Equal(a.AllowedOrigins, b.AllowedOrigins) &&
-		a.AllowCredentials == b.AllowCredentials && a.AllowPrivateNetwork == b.AllowPrivateNetwork &&
-		(a.MaxAge == nil) == (b.MaxAge == nil) && (a.MaxAge == nil || *a.MaxAge == *b.MaxAge)
+// managedFilesChanged reports whether the files the app writes in its
+// managed config folder change: the keys it lists, the peers and the web
+// pages. Without the managed folder they aren't used, and nothing changes.
+func managedFilesChanged(old, p prefs.Prefs) bool {
+	return p.ConfigDirSetting() == prefs.ConfigDirManaged &&
+		!maps.EqualFunc(managedFiles(old), managedFiles(p), bytes.Equal)
 }
 
 // shownTimeout is a peer timeout as the dialog shows it: llama-swap's

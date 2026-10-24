@@ -1,11 +1,14 @@
 package supervisor
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 const header = "# Written by the app\n"
@@ -109,5 +112,80 @@ func TestValidateUnreadableConfigFile(t *testing.T) {
 		ConfigFiles: map[string][]byte{"api-keys.yaml": []byte(header)}})
 	if err == nil || !strings.Contains(err.Error(), "dangling.yaml") {
 		t.Errorf("got %v, want an error naming dangling.yaml", err)
+	}
+}
+
+// A file that already has the content isn't written again, so a llama-swap
+// watching the folder doesn't reload, and unload its models, for nothing.
+func TestWriteConfigFilesLeavesUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "peers.yaml")
+	spec := Spec{ConfigDir: dir, ConfigFiles: map[string][]byte{"peers.yaml": []byte(header + "peers: {}\n")}}
+	if err := writeConfigFiles(spec); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour).Truncate(time.Second)
+	os.Chtimes(path, past, past)
+	if err := writeConfigFiles(spec); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ := os.Stat(path); !info.ModTime().Equal(past) {
+		t.Errorf("the same content was written again: modified %v", info.ModTime())
+	}
+	spec.ConfigFiles["peers.yaml"] = []byte(header + "peers: {a: {}}\n")
+	if err := writeConfigFiles(spec); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ := os.Stat(path); info.ModTime().Equal(past) {
+		t.Error("new content wasn't written")
+	}
+}
+
+// UpdateConfigFiles writes new files for a running llama-swap that watches
+// its config, without restarting it, and a restart after a crash uses
+// them; one that doesn't watch is left alone, and with none running
+// there's nothing to do.
+func TestUpdateConfigFiles(t *testing.T) {
+	policy := Policy{Backoff: 10 * time.Millisecond, MaxBackoff: 20 * time.Millisecond, MaxCrashes: 3, Window: time.Minute, StableAfter: time.Hour}
+	s, _ := newTestSupervisor(t, policy)
+	dir := filepath.Join(t.TempDir(), "llama-swap.d")
+	path := filepath.Join(dir, "api-keys.yaml")
+	spec := func(content string, watch, keys bool) Spec {
+		sp := shSpec("sleep 30")
+		sp.ConfigDir, sp.WatchConfig, sp.KeysRequired = dir, watch, keys
+		sp.ConfigFiles = map[string][]byte{"api-keys.yaml": []byte(header + content)}
+		return sp
+	}
+	read := func() string { b, _ := os.ReadFile(path); return strings.TrimPrefix(string(b), header) }
+
+	if err := s.UpdateConfigFiles(spec("none", true, false)); err != nil || read() != "" {
+		t.Errorf("with nothing running: %v, file %q", err, read())
+	}
+
+	if err := s.Start(spec("one", true, false)); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "Running", func() bool { return s.Status().State == Running })
+	pid := s.Status().Pid
+	if err := s.UpdateConfigFiles(spec("two", true, true)); err != nil {
+		t.Fatal(err)
+	}
+	if st := s.Status(); read() != "two" || !st.KeysRequired || st.Pid != pid || st.State != Running {
+		t.Errorf("after the update: file %q, status %+v (pid was %d)", read(), st, pid)
+	}
+	// A crash restart writes the updated files, not those it started with.
+	os.WriteFile(path, []byte(header+"stale"), 0o600)
+	syscall.Kill(pid, syscall.SIGKILL)
+	waitFor(t, "a restart", func() bool { st := s.Status(); return st.State == Running && st.Pid != pid })
+	if read() != "two" {
+		t.Errorf("the restart wrote %q, want the updated files", read())
+	}
+
+	if err := s.Restart(spec("three", false, false)); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "Running", func() bool { return s.Status().State == Running })
+	if err := s.UpdateConfigFiles(spec("four", false, false)); !errors.Is(err, ErrNotWatching) || read() != "three" {
+		t.Errorf("not watching: got %v, file %q", err, read())
 	}
 }

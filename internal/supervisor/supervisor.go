@@ -62,10 +62,12 @@ type Status struct {
 	// APIKey is the key for requests to the running llama-swap, from its
 	// Spec. It's a secret: never show it.
 	APIKey string
-	// ConfigDir and KeysRequired are the running llama-swap's, from its
-	// Spec: what it was started with, which a later Save doesn't change.
+	// ConfigDir, KeysRequired and WatchConfig are the running llama-swap's,
+	// from its Spec: what it was started with, which a later Save changes
+	// only through UpdateConfigFiles.
 	ConfigDir    string
 	KeysRequired bool
+	WatchConfig  bool
 }
 
 // Spec is everything needed to start llama-swap.
@@ -93,6 +95,9 @@ type Spec struct {
 	// KeysRequired says the app listed its API keys there for llama-swap
 	// to require. Like APIKey, it's only handed on, in the status.
 	KeysRequired bool
+	// WatchConfig says Args has -watch-config: llama-swap reloads its
+	// config, and the folder's files, when they change.
+	WatchConfig bool
 }
 
 type Options struct {
@@ -251,6 +256,41 @@ func (s *Supervisor) Restart(spec Spec) error {
 	return s.startLocked(spec)
 }
 
+// ErrNotWatching is UpdateConfigFiles' answer when llama-swap is running
+// but doesn't watch its config, so it wouldn't see new files.
+var ErrNotWatching = errors.New("llama-swap isn't watching its config")
+
+// UpdateConfigFiles writes spec's ConfigFiles for a running llama-swap
+// that watches its config, which then reloads them itself, without a
+// restart. spec must otherwise be what llama-swap runs with (its binary,
+// flags and environment, which a reload can't change), and checked with
+// Validate first, as a restart's is. Only files whose content changed are
+// written: llama-swap reloads whenever one's time changes, and a reload
+// unloads every model. A restart after a crash uses them too. With
+// llama-swap not running there's nothing to do: its next start writes
+// them.
+func (s *Supervisor) UpdateConfigFiles(spec Spec) error {
+	s.ops.Lock()
+	defer s.ops.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.run == nil {
+		return nil
+	}
+	if !s.status.WatchConfig {
+		return ErrNotWatching
+	}
+	if err := writeConfigFiles(spec); err != nil {
+		return err
+	}
+	s.spec.ConfigFiles = spec.ConfigFiles
+	s.spec.KeysRequired = spec.KeysRequired
+	st := s.status
+	st.KeysRequired = spec.KeysRequired
+	s.setStatus(st)
+	return nil
+}
+
 // Stop stops llama-swap and everything it started: SIGTERM, then SIGKILL
 // after StopTimeout, then any descendants that outlived it.
 func (s *Supervisor) Stop() {
@@ -333,7 +373,7 @@ func (s *Supervisor) launch() error {
 	}
 	s.Logf("started %s (pid %d): %s", name, pid, strings.Join(cmd.Args, " "))
 	s.setStatus(Status{State: Running, Pid: pid, Listen: spec.Listen, Version: spec.Version, APIKey: spec.APIKey,
-		ConfigDir: spec.ConfigDir, KeysRequired: spec.KeysRequired})
+		ConfigDir: spec.ConfigDir, KeysRequired: spec.KeysRequired, WatchConfig: spec.WatchConfig})
 	go r.watchTree()
 	go s.wait(r)
 	return nil

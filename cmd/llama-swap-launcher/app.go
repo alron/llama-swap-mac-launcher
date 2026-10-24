@@ -361,6 +361,7 @@ func (a *app) spec() (supervisor.Spec, error) {
 		ConfigFiles: files,
 		// What the keys file just made lists, for the status.
 		KeysRequired: p.ConfigDirSetting() == prefs.ConfigDirManaged && p.ManagesAPIKeys() && len(p.APIKeys) > 0,
+		WatchConfig:  p.WatchConfig,
 	}, nil
 }
 

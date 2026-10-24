@@ -83,3 +83,59 @@ func TestConfigDirReal(t *testing.T) {
 		t.Errorf("the managed file: %v, %v", info, err)
 	}
 }
+
+// TestUpdateConfigFilesReal updates the folder's files under an actual
+// llama-swap watching its config (skipped unless LLAMA_SWAP_BIN is set):
+// it reloads them, requiring the key it now lists, without a restart.
+func TestUpdateConfigFilesReal(t *testing.T) {
+	bin := os.Getenv("LLAMA_SWAP_BIN")
+	if bin == "" {
+		t.Skip("set LLAMA_SWAP_BIN to run against a real llama-swap")
+	}
+	base := t.TempDir()
+	config := filepath.Join(base, "config.yaml")
+	os.WriteFile(config, []byte("models:\n  m:\n    cmd: /bin/sleep 600 ${PORT}\n"), 0o600)
+	dir := filepath.Join(base, "llama-swap.d")
+	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := l.Addr().String()
+	l.Close()
+	note := "# Written by the app.\n"
+	spec := func(file string) Spec {
+		return Spec{
+			Binary:      bin,
+			Args:        []string{"-config", config, "-listen", addr, "-config-dir", dir, "-watch-config"},
+			Env:         append(os.Environ(), "LLSL_TEST=sk-test"),
+			Dir:         base,
+			Listen:      addr,
+			ConfigDir:   dir,
+			ConfigFiles: map[string][]byte{"api-keys.yaml": []byte(note + file)},
+			WatchConfig: true,
+		}
+	}
+	get := func() int {
+		resp, err := http.Get("http://" + addr + "/api/version")
+		if err != nil {
+			return 0
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	s, _ := newTestSupervisor(t, Policy{})
+	if err := s.Start(spec("")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "llama-swap to answer without a key", func() bool { return get() == 200 })
+	pid := s.Status().Pid
+
+	listed := spec("apiKeys:\n  - \"${env.LLSL_TEST}\"\n")
+	if err := Validate(listed); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateConfigFiles(listed); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "llama-swap to reload and require the key", func() bool { return get() == 401 })
+	if st := s.Status(); st.Pid != pid || st.State != Running {
+		t.Errorf("llama-swap was restarted: %+v, pid was %d", st, pid)
+	}
+}

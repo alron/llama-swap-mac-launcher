@@ -298,6 +298,11 @@ below). Save checks
 them first: if something's wrong, an alert says what, and the dialog comes back
 with your entries and the problem shown until it's fixed. If llama-swap is
 running when you save a change it runs with, the app offers to restart it.
+With **Reload the config when it changes** on, changes to what the app writes
+in its config folder (**Require these keys**, the peers, and which web pages
+may use llama-swap) need no restart: Save writes the files and llama-swap
+reloads them itself. While llama-swap is serving a request, the app still
+asks, since a reload would cut the request off and a restart lets it finish.
 Health-check changes take effect straight away. While the dialog is open, the
 menu offers only **Quit**.
 
@@ -314,7 +319,7 @@ misspelling, is reported as an error rather than ignored.
 | `binary` | `""` | The llama-swap executable. Empty: look in the usual install locations. Like every path here, it may start with `~/`. |
 | `config` | `""` | llama-swap's config file. |
 | `listen` | `"127.0.0.1:8080"` | Passed to llama-swap as `-listen`. Use `"0.0.0.0:8080"` for other machines to reach it; they can then use all of it, including unloading models and reading logs, unless its config sets API keys (see [API keys](#api-keys)). |
-| `watchConfig` | `false` | Pass `-watch-config`, so llama-swap reloads its config when the file, or the config folder, changes. It checks every 2 seconds. |
+| `watchConfig` | `false` | Pass `-watch-config`, so llama-swap reloads its config when the file, or the config folder, changes. It checks every 2 seconds. A reload unloads every model, and cuts off any request in progress (checked with llama-swap v266). |
 | `configDirMode` | `"off"` | Whether llama-swap also reads a folder of config files (`-config-dir`): `"off"`, `"own"` (`configDir`) or `"managed"` (the app's own folder). See [Config folder](#config-folder). |
 | `configDir` | `""` | Your own config folder, with `"own"`. The app never writes there. |
 | `manageApiKeys` | `false` | With the managed folder, list the API keys in llama-swap's `apiKeys` for it, so it requires them. See [API keys](#api-keys). |

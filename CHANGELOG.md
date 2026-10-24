@@ -13,6 +13,14 @@ not published; they're listed for people who had them.
   keeps everything else for when it's ticked again. Going back to 0.3.0
   after turning one off means removing `"disabled": true` from
   `prefs.json` by hand, since older versions refuse keys they don't know.
+- With **Reload the config when it changes** on, saving a change to
+  **Require these keys**, the peers or the web pages no longer asks to
+  restart llama-swap: the app writes its files, and llama-swap reloads them.
+  While llama-swap is serving a request it still asks, since a reload cuts
+  requests off and a restart lets them finish. Either way, every model is
+  unloaded. Settings no longer offers a restart for peer or web-page changes
+  that don't apply, without the managed config folder or for a peer that's
+  off.
 - Built with Go 1.27.3, which refuses a list of intermediate certificates
   that are no longer trustworthy, for the few systems whose own trust store
   hasn't caught up. The app checks certificates only when Fetch Models asks

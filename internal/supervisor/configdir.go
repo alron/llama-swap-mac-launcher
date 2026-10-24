@@ -19,7 +19,8 @@ import (
 // writeConfigFiles writes spec.ConfigFiles into spec.ConfigDir, creating
 // the folder if need be. It only replaces a file the app wrote: one whose
 // first line is the new content's, since every managed file starts with a
-// line saying who writes it.
+// line saying who writes it. A file that already has the content is left
+// alone, so a llama-swap watching the folder doesn't reload for nothing.
 func writeConfigFiles(spec Spec) error {
 	if len(spec.ConfigFiles) == 0 {
 		return nil
@@ -30,8 +31,13 @@ func writeConfigFiles(spec Spec) error {
 	for _, name := range slices.Sorted(maps.Keys(spec.ConfigFiles)) {
 		data := spec.ConfigFiles[name]
 		path := filepath.Join(spec.ConfigDir, name)
-		if old, err := os.ReadFile(path); err == nil && !bytes.Equal(firstLine(old), firstLine(data)) { // #nosec G304 -- a file in the app's managed folder
-			return fmt.Errorf("won't replace %s: the app didn't write it. Move it out of the folder", path)
+		if old, err := os.ReadFile(path); err == nil { // #nosec G304 -- a file in the app's managed folder
+			if bytes.Equal(old, data) {
+				continue
+			}
+			if !bytes.Equal(firstLine(old), firstLine(data)) {
+				return fmt.Errorf("won't replace %s: the app didn't write it. Move it out of the folder", path)
+			}
 		}
 		// Written beside it and renamed, so llama-swap never reads half a
 		// file; it only reads names ending .yaml or .yml.

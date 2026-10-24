@@ -141,34 +141,72 @@ func envForm(env ...macos.SecretField) macos.PreferencesForm {
 	return macos.PreferencesForm{Env: env}
 }
 
-func TestLlamaSwapChanged(t *testing.T) {
+func TestRestartNeeded(t *testing.T) {
 	p := prefs.Defaults()
 	health := p
 	health.HealthCheckSeconds = 10
-	if llamaSwapChanged(p, health) {
+	if restartNeeded(p, health) {
 		t.Error("a health-check change doesn't need llama-swap restarted")
 	}
 	env := p
 	env.Env = map[string]string{"A": "1"}
-	if !llamaSwapChanged(p, env) {
+	if !restartNeeded(p, env) {
 		t.Error("an env change needs llama-swap restarted")
 	}
 	keys := p
 	keys.APIKeys = []string{"A", "B"}
-	if !llamaSwapChanged(p, keys) {
+	if !restartNeeded(p, keys) {
 		t.Error("a new key needs llama-swap restarted")
 	}
 	appKey := keys
 	appKey.AppAPIKey = "B"
-	if !llamaSwapChanged(keys, appKey) {
+	if !restartNeeded(keys, appKey) {
 		t.Error("changing the key the app uses needs llama-swap restarted")
+	}
+	watch := p
+	watch.WatchConfig = true
+	if !restartNeeded(p, watch) {
+		t.Error("turning the reload checkbox on needs llama-swap restarted")
 	}
 	peer := p
 	peer.Peers = []prefs.Peer{{Name: "studio", URL: "http://h", Models: []string{"a"}}}
-	off := peer
+	if restartNeeded(p, peer) {
+		t.Error("a peer is in the app's files, which a watching llama-swap reloads")
+	}
+}
+
+// The app's files change with the peers, the keys it lists and the web
+// pages, but only in its managed folder, and not for a peer that's off.
+func TestManagedFilesChanged(t *testing.T) {
+	p := prefs.Defaults()
+	p.ConfigDirMode = prefs.ConfigDirManaged
+	p.APIKeys = []string{"ADMIN"}
+	peer := prefs.Peer{Name: "studio", URL: "http://h", Models: []string{"a"}}
+	withPeer := p
+	withPeer.Peers = []prefs.Peer{peer}
+	listed := p
+	listed.ManageAPIKeys = true
+	pages := p
+	pages.CORS = prefs.CORS{Restrict: true, AllowedOrigins: []string{"http://localhost:3000"}}
+	for _, q := range []prefs.Prefs{withPeer, listed, pages} {
+		if !managedFilesChanged(p, q) {
+			t.Errorf("%+v: the files change", q)
+		}
+	}
+	off := withPeer
 	off.Peers = []prefs.Peer{{Name: "studio", URL: "http://h", Models: []string{"a"}, Disabled: true}}
-	if !llamaSwapChanged(peer, off) {
-		t.Error("turning a peer off needs llama-swap restarted")
+	if !managedFilesChanged(withPeer, off) {
+		t.Error("turning a peer off changes peers.yaml")
+	}
+	offElsewhere := off
+	offElsewhere.Peers = []prefs.Peer{{Name: "studio", URL: "http://elsewhere", Models: []string{"a"}, Disabled: true}}
+	if managedFilesChanged(off, offElsewhere) {
+		t.Error("a peer that's off isn't written, so changing it changes nothing")
+	}
+	unmanaged, unmanagedPeer := p, withPeer
+	unmanaged.ConfigDirMode, unmanagedPeer.ConfigDirMode = prefs.ConfigDirOff, prefs.ConfigDirOff
+	if managedFilesChanged(unmanaged, unmanagedPeer) {
+		t.Error("without the managed folder, the files aren't used")
 	}
 }
 
