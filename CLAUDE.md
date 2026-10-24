@@ -657,6 +657,9 @@ Also make sure the main executable has a **unique Mach-O UUID** (TN3179 notes lo
     - it's built from the already stapled app, then signed, notarized and stapled itself, so a release has two notarizations;
     - `make publish` uploads both, with both SHA-256s in the notes;
     - the cask uses the DMG. Homebrew copies only what the cask names (`app`, and `binary` for `llsl`), so the README and LICENSE are for people installing by hand.
+  - **The tap** (the maintainer, 2026-10-24): https://github.com/alron/homebrew-llama-swap-mac-launcher, created empty and private, which makes it `alron/llama-swap-mac-launcher` to `brew tap`. It must be public before anyone else can use it.
+    - llama-swap's own tap (`mostlygeek/homebrew-llama-swap`) is one formula, `Formula/llama-swap.rb`, with a version and a SHA-256 per platform. A workflow in the tap rewrites them when llama-swap's release sends it a `repository_dispatch`, which needs a token on GitHub.
+    - Ours is a cask (`Casks/…rb`), since it installs an app. Releases are published from the Mac (see above), so `make publish` can update the cask's version and SHA-256 and push it to the tap itself, with no token on GitHub.
 - **Later / optional:** Sparkle for in-app updates.
 
 ### Development builds
