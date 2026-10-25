@@ -47,9 +47,12 @@ The app doesn't include llama-swap; install that separately.
 4. Put `llsl` on your `PATH`:
 
    ```sh
-   ln -s "/Applications/Llama Swap Launcher.app/Contents/Helpers/llsl" /opt/homebrew/bin/llsl
+   sudo mkdir -p /usr/local/bin
+   sudo ln -s "/Applications/Llama Swap Launcher.app/Contents/Helpers/llsl" /usr/local/bin/llsl
    ```
 
+   `/usr/local/bin` is on macOS's default `PATH`, and keeps the link out of
+   Homebrew's own folder; the first line only creates it if it isn't there.
    `llsl` follows the symlink to find the app it belongs to.
 
 ## The menu
