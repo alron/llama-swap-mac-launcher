@@ -3,7 +3,7 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
-## Unreleased
+## 0.3.1 (2026-10-24)
 
 - **Environment** (Settings → General) is a table with **+** and **−**, like
   the secret variables, rather than a box of `NAME=value` lines. A name
