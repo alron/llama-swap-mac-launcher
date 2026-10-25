@@ -13,6 +13,9 @@ not published; they're listed for people who had them.
   keeps everything else for when it's ticked again. Going back to 0.3.0
   after turning one off means removing `"disabled": true` from
   `prefs.json` by hand, since older versions refuse keys they don't know.
+- **Settings is shorter:** the explanations that sat in grey under the
+  fields are tooltips now, on each field and its label. Warnings, such as
+  what listening on `0.0.0.0` exposes, stay on screen.
 - With **Reload the config when it changes** on, saving a change to
   **Require these keys**, the peers or the web pages no longer asks to
   restart llama-swap: the app writes its files, and llama-swap reloads them.

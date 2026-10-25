@@ -294,7 +294,8 @@ environment variables (a table, with **+** and **−**), and the settings below;
 environment variables, the **Peers** tab the peers the app manages (see
 [Peers](#peers)), the **Security** tab which web pages may use llama-swap
 (see [Web pages](#web-pages)), and the **Logs** tab where the logs go (see
-below). Save checks
+below). Rest the pointer on a setting, or its label, for what it's for;
+warnings stay on screen. Save checks
 them first: if something's wrong, an alert says what, and the dialog comes back
 with your entries and the problem shown until it's fixed. If llama-swap is
 running when you save a change it runs with, the app offers to restart it.

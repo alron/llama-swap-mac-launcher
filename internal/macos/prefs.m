@@ -443,14 +443,24 @@ static NSTextField *label(NSString *text) {
 	return [NSTextField labelWithString:text];
 }
 
-// hint is the small grey text under a field. It wraps at the fields'
-// width rather than widening the dialog.
+// hint is the small grey text under a field, for what should be seen
+// without asking: warnings, and text that changes with the settings. It
+// wraps at the fields' width rather than widening the dialog.
 static NSTextField *hint(NSString *text) {
 	NSTextField *l = [NSTextField wrappingLabelWithString:text];
 	l.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
 	l.textColor = NSColor.secondaryLabelColor;
 	l.preferredMaxLayoutWidth = 420;
 	return l;
+}
+
+// explain gives views a tooltip, for an explanation of what a field is
+// for, which would otherwise take room under it every time the dialog
+// opens (TODO item 48). Give it to the field and its label.
+static void explain(NSString *tip, NSArray<NSView *> *views) {
+	for (NSView *v in views) {
+		v.toolTip = tip;
+	}
 }
 
 static NSTextField *field(NSString *value, NSString *placeholder, CGFloat width) {
@@ -531,11 +541,22 @@ static NSGridView *grid(NSArray<NSArray<NSView *> *> *rows) {
 	return g;
 }
 
-// topAligned makes a grid row's label sit at the top of a tall field.
-static void topAligned(NSGridView *g, NSInteger i) {
-	NSGridRow *r = [g rowAtIndex:i];
-	r.rowAlignment = NSGridRowAlignmentNone;
-	r.yPlacement = NSGridCellPlacementTop;
+// hugLabels keeps a grid's label column as wide as its widest label. A
+// grid in a stack as wide as its tab is stretched to that width, and gives
+// some of it to the label column, which then pushes its labels right.
+static void hugLabels(NSGridView *g) {
+	NSGridColumn *labels = [g columnAtIndex:0];
+	CGFloat w = 0;
+	for (NSInteger i = 0; i < labels.numberOfCells; i++) {
+		NSView *v = [labels cellAtIndex:i].contentView;
+		if (v != NSGridCell.emptyContentView) {
+			// As the grid measures it: a text field's alignment rect, its
+			// text, is narrower than its frame.
+			NSRect frame = {NSZeroPoint, v.fittingSize};
+			w = MAX(w, [v alignmentRectForFrame:frame].size.width);
+		}
+	}
+	labels.width = ceil(w);
 }
 
 // smallButton is a borderless icon button, like the + and − under lists in
@@ -1177,11 +1198,12 @@ static NSView *peersTab(LSLPeers *p) {
 	keyHint.textColor = NSColor.secondaryLabelColor;
 	NSTextField *title = label(@"Peers");
 	title.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
+	explain(@"Other llama-swaps, or servers with the same API, whose models llama-swap offers as name/model.", @[ title, peerScroll ]);
+	NSStackView *peerButtons = row(@[ add, remove ]);
 	NSStackView *v = column(@[
 		title,
-		hint(@"Other llama-swaps, or servers with the same API, whose models llama-swap offers as name/model."),
 		peerScroll,
-		row(@[ add, remove ]),
+		peerButtons,
 		row(@[ label(@"Key:"), p.key, keyHint ]),
 		timeouts,
 		row(@[ label(@"Models:"), p.filter, p.fetch, p.spinner ]),
@@ -1191,8 +1213,8 @@ static NSView *peersTab(LSLPeers *p) {
 		row(@[ p.addField, addModel ]),
 		p.managedHint,
 	]);
-	[v setCustomSpacing:12 afterView:v.views[3]];
-	[v setCustomSpacing:12 afterView:v.views[5]];
+	[v setCustomSpacing:12 afterView:peerButtons];
+	[v setCustomSpacing:12 afterView:timeouts];
 	stretched(v, @[ peerScroll, listScroll ]);
 	return v;
 }
@@ -1218,9 +1240,9 @@ char *lsl_preferences(const char *json, int *result) {
 		c.env = [[LSLSecretTable alloc] initWithRows:in[@"env"]];
 		c.env.plain = YES;
 		c.env.placeholder = @"NAME";
-		// As wide as the fields above it (filling its grid cell, below), so
-		// it doesn't widen the dialog.
-		NSView *envTable = secretTable(c.env, @"Variable", @"Value", 90, 420);
+		// As wide as the tab, like the Secrets tab's tables (filling its
+		// grid row, below).
+		NSView *envTable = secretTable(c.env, @"Variable", @"Value", 90, 540);
 		c.dirMode = [[NSPopUpButton alloc] init];
 		NSArray *dirModes = @[ @[ @"off", @"None" ], @[ @"own", @"Your own folder" ], @[ @"managed", @"Managed by the app" ] ];
 		for (NSArray *m in dirModes) {
@@ -1243,31 +1265,37 @@ char *lsl_preferences(const char *json, int *result) {
 		NSButton *unloadFaulted = checkbox(@"Unload a model as soon as its GPU backend fails, instead of asking", in[@"unloadOnGpuFault"]);
 		NSButton *markUpdated = checkbox(@"Mark models whose server program was updated since they loaded", in[@"markUpdatedModels"]);
 		NSView *empty = NSGridCell.emptyContentView;
-		NSGridView *general = grid(@[
-			@[ label(@"llama-swap binary:"), row(@[ c.binary, chooseBinary ]) ],
-			@[ empty, hint(@"Leave empty to look in the usual install locations.") ],
+		NSTextField *binaryLabel = label(@"llama-swap binary:");
+		explain(@"Leave empty to look in the usual install locations.", @[ binaryLabel, c.binary ]);
+		NSTextField *dirLabel = label(@"Config folder:");
+		explain(@"llama-swap also reads the folder's .yaml files. Managed by the app is a folder the app keeps "
+		        @"for the settings it writes for llama-swap, such as Require these keys (Secrets tab).",
+		        @[ dirLabel, c.dirMode ]);
+		// A title above it, like the lists on the other tabs.
+		NSTextField *envTitle = label(@"Environment");
+		envTitle.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
+		explain(@"Variables for llama-swap and the commands its config runs. Values are used exactly as typed, "
+		        @"quotes included: for a path with spaces, quote it where llama-swap's config uses it.",
+		        @[ envTitle, envTable ]);
+		// The paths and the address in a grid at its own width, its labels
+		// lined up on the right as on the Logs tab; the rest in a column
+		// below, from the same left edge, Environment as wide as the tab
+		// (General fills it) like the lists on the other tabs.
+		NSGridView *paths = grid(@[
+			@[ binaryLabel, row(@[ c.binary, chooseBinary ]) ],
 			@[ label(@"Config file:"), row(@[ c.config, chooseConfig ]) ],
 			// Show in Finder beside the menu, so the folder's row is no wider
-			// than the binary's and config's, which set the dialog's width.
-			@[ label(@"Config folder:"), row(@[ c.dirMode, c.showDir ]) ],
+			// than the binary's and config's.
+			@[ dirLabel, row(@[ c.dirMode, c.showDir ]) ],
 			@[ empty, row(@[ c.configDir, c.chooseDir ]) ],
-			@[ empty, hint(@"llama-swap also reads the folder's .yaml files. Managed by the app is a folder the app keeps "
-			                @"for the settings it writes for llama-swap, such as Require these keys (Secrets tab).") ],
 			@[ empty, watch ],
 			@[ label(@"Listen address:"), listen ],
 			@[ empty, hint(@"Use 0.0.0.0:8080 for other machines to reach llama-swap. They can then use all of it, "
 			                @"including unloading models and reading logs, unless its config sets API keys (Secrets tab).") ],
-			@[ label(@"Environment:"), envTable ],
-			@[ empty, hint(@"Values are used exactly as typed, quotes included: for a path with spaces, "
-			                @"quote it where llama-swap's config uses it.") ],
-			@[ label(@"Health check every:"), row(@[ seconds, label(@"seconds") ]) ],
-			@[ empty, skip ],
-			@[ empty, unloadFaulted ],
-			@[ empty, markUpdated ],
-			@[ empty, autoStart ],
 		]);
-		topAligned(general, 9);
-		[general cellForView:envTable].xPlacement = NSGridCellPlacementFill;
+		hugLabels(paths);
+		NSStackView *healthRow = row(@[ label(@"Health check every:"), seconds, label(@"seconds") ]);
+		NSMutableArray *generalViews = [@[ paths, envTitle, envTable, healthRow, skip, unloadFaulted, markUpdated, autoStart ] mutableCopy];
 		// args has no field any more (TODO item 34), but it still changes
 		// what llama-swap runs, so it's shown when there are any.
 		NSString *extra = [[string(in, @"args") componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]
@@ -1277,11 +1305,17 @@ char *lsl_preferences(const char *json, int *result) {
 			NSTextField *args = label(extra);
 			args.textColor = NSColor.secondaryLabelColor;
 			args.lineBreakMode = NSLineBreakByTruncatingMiddle;
-			args.toolTip = extra;
+			NSString *why = @"From prefs.json, for llama-swap flags newer than the app; change them there.";
+			args.toolTip = [NSString stringWithFormat:@"%@\n\n%@", extra, why]; // the whole of them, when cut short
 			[args.widthAnchor constraintLessThanOrEqualToConstant:420].active = YES;
-			[general addRowWithViews:@[ label(@"Extra arguments:"), args ]];
-			[general addRowWithViews:@[ empty, hint(@"From prefs.json, for llama-swap flags newer than the app; change them there.") ]];
+			NSTextField *argsLabel = label(@"Extra arguments:");
+			argsLabel.toolTip = why;
+			[generalViews addObject:row(@[ argsLabel, args ])];
 		}
+		NSStackView *general = column(generalViews);
+		[general setCustomSpacing:16 afterView:paths];
+		[general setCustomSpacing:16 afterView:envTable];
+		stretched(general, @[ envTable ]);
 
 		// Logs.
 		c.launcherLog = field(string(in, @"launcherLog"), string(in, @"defaultLauncherLog"), 340);
@@ -1299,15 +1333,22 @@ char *lsl_preferences(const char *json, int *result) {
 		c.logMode.target = c;
 		c.logMode.action = @selector(logModeChanged:);
 		[c logModeChanged:nil];
+		NSTextField *launcherLabel = label(@"Launcher log:");
+		NSTextField *outputLabel = label(@"llama-swap's output:");
+		NSTextField *ownLabel = label(@"llama-swap log:");
+		NSString *rotation = @" Each log is rotated at 10 MB, keeping 5 old files. A log in Desktop, Documents, Downloads, "
+		                     @"iCloud Drive or on an external disk makes macOS ask the app for access, once.";
+		explain([@"The app's own notes and crash reports, and llama-swap's output when it goes here." stringByAppendingString:rotation],
+		        @[ launcherLabel, c.launcherLog ]);
+		explain(@"In the launcher log: with the app's own notes, each line as llama-swap writes it.\n"
+		        @"In its own file: exactly as llama-swap writes it, nothing added, for a log collector to read, say.\n"
+		        @"Not saved: the app still keeps its last lines in memory, for alerts and llsl.",
+		        @[ outputLabel, c.logMode ]);
+		explain([@"llama-swap's output, exactly as it writes it." stringByAppendingString:rotation], @[ ownLabel, c.ownLog ]);
 		NSGridView *logs = grid(@[
-			@[ label(@"Launcher log:"), row(@[ c.launcherLog, chooseLauncherLog ]) ],
-			@[ empty, hint(@"The app's own notes and crash reports, and llama-swap's output when it goes here.") ],
-			@[ label(@"llama-swap's output:"), c.logMode ],
-			@[ label(@"llama-swap log:"), row(@[ c.ownLog, c.chooseOwnLog ]) ],
-			@[ empty, hint(@"Exactly as llama-swap writes it, nothing added, for a log collector to read, say. "
-			               @"When it isn't saved, the app still keeps its last lines in memory, for alerts and llsl.") ],
-			@[ empty, hint(@"Each log is rotated at 10 MB, keeping 5 old files. A log in Desktop, Documents, Downloads, "
-			               @"iCloud Drive or on an external disk makes macOS ask the app for access, once.") ],
+			@[ launcherLabel, row(@[ c.launcherLog, chooseLauncherLog ]) ],
+			@[ outputLabel, c.logMode ],
+			@[ ownLabel, row(@[ c.ownLog, c.chooseOwnLog ]) ],
 		]);
 
 		// Secrets: the API keys, then the secret environment variables.
@@ -1341,20 +1382,27 @@ char *lsl_preferences(const char *json, int *result) {
 		keysTitle.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
 		NSTextField *varsTitle = label(@"Secret environment variables");
 		varsTitle.font = keysTitle.font;
+		NSView *keysTable = secretTable(c.keys, @"Variable", @"Key", 110, 540);
+		NSView *varsTable = secretTable(c.vars, @"Variable", @"Value", 90, 540);
+		// On the whole box, column headers and buttons included.
+		explain(@"Kept in your login keychain.", @[ keysTitle, keysTable ]);
+		explain(@"Like Environment on the General tab, for values to keep out of files, such as HF_TOKEN. "
+		        @"Kept in your login keychain.",
+		        @[ varsTitle, varsTable ]);
+		NSTextField *appKeyLabel = label(@"The app uses:");
+		explain(@"Any of the keys works; the app sends this one on its own requests.", @[ appKeyLabel, c.appKey ]);
+		NSStackView *appKeyRow = row(@[ appKeyLabel, c.appKey ]);
 		NSStackView *secrets = column(@[
 			keysTitle,
-			secretTable(c.keys, @"Variable", @"Key", 110, 540),
+			keysTable,
 			c.manageKeys,
 			c.manageKeysHint,
-			row(@[ label(@"The app uses:"), c.appKey ]),
-			hint(@"Any of the keys works; the app sends this one on its own requests."),
+			appKeyRow,
 			varsTitle,
-			secretTable(c.vars, @"Variable", @"Value", 90, 540),
-			hint(@"Like Environment on the General tab, for values to keep out of files, such as HF_TOKEN."),
-			hint(@"All of these are kept in your login keychain."),
+			varsTable,
 		]);
-		[secrets setCustomSpacing:16 afterView:secrets.views[5]];
-		stretched(secrets, @[ secrets.views[1], secrets.views[7] ]); // the two tables
+		[secrets setCustomSpacing:16 afterView:appKeyRow];
+		stretched(secrets, @[ keysTable, varsTable ]);
 
 		// Security: which web pages may use llama-swap.
 		NSTextField *webTitle = label(@"Web pages");
@@ -1373,22 +1421,25 @@ char *lsl_preferences(const char *json, int *result) {
 		// the real one.
 		c.corsHint = hint(@"The app writes these to llama-swap's security.cors, in its managed config folder. Pages listed in your own "
 		                  @"config count too; a switch or cache time set differently there stops llama-swap from loading.");
+		NSTextField *pagesWarning = hint(@"By default llama-swap lets any web page use it, including pages open in your browser now. "
+		                                 @"This limits it to the pages you list. A page can still send a simple request, such as an "
+		                                 @"unload, without reading the reply; API keys stop that (Secrets tab).");
+		explain(@"One per line, as the browser shows it, such as http://localhost:3000: no path, no trailing slash.",
+		        @[ originsArea, c.corsOrigins ]);
+		NSStackView *cacheRow = row(@[ label(@"Browsers may cache a check for:"), c.corsMaxAge, label(@"seconds") ]);
 		NSStackView *security = column(@[
 			webTitle,
-			hint(@"By default llama-swap lets any web page use it, including pages open in your browser now. This limits it to "
-			     @"the pages you list. A page can still send a simple request, such as an unload, without reading the reply; "
-			     @"API keys stop that (Secrets tab)."),
+			pagesWarning,
 			c.corsRestrict,
 			originsArea,
-			hint(@"One per line, as the browser shows it, such as http://localhost:3000: no path, no trailing slash."),
 			c.corsCredentials,
 			c.corsPrivate,
-			row(@[ label(@"Browsers may cache a check for:"), c.corsMaxAge, label(@"seconds") ]),
+			cacheRow,
 			c.corsHint,
 		]);
-		[security setCustomSpacing:12 afterView:security.views[1]];
-		[security setCustomSpacing:12 afterView:security.views[4]];
-		[security setCustomSpacing:12 afterView:security.views[7]];
+		[security setCustomSpacing:12 afterView:pagesWarning];
+		[security setCustomSpacing:12 afterView:originsArea];
+		[security setCustomSpacing:12 afterView:cacheRow];
 		stretched(security, @[ originsArea ]);
 
 		// Peers.
@@ -1400,7 +1451,7 @@ char *lsl_preferences(const char *json, int *result) {
 		// The tabs, sized to fit the larger page: an alert sizes itself to
 		// its accessory view's frame.
 		NSTabView *tabs = [[NSTabView alloc] init];
-		[tabs addTabViewItem:tab(@"general", @"General", general, NO)];
+		[tabs addTabViewItem:tab(@"general", @"General", general, YES)];
 		[tabs addTabViewItem:tab(@"secrets", @"Secrets", secrets, YES)];
 		[tabs addTabViewItem:tab(@"peers", @"Peers", peersView, YES)];
 		[tabs addTabViewItem:tab(@"security", @"Security", security, YES)];
