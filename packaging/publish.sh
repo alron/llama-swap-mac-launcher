@@ -113,4 +113,6 @@ if [ -n "$new_tag" ]; then
 	git tag -a "$tag" "$rev" -m "$app $version" -m "$(basename "$zip"): SHA-256 $sha"
 fi
 [ -n "$remote" ] || git push origin "refs/tags/$tag"
-gh release create "$tag" "$zip" --verify-tag --title "$app $version" --notes-file "$dir/notes.md"
+# Titled with the tag alone, as GitHub would by default: the release list
+# cuts titles short, and "Llama Swap Launcher …" left them all looking alike.
+gh release create "$tag" "$zip" --verify-tag --title "$tag" --notes-file "$dir/notes.md"
