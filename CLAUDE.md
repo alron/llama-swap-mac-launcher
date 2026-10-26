@@ -390,16 +390,20 @@ From use after publishing:
     - **The status:** `llsl status`'s `apiKeysRequired` comes from what llama-swap started with (item 44). After a Save that only reloads, it has to follow what was written (done: `UpdateConfigFiles`).
     - **A failed reload** logs a warning in llama-swap's output and keeps the old config (item 34), and the app doesn't see it. The staged check makes it unlikely, so the app doesn't watch for the warning; noted, not built.
 
-51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; questions open). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
+51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; decided the same day, below). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
       - A daemon plist in the bundle's `Contents/Library/LaunchDaemons/`, registered with `[SMAppService daemonServiceWithPlistName:]`. Its `BundleProgram` names an executable inside the bundle, and `AssociatedBundleIdentifiers` makes System Settings show the app's name.
       - The user approves it once, in System Settings → General → Login Items & Extensions (`SMAppService.openSystemSettingsLoginItems`); the status goes from `requiresApproval` to `enabled`.
       - A helper executable: a static plist can't carry a value that changes, so a small, single-purpose program in the bundle, signed with the rest, runs as root.
       - Dev and release builds get separate daemons (the label from the bundle ID, generated like `Info.plist`). Both enabled on one Mac would fight at boot.
-    - **How the value reaches root** (open; recommended A):
+    - **How the value reaches root** (decided: A, "more secure, more Apple style"):
       - **A:** the helper offers an XPC Mach service (`MachServices`) and accepts only the signed app, via `xpc_connection_set_peer_code_signing_requirement` (Team ID `P56KW9H72P` and the bundle ID). It keeps the value in a root-owned file, applies it on request, and again at every boot (`RunAtLoad`). The helper is Go, with a short C shim for XPC's blocks.
       - **B:** the helper reads a value the app writes in a file the user owns. Simpler, but any program running as the user could change the limit, within the bounds below.
-    - **Safety:** bounds checked in the app and again in the helper. The helper refuses a value leaving less than a hard minimum for macOS; Settings warns at a higher one (8 GB and 16 GB suggested; open). 0 means macOS's default. The helper retries for a few seconds when the setting doesn't exist yet early in boot, rather than the manual daemon's `sleep 10`.
+    - **Safety** (decided by the maintainer): bounds checked in the app and again in the helper.
+      - Always at least 8 GB left for macOS: the helper refuses less, whatever it's sent.
+      - Refused outright on Macs with 32 GB or less.
+      - The default reserve, which Settings suggests (total minus reserve) and warns below: 8 GB for 36, 48 and 64 GB; 12 GB for 96; 16 for 128; 20 for 192; 24 for 256; 32 for 512. A size between takes the row below it (384 GB: 24).
+      - 0 means macOS's default. The helper retries for a few seconds when the setting doesn't exist yet early in boot, rather than the manual daemon's `sleep 10`.
     - **Reading needs no root:** `iogpu.wired_limit_mb` and `hw.memsize` with `unix.Sysctl…`, as item 5 does. Whether Metal's `recommendedMaxWorkingSetSize` follows the setting, and so could show what 0 means on this Mac, is to check.
     - **Turning it off** unregisters the daemon and sets 0 at once. Deleting the app leaves nothing in effect after the next reboot. Milestone 7's cask may need an `uninstall launchctl:` entry; check then.
     - **The maintainer's own LaunchDaemon** and the app's would both apply at boot, in no set order: remove it once the app's works. The app could note a value it didn't set.
@@ -407,7 +411,8 @@ From use after publishing:
     - **The first root code in the project:** a security review before it ships, as before 0.2.1 and 0.3.0.
     - **Later:** with item 47's managed models, the app knows each model's files, and could warn when one won't fit under the limit.
     - **First, a spike** (validate before building): register a minimal daemon from the dev build, with the maintainer approving it in System Settings. Check that it runs as root, whether the app must be in `/Applications`, that the XPC signature check accepts the dev app and refuses another program, and, after a reboot, whether the setting exists when the daemon starts.
-    - **Open questions for the maintainer:** A or B; where in Settings (a new tab, "GPU" or "Memory", or General); the two thresholds; and whether it waits for its own version (0.4.0, with the review).
+    - **Where:** a new **Tweaks** tab (the maintainer), for settings that are risky or fit no other tab; General has no room.
+    - **When:** a 0.3.x release, before item 47's 0.4 work, is fine. Before it ships, the maintainer has Claude Fable (at Max effort) and some local models with million-token context review it hard.
 
 Considered for 0.3 and set aside (the maintainer, 2026-10-18):
 - **Preloading models at startup** (`hooks.on_startup.preload`, a list, so it would merge safely): it names models the app doesn't manage, which can change between starts and reloads. It belongs with a managed model config, if one comes. The maintainer has ideas for that, from their own configs, but it needs a fully managed config, macros included; not now.
