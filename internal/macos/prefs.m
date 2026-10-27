@@ -568,9 +568,14 @@ static NSButton *smallButton(NSString *image, NSString *description, id target, 
 	return b;
 }
 
+// tableHeight is every table's height in the dialog: its header (28
+// points), four 24-point rows and the border (2), so each shows four rows
+// whole (TODO item 52).
+static const CGFloat tableHeight = 28 + 4 * 24 + 2;
+
 // secretTable is t's table in a scroll view at least width wide, with +
 // and −, Generate (for keys) and Show (unless it's plain) under it.
-static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *valueTitle, CGFloat height, CGFloat width) {
+static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *valueTitle, CGFloat width) {
 	NSTableView *table = [[NSTableView alloc] init];
 	NSTableColumn *name = [[NSTableColumn alloc] initWithIdentifier:@"name"];
 	name.title = nameTitle;
@@ -590,7 +595,7 @@ static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *val
 	scroll.hasVerticalScroller = YES;
 	scroll.borderType = NSBezelBorder;
 	minWidth(scroll, width);
-	[scroll.heightAnchor constraintEqualToConstant:height].active = YES;
+	[scroll.heightAnchor constraintEqualToConstant:tableHeight].active = YES;
 
 	NSMutableArray *buttons = [@[
 		smallButton(NSImageNameAddTemplate, @"Add", t, @selector(addRow:)),
@@ -1101,7 +1106,7 @@ static NSView *peersTab(LSLPeers *p) {
 	peerScroll.hasVerticalScroller = YES;
 	peerScroll.borderType = NSBezelBorder;
 	minWidth(peerScroll, 540);
-	[peerScroll.heightAnchor constraintEqualToConstant:80].active = YES;
+	[peerScroll.heightAnchor constraintEqualToConstant:tableHeight].active = YES;
 	NSButton *add = smallButton(NSImageNameAddTemplate, @"Add a peer", p, @selector(addPeer:));
 	NSButton *remove = smallButton(NSImageNameRemoveTemplate, @"Remove the selected peer", p, @selector(removePeer:));
 
@@ -1152,7 +1157,7 @@ static NSView *peersTab(LSLPeers *p) {
 	listScroll.hasVerticalScroller = YES;
 	listScroll.borderType = NSBezelBorder;
 	minWidth(listScroll, 540);
-	[listScroll.heightAnchor constraintEqualToConstant:150].active = YES;
+	[listScroll.heightAnchor constraintEqualToConstant:tableHeight].active = YES;
 
 	NSButton *tick = [NSButton buttonWithTitle:@"Tick All Shown" target:p action:@selector(tickShown:)];
 	NSButton *untick = [NSButton buttonWithTitle:@"Untick All Shown" target:p action:@selector(untickShown:)];
@@ -1242,7 +1247,7 @@ char *lsl_preferences(const char *json, int *result) {
 		c.env.placeholder = @"NAME";
 		// As wide as the tab, like the Secrets tab's tables (filling its
 		// grid row, below).
-		NSView *envTable = secretTable(c.env, @"Variable", @"Value", 90, 540);
+		NSView *envTable = secretTable(c.env, @"Variable", @"Value", 540);
 		c.dirMode = [[NSPopUpButton alloc] init];
 		NSArray *dirModes = @[ @[ @"off", @"None" ], @[ @"own", @"Your own folder" ], @[ @"managed", @"Managed by the app" ] ];
 		for (NSArray *m in dirModes) {
@@ -1382,8 +1387,8 @@ char *lsl_preferences(const char *json, int *result) {
 		keysTitle.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
 		NSTextField *varsTitle = label(@"Secret environment variables");
 		varsTitle.font = keysTitle.font;
-		NSView *keysTable = secretTable(c.keys, @"Variable", @"Key", 110, 540);
-		NSView *varsTable = secretTable(c.vars, @"Variable", @"Value", 90, 540);
+		NSView *keysTable = secretTable(c.keys, @"Variable", @"Key", 540);
+		NSView *varsTable = secretTable(c.vars, @"Variable", @"Value", 540);
 		// On the whole box, column headers and buttons included.
 		explain(@"Kept in your login keychain.", @[ keysTitle, keysTable ]);
 		explain(@"Like Environment on the General tab, for values to keep out of files, such as HF_TOKEN. "

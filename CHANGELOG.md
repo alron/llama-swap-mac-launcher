@@ -3,6 +3,12 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
+## Unreleased
+
+- Settings' tables (Environment, the API keys, the secret variables and the
+  peers) show four rows, where some showed two and a half. The models list
+  shows four instead of five, and the window is a little taller.
+
 ## 0.3.1 (2026-10-24)
 
 - **Environment** (Settings → General) is a table with **+** and **−**, like

@@ -414,7 +414,7 @@ From use after publishing:
     - **Where:** a new **Tweaks** tab (the maintainer), for settings that are risky or fit no other tab; General has no room.
     - **When:** a 0.3.x release, before item 47's 0.4 work, is fine. Before it ships, the maintainer has Claude Fable (at Max effort) and some local models with million-token context review it hard.
 
-52. **Taller tables in Settings** (the maintainer, 2026-10-26; not started). Environment, the secret variables and the peers are "a touch claustrophobic": every table should show 4 full rows, header not counted.
+52. **Taller tables in Settings** (the maintainer, 2026-10-26; **built and verified hands-on 2026-10-26**; **done**: `tableHeight` in `prefs.m`, 126 points, for all five, and `secretTable` lost its height parameter. Measured in the test program: every table 4.00 rows, the window 664 × 839; six runs clean. The maintainer: "no more half rows"). Environment, the secret variables and the peers are "a touch claustrophobic": every table should show 4 full rows, header not counted.
     - **Measured** in the dialog test program: rows are 24 points, the header 28, and the border 2, so 4 rows is a 126-point table. Today: Environment 90 (2.5 rows), API keys 110 (3.3), secret variables 90 (2.5), peers 80 (2.1), and the Peers tab's models 150 (5).
     - **The change:** all five at 126 (`secretTable`'s height, and `peersTab`'s two). The models list gives up a row to make room for the peers'.
     - **The window:** General grows to 557 points, Secrets to 504, and Peers to 561, the tallest, so the window grows 22 points, from 817 to about 839: still shorter than 0.3.0's 851 (item 48 freed 34).
