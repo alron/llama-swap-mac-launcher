@@ -414,6 +414,11 @@ From use after publishing:
     - **Where:** a new **Tweaks** tab (the maintainer), for settings that are risky or fit no other tab; General has no room.
     - **When:** a 0.3.x release, before item 47's 0.4 work, is fine. Before it ships, the maintainer has Claude Fable (at Max effort) and some local models with million-token context review it hard.
 
+52. **Taller tables in Settings** (the maintainer, 2026-10-26; not started). Environment, the secret variables and the peers are "a touch claustrophobic": every table should show 4 full rows, header not counted.
+    - **Measured** in the dialog test program: rows are 24 points, the header 28, and the border 2, so 4 rows is a 126-point table. Today: Environment 90 (2.5 rows), API keys 110 (3.3), secret variables 90 (2.5), peers 80 (2.1), and the Peers tab's models 150 (5).
+    - **The change:** all five at 126 (`secretTable`'s height, and `peersTab`'s two). The models list gives up a row to make room for the peers'.
+    - **The window:** General grows to 557 points, Secrets to 504, and Peers to 561, the tallest, so the window grows 22 points, from 817 to about 839: still shorter than 0.3.0's 851 (item 48 freed 34).
+
 Considered for 0.3 and set aside (the maintainer, 2026-10-18):
 - **Preloading models at startup** (`hooks.on_startup.preload`, a list, so it would merge safely): it names models the app doesn't manage, which can change between starts and reloads. It belongs with a managed model config, if one comes. The maintainer has ideas for that, from their own configs, but it needs a fully managed config, macros included; not now.
 - **Single values** such as `logLevel`: llama-swap refuses to load when two files set one differently, so they'd need a "here or in your config, not both" hint. Hold until one is needed.
