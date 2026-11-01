@@ -717,11 +717,13 @@ Llama Swap Launcher was built with generative AI, and this is how.
   `go vet`, `staticcheck`, `gosec` and `govulncheck`, also run by GitHub
   Actions for every push and pull request. On top of those, reviews of the
   project by local models (Gemma 4 and Qwen 3.6) and by a second Claude
-  model, whose accepted suggestions are recorded in CLAUDE.md.
+  model, whose accepted suggestions are recorded in
+  [docs/done.md](docs/done.md).
 - **[CLAUDE.md](CLAUDE.md)** is the working brief the AI sessions follow:
-  the goal, each decision and why, what was tried and found, and what's
-  left. It stays in the repository, so how the project was built is open to
-  read.
+  the goal, each decision and why, and what was tried and found.
+  [docs/roadmap.md](docs/roadmap.md) is what's left, and
+  [docs/done.md](docs/done.md) what was done and how it was checked. They
+  stay in the repository, so how the project was built is open to read.
 
 ## License
 
