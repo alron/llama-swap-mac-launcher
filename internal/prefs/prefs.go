@@ -101,6 +101,31 @@ type Prefs struct {
 	// LlamaSwapLogFile is llama-swap's own log, with LogToFile. Empty means
 	// llama-swap.log in the app's log folder.
 	LlamaSwapLogFile string `json:"llamaSwapLogFile"`
+	// ClipboardClearSeconds is how long a secret copied in Settings stays
+	// on the clipboard: one of ClipboardChoices, or ClipboardNever. Unset
+	// means the default, which isn't written, so an older app can still
+	// read the file.
+	ClipboardClearSeconds *int `json:"clipboardClearSeconds,omitempty"`
+}
+
+// ClipboardChoices are the times, in seconds, a copied secret can stay on
+// the clipboard (the Tweaks tab), besides ClipboardNever.
+var ClipboardChoices = []int{10, 30, 60, 90, 120, 300}
+
+// ClipboardNever leaves a copied secret on the clipboard, Quit included,
+// for those who'd rather (the maintainer, 2026-11-01).
+const ClipboardNever = 0
+
+// DefaultClipboardSeconds gives time to click through to where the secret
+// is pasted.
+const DefaultClipboardSeconds = 90
+
+// ClipboardSeconds is ClipboardClearSeconds, or the default if it's unset.
+func (p Prefs) ClipboardSeconds() int {
+	if p.ClipboardClearSeconds == nil {
+		return DefaultClipboardSeconds
+	}
+	return *p.ClipboardClearSeconds
 }
 
 // Where llama-swap's output goes (LlamaSwapLog).
@@ -510,6 +535,9 @@ func (p Prefs) Validate() error {
 	}
 	if p.HealthCheckSeconds < 0 {
 		return fmt.Errorf("healthCheckSeconds: %d is negative; use 0 for the default", p.HealthCheckSeconds)
+	}
+	if s := p.ClipboardClearSeconds; s != nil && *s != ClipboardNever && !slices.Contains(ClipboardChoices, *s) {
+		return fmt.Errorf("clipboardClearSeconds: %d isn't one of %v, or %d for never", *s, ClipboardChoices, ClipboardNever)
 	}
 	for name := range p.Env {
 		if err := checkVariable(name); err != nil {

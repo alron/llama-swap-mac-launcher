@@ -2,7 +2,8 @@
 //
 // It's an alert (Save, Cancel) with tabs as its accessory view: General, a
 // grid of labels and fields; Secrets, two tables of named secrets (API keys
-// and secret environment variables); Peers; Security; and Logs. The values go in and come back
+// and secret environment variables); Peers; Security; Logs; and Tweaks, for
+// settings that fit no other tab. The values go in and come back
 // out as JSON, so the C interface is a single function and all the
 // checking stays in Go. If what the user entered doesn't check out, Go
 // shows the dialog again with their entries and the error.
@@ -27,9 +28,15 @@
 @property BOOL plain;               // values shown as typed, with no Show (Environment)
 @property(copy) NSString *placeholder;
 @property(copy) void (^namesChanged)(void); // after a name changes, or a row comes or goes
+@property(copy) NSTimeInterval (^clearAfter)(void); // how long a copied value stays (the Tweaks tab)
 @property(strong) NSTableView *table;
+// The buttons that act on the selected row, greyed out without one.
+@property(strong) NSButton *remover;
+@property(strong) NSButton *generator;
 @property(strong) NSButton *show;
-@property NSInteger revealed; // the row whose value is shown, or -1
+@property(strong) NSButton *copier; // Copy; not "copyButton", which ARC would take for a copy method
+@property NSInteger revealed;       // the row whose value is shown, or -1
+- (void)updateButtons;
 @end
 
 @implementation LSLSecretTable
@@ -111,6 +118,31 @@
 	if (row >= 0 && row < (NSInteger)self.rows.count) {
 		self.rows[(NSUInteger)row][@"value"] = sender.stringValue;
 	}
+	[self updateButtons];
+}
+
+// −, Generate and Show act on the selected row, and Copy on its value, so
+// each is greyed out without one.
+- (void)updateButtons {
+	NSInteger row = self.table.selectedRow;
+	BOOL selected = row >= 0 && row < (NSInteger)self.rows.count;
+	self.remover.enabled = selected;
+	self.generator.enabled = selected;
+	self.show.enabled = selected;
+	self.copier.enabled = selected && [self.rows[(NSUInteger)row][@"value"] length] > 0;
+}
+
+// Copy puts the selected row's value on the clipboard for a while, as it
+// stands in the table, unsaved edits included (clipboard.m).
+- (void)putOnClipboard:(id)sender {
+	[self.table.window makeFirstResponder:nil]; // finish an edit first, so it's what's copied
+	NSInteger row = self.table.selectedRow;
+	NSString *value = row >= 0 && row < (NSInteger)self.rows.count ? self.rows[(NSUInteger)row][@"value"] : @"";
+	if (value.length == 0) {
+		NSBeep();
+		return;
+	}
+	lsl_copy_secret(value, self.clearAfter ? self.clearAfter() : 90);
 }
 
 - (void)changed {
@@ -122,6 +154,7 @@
 // Moving to another row hides a revealed value again.
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
 	[self reveal:-1];
+	[self updateButtons];
 }
 
 // reveal shows row's value in plain text (-1 for none), and hides any other.
@@ -176,6 +209,7 @@ static NSString *newKey(void) {
 	self.revealed = -1;
 	self.show.title = @"Show";
 	[self.table reloadData];
+	[self updateButtons];
 	[self changed];
 }
 
@@ -189,6 +223,7 @@ static NSString *newKey(void) {
 	self.rows[(NSUInteger)row][@"value"] = newKey();
 	[self.table reloadDataForRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row]
 	                      columnIndexes:[NSIndexSet indexSetWithIndex:1]];
+	[self updateButtons];
 }
 
 // json is the rows, for the dialog's reply.
@@ -574,7 +609,8 @@ static NSButton *smallButton(NSString *image, NSString *description, id target, 
 static const CGFloat tableHeight = 28 + 4 * 24 + 2;
 
 // secretTable is t's table in a scroll view at least width wide, with +
-// and −, Generate (for keys) and Show (unless it's plain) under it.
+// and −, Generate (for keys), and Show and Copy (unless it's plain) under
+// it.
 static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *valueTitle, CGFloat width) {
 	NSTableView *table = [[NSTableView alloc] init];
 	NSTableColumn *name = [[NSTableColumn alloc] initWithIdentifier:@"name"];
@@ -597,17 +633,18 @@ static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *val
 	minWidth(scroll, width);
 	[scroll.heightAnchor constraintEqualToConstant:tableHeight].active = YES;
 
-	NSMutableArray *buttons = [@[
-		smallButton(NSImageNameAddTemplate, @"Add", t, @selector(addRow:)),
-		smallButton(NSImageNameRemoveTemplate, @"Remove the selected row", t, @selector(removeRow:)),
-	] mutableCopy];
+	t.remover = smallButton(NSImageNameRemoveTemplate, @"Remove the selected row", t, @selector(removeRow:));
+	NSMutableArray *buttons = [@[ smallButton(NSImageNameAddTemplate, @"Add", t, @selector(addRow:)), t.remover ] mutableCopy];
 	if (t.generates) {
-		[buttons addObject:[NSButton buttonWithTitle:@"Generate" target:t action:@selector(generate:)]];
+		t.generator = [NSButton buttonWithTitle:@"Generate" target:t action:@selector(generate:)];
+		[buttons addObject:t.generator];
 	}
 	if (!t.plain) {
 		t.show = [NSButton buttonWithTitle:@"Show" target:t action:@selector(showValue:)];
-		[buttons addObject:t.show];
+		t.copier = [NSButton buttonWithTitle:@"Copy" target:t action:@selector(putOnClipboard:)];
+		[buttons addObjectsFromArray:@[ t.show, t.copier ]];
 	}
+	[t updateButtons]; // greyed out until a row is selected
 	NSStackView *v = column(@[ scroll, row(buttons) ]);
 	stretched(v, @[ scroll ]);
 	return v;
@@ -1356,6 +1393,26 @@ char *lsl_preferences(const char *json, int *result) {
 			@[ ownLabel, row(@[ c.ownLog, c.chooseOwnLog ]) ],
 		]);
 
+		// Tweaks: settings that fit no other tab. How long a secret copied
+		// on the Secrets tab stays on the clipboard: fixed choices, or never.
+		NSPopUpButton *clearAfter = [[NSPopUpButton alloc] init];
+		for (NSArray *choice in @[ @[ @10, @"10 seconds" ], @[ @30, @"30 seconds" ], @[ @60, @"60 seconds" ],
+		                           @[ @90, @"90 seconds" ], @[ @120, @"2 minutes" ], @[ @300, @"5 minutes" ],
+		                           @[ @0, @"Never" ] ]) {
+			[clearAfter addItemWithTitle:choice[1]];
+			clearAfter.lastItem.tag = [choice[0] integerValue];
+		}
+		id given = in[@"clipboardSeconds"];
+		if (![given isKindOfClass:[NSNumber class]] || ![clearAfter selectItemWithTag:[given integerValue]]) {
+			[clearAfter selectItemWithTag:90];
+		}
+		NSTextField *clearLabel = label(@"Clear a copied secret after:");
+		explain(@"Copy, on the Secrets tab, puts a key or a secret variable on the clipboard for this Mac only, marked so that "
+		        @"clipboard managers don't record it. After this long the app clears it, unless something else has been "
+		        @"copied since. Quitting the app clears it too. With Never, it stays until something else is copied.",
+		        @[ clearLabel, clearAfter ]);
+		NSGridView *tweaks = grid(@[ @[ clearLabel, clearAfter ] ]);
+
 		// Secrets: the API keys, then the secret environment variables.
 		c.keys = [[LSLSecretTable alloc] initWithRows:in[@"apiKeys"]];
 		c.keys.prefix = string(in, @"keyPrefix");
@@ -1370,6 +1427,11 @@ char *lsl_preferences(const char *json, int *result) {
 		c.vars.placeholder = @"HF_TOKEN";
 		c.vars.namesChanged = ^{
 			[weak.peers refreshKeys]; // a peer's key is one of these
+		};
+		// The choice as it stands, saved or not, as the values are.
+		__weak NSPopUpButton *weakClear = clearAfter;
+		c.keys.clearAfter = c.vars.clearAfter = ^NSTimeInterval {
+			return weakClear ? (NSTimeInterval)weakClear.selectedTag : 90;
 		};
 		c.appKey = [[NSPopUpButton alloc] init];
 		[c refreshAppKey];
@@ -1461,6 +1523,7 @@ char *lsl_preferences(const char *json, int *result) {
 		[tabs addTabViewItem:tab(@"peers", @"Peers", peersView, YES)];
 		[tabs addTabViewItem:tab(@"security", @"Security", security, YES)];
 		[tabs addTabViewItem:tab(@"logs", @"Logs", logs, NO)];
+		[tabs addTabViewItem:tab(@"tweaks", @"Tweaks", tweaks, NO)];
 		NSSize content = NSZeroSize;
 		for (NSTabViewItem *item in tabs.tabViewItems) {
 			NSSize s = item.view.fittingSize;
@@ -1487,7 +1550,7 @@ char *lsl_preferences(const char *json, int *result) {
 		[c.peers showSelected];
 		[c dirModeChanged:nil];
 		NSString *first = string(in, @"tab");
-		if ([first isEqual:@"secrets"] || [first isEqual:@"peers"] || [first isEqual:@"security"] || [first isEqual:@"logs"]) {
+		if ([@[ @"secrets", @"peers", @"security", @"logs", @"tweaks" ] containsObject:first]) {
 			[tabs selectTabViewItemWithIdentifier:first];
 		}
 
@@ -1506,6 +1569,7 @@ char *lsl_preferences(const char *json, int *result) {
 		                                     : [shown isEqual:@"peers"] ? (NSView *)c.peers.table
 		                                     : [shown isEqual:@"security"] ? (NSView *)c.corsRestrict
 		                                     : [shown isEqual:@"logs"]  ? (NSView *)c.launcherLog
+		                                     : [shown isEqual:@"tweaks"] ? (NSView *)clearAfter
 		                                                                 : (NSView *)c.binary;
 		[NSApp activate];
 		NSModalResponse r = lsl_run_modal(alert);
@@ -1541,6 +1605,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@"launcherLog" : c.launcherLog.stringValue,
 			@"llamaSwapLog" : c.logMode.selectedItem.representedObject ?: @"launcher",
 			@"llamaSwapLogFile" : c.ownLog.stringValue,
+			@"clipboardSeconds" : @(clearAfter.selectedTag),
 			@"tab" : tabs.selectedTabViewItem.identifier ?: @"general",
 		};
 		NSData *encoded = [NSJSONSerialization dataWithJSONObject:fields options:0 error:nil];

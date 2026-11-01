@@ -37,9 +37,10 @@ func TestFormRoundTrip(t *testing.T) {
 			{Name: "open", URL: "https://example.com/api", Models: []string{"x"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: seconds(600), KeepAlive: seconds(0)}},
 			{Name: "away", URL: "http://192.168.1.30:8080", Models: []string{"y"}, Disabled: true},
 		},
-		LauncherLog:      "/tmp/launcher.log",
-		LlamaSwapLog:     prefs.LogToFile,
-		LlamaSwapLogFile: "/tmp/llama-swap.log",
+		LauncherLog:           "/tmp/launcher.log",
+		LlamaSwapLog:          prefs.LogToFile,
+		LlamaSwapLogFile:      "/tmp/llama-swap.log",
+		ClipboardClearSeconds: seconds(30),
 	}
 	wantSecrets := map[string]string{"LLSL_ADMIN": "sk-one", "LLSL_CLAUDE": "sk-two", "GITHUB_TOKEN": "gh x y"}
 	got, secrets, err := prefsFrom(formFrom(want, wantSecrets))
@@ -51,6 +52,29 @@ func TestFormRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(secrets, wantSecrets) {
 		t.Errorf("secrets: got %v, want %v", secrets, wantSecrets)
+	}
+}
+
+// The Tweaks tab shows the default, 90 seconds, which comes back unset, so
+// it isn't written; Never comes back as 0.
+func TestClipboardSecondsFromForm(t *testing.T) {
+	f := formFrom(prefs.Defaults(), nil)
+	if f.ClipboardSeconds != prefs.DefaultClipboardSeconds {
+		t.Errorf("shown as %d, want %d", f.ClipboardSeconds, prefs.DefaultClipboardSeconds)
+	}
+	for shown, want := range map[int]*int{90: nil, 10: seconds(10), 300: seconds(300), 0: seconds(prefs.ClipboardNever)} {
+		f.ClipboardSeconds = shown
+		p, _, err := prefsFrom(f)
+		if err != nil || !reflect.DeepEqual(p.ClipboardClearSeconds, want) {
+			t.Errorf("%d: got %v, %v; want %v", shown, p.ClipboardClearSeconds, err, want)
+		}
+		if got := formFrom(p, nil).ClipboardSeconds; got != shown {
+			t.Errorf("%d: shown again as %d", shown, got)
+		}
+	}
+	f.ClipboardSeconds = 45
+	if _, _, err := prefsFrom(f); err == nil || !strings.Contains(err.Error(), "clipboardClearSeconds") {
+		t.Errorf("45 seconds: got %v", err)
 	}
 }
 

@@ -54,8 +54,12 @@ type PreferencesForm struct {
 	LauncherLog      string `json:"launcherLog"`
 	LlamaSwapLog     string `json:"llamaSwapLog"` // "launcher", "file" or "off"
 	LlamaSwapLogFile string `json:"llamaSwapLogFile"`
-	// Tab is the tab to show first, "general", "secrets", "peers", "security" or "logs", and
-	// comes back as the one showing when the dialog closed.
+	// The Tweaks tab: how long a secret copied on the Secrets tab stays on
+	// the clipboard, in seconds; 0 for never.
+	ClipboardSeconds int `json:"clipboardSeconds"`
+	// Tab is the tab to show first, "general", "secrets", "peers",
+	// "security", "logs" or "tweaks", and comes back as the one showing when
+	// the dialog closed.
 	Tab string `json:"tab"`
 
 	// Shown but not edited:

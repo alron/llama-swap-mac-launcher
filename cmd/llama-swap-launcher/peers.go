@@ -72,7 +72,7 @@ func checkPeer(ctx context.Context, st supervisor.Status, model string) error {
 	}
 	// Like the health checks, kept out of the app's copy of llama-swap's
 	// log: one line per peer for every llsl status would be noise.
-	req.Header.Set("User-Agent", health.CheckUserAgent)
+	health.MarkCheck(req)
 	resp, err := direct.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {

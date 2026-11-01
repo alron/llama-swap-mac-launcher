@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alron/llama-swap-mac-launcher/internal/health"
 	"github.com/alron/llama-swap-mac-launcher/internal/supervisor"
 )
 
@@ -102,9 +103,9 @@ peers:
 }
 
 func TestFetchPeerModels(t *testing.T) {
-	var gotAuth, gotKey string
+	var gotAuth, gotKey, gotAgent string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth, gotKey = r.Header.Get("Authorization"), r.Header.Get("x-api-key")
+		gotAuth, gotKey, gotAgent = r.Header.Get("Authorization"), r.Header.Get("x-api-key"), r.Header.Get("User-Agent")
 		switch {
 		case r.URL.Path != "/api/v1/models":
 			http.NotFound(w, r)
@@ -133,6 +134,10 @@ func TestFetchPeerModels(t *testing.T) {
 	}
 	if gotAuth != "Bearer sk-peer" {
 		t.Errorf("Authorization: %q", gotAuth)
+	}
+	// The peer's log shows what's asking.
+	if want := "llama-swap-launcher/" + health.AppVersion; gotAgent != want {
+		t.Errorf("User-Agent %q, want %q", gotAgent, want)
 	}
 
 	if _, _, err := fetchPeerModels(context.Background(), srv.URL+"/api", ""); err == nil || !strings.Contains(err.Error(), "wants an API key") {

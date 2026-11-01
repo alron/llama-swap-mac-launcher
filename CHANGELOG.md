@@ -5,9 +5,30 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **Copy** (Settings → Secrets) copies the selected API key or secret
+  variable, the way password managers do: only on this Mac, kept out of
+  clipboard managers' histories, and cleared after 90 seconds unless you've
+  copied something since, and when the app quits. The time, or Never, is
+  on the new **Tweaks** tab. The app never reads the clipboard.
+- On the Secrets tab, **−**, **Generate** and **Show** are greyed out until
+  a row is selected, as Copy is (and **−** under Environment too).
+- **About** shows llama-swap's build date, and its whole version for a
+  build from source (`v269-2-g581d29`), so only a release reads as a bare
+  `v269`. The lines under the version are in the version's size, and the
+  license sits apart, so it doesn't read as llama-swap's.
+- Every request the app makes to llama-swap, and to a peer for Fetch
+  Models, names the app and its version as its User-Agent
+  (`llama-swap-launcher/0.3.2`) rather than Go's default. The once-a-minute
+  check for outdated model servers is now left out of the app's copy of
+  llama-swap's log, like the health checks.
 - Settings' tables (Environment, the API keys, the secret variables and the
   peers) show four rows, where some showed two and a half. The models list
   shows four instead of five, and the window is a little taller.
+- Tested with llama-swap v269.
+
+Upgrading: going back to 0.3.1 after changing how long a copied secret
+stays means removing `clipboardClearSeconds` from `prefs.json` by hand,
+since older versions refuse keys they don't know.
 
 ## 0.3.1 (2026-10-24)
 

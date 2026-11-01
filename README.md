@@ -20,7 +20,7 @@ The app doesn't include llama-swap; install that separately.
 ## Requirements
 
 - macOS 15 or later, Apple Silicon.
-- llama-swap v252 or later (tested with v266), and whatever its config runs
+- llama-swap v252 or later (tested with v269), and whatever its config runs
   (such as llama.cpp's `llama-server`). With Homebrew, as
   [llama-swap's README](https://github.com/mostlygeek/llama-swap/blob/main/README.md)
   describes:
@@ -79,8 +79,10 @@ The app doesn't include llama-swap; install that separately.
   Diagnostics…** (see [Reporting a problem](#reporting-a-problem)).
 - **Open llama-swap UI**.
 - **About Llama Swap Launcher** (the app's version and build date, and
-  llama-swap's version while it runs), **Settings…**, **Launch at Login**,
-  **Quit** (which stops llama-swap).
+  while llama-swap runs, its version and build date: a release shows as
+  `v269`, a build from source as git describes it, such as
+  `v269-2-g581d29`), **Settings…**, **Launch at Login**, **Quit** (which
+  stops llama-swap).
 
 ![About Llama Swap Launcher: the app's version, llama-swap's, and the build date](docs/images/about.png)
 
@@ -201,7 +203,7 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
     "state": "ready",
     "pid": 31590,
     "listen": "127.0.0.1:8080",
-    "version": "v266 (c099777)",
+    "version": "v269 (9fbc47c)",
     "binary": "/opt/homebrew/bin/llama-swap",
     "config": "/path/to/llama-swap.yaml",
     "configDir": "/Users/you/Library/Application Support/com.my-wang.llama-swap-launcher/llama-swap.d",
@@ -296,8 +298,10 @@ folder (see [Config folder](#config-folder)), the listen address,
 environment variables (a table, with **+** and **−**), and the settings below; the **Secrets** tab has llama-swap's API keys and secret
 environment variables, the **Peers** tab the peers the app manages (see
 [Peers](#peers)), the **Security** tab which web pages may use llama-swap
-(see [Web pages](#web-pages)), and the **Logs** tab where the logs go (see
-below). Rest the pointer on a setting, or its label, for what it's for;
+(see [Web pages](#web-pages)), the **Logs** tab where the logs go (see
+below), and the **Tweaks** tab settings that fit no other tab, such as how
+long a copied secret stays on the clipboard (see [API keys](#api-keys)).
+Rest the pointer on a setting, or its label, for what it's for;
 warnings stay on screen. Save checks
 them first: if something's wrong, an alert says what, and the dialog comes back
 with your entries and the problem shown until it's fixed. If llama-swap is
@@ -342,6 +346,7 @@ misspelling, is reported as an error rather than ignored.
 | `apiKeys` | `[]` | The names of llama-swap's API keys, without `LLSL_`. The keys themselves are in the keychain; see below. |
 | `appApiKey` | `""` | Which of them the app uses for its own requests. Empty: the first. |
 | `secretEnv` | `[]` | The names of secret environment variables. Their values are in the keychain; see below. |
+| `clipboardClearSeconds` | `90` | How long a key or secret variable copied in Settings stays on the clipboard: `10`, `30`, `60`, `90`, `120` or `300`, or `0` to leave it there (Never). Not written while it's the default. |
 
 **llama-swap doesn't inherit your shell's environment.** It gets `HOME`,
 `USER`, `LOGNAME`, `SHELL` and `TMPDIR`, a `PATH` made of llama-swap's own
@@ -500,9 +505,20 @@ own config lists keep working alongside them.
    random key; name it to match the config (`ADMIN` for `LLSL_ADMIN`), or
    paste a key you already use. **Generate** makes a new random key for the
    selected one.
-2. To give a key to a client, select it and click **Show**, then select it
-   and copy it with ⌘C.
+2. To give a key to a client, select it and click **Copy**, or **Show** to
+   see it.
 3. Save, and let the app restart llama-swap.
+
+**Copy** puts the key (or a secret variable's value) on the clipboard the
+way password managers do: only on this Mac, so Universal Clipboard doesn't
+send it to your other devices; marked so that clipboard managers that follow
+the usual convention (such as Raycast, Alfred and Paste) don't record it;
+and cleared after 90 seconds, unless you've copied something else since.
+Quitting the app clears it too. The time is on the **Tweaks** tab, from 10
+seconds to 5 minutes, or **Never**, which leaves it there until something
+else is copied, Quit included. The app never reads the clipboard: it only checks
+whether anything has been copied since, which macOS tells it without
+showing what.
 
 - Every key's variable starts with `LLSL_`, so a key can't replace another
   variable llama-swap needs. The `env` preference can't use the prefix.
@@ -531,9 +547,9 @@ A variable whose value shouldn't sit in a file, such as `HF_TOKEN`, goes in
 **Settings… → Secrets → Secret environment variables** instead of
 **Environment** on the General tab. llama-swap and the commands its config
 runs get it the same way, but its value is kept in your login keychain, and
-`prefs.json` holds only its name. **Show** reveals a value; a variable can't
-be both plain and secret, and names starting with `LLSL_` are kept for API
-keys.
+`prefs.json` holds only its name. **Show** reveals a value, and **Copy**
+copies it as it does a key; a variable can't be both plain and secret, and
+names starting with `LLSL_` are kept for API keys.
 
 ### Logs
 
@@ -552,8 +568,13 @@ Logs** says:
 
 ![Settings, Logs tab](docs/images/settings-logs.png)
 
-The app's own `/health` checks and `llsl status`'s peer checks are left out
-of llama-swap's output. Each log is rotated at 10 MB, keeping 5 old files.
+The app's own checks are left out of llama-swap's output: its `/health`
+checks, `llsl status`'s peer checks, and the once-a-minute look at
+`/running` for **Mark models whose server program was updated**. In
+llama-swap's own log and web UI, every request the app makes names it and
+its version as the User-Agent (`llama-swap-launcher/0.3.2`), and the checks
+as `llama-swap-launcher-healthcheck/0.3.2`. Each log is rotated at 10 MB,
+keeping 5 old files.
 Changes apply when you save, or, for hand edits of `prefs.json`, at
 llama-swap's next start. A log in Desktop, Documents, Downloads, iCloud Drive
 or on an external disk makes macOS ask the app for access, once; at login

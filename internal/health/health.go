@@ -9,7 +9,6 @@ package health
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -28,7 +27,7 @@ import (
 // API, so the app notes in its log when it runs a newer llama-swap: after
 // an upgrade breaks something, that note is the first clue. Bump it
 // whenever that test passes against a newer release.
-const TestedVersion = 266
+const TestedVersion = 269
 
 // MinimumVersion is the oldest llama-swap release the app is known to work
 // with: v252 added -validate, and older ones lack parts of the API too.
@@ -117,25 +116,45 @@ func (s Snapshot) Faulted() []Model {
 // that connection, which is then reopened. A variable so tests can lower it.
 var maxLine = 8 << 20
 
-// CheckUserAgent is the User-Agent of the monitor's /health checks, so
-// their lines can be kept out of the app's copy of llama-swap's log.
+// AppVersion is the app's version, which every request through NewClient's
+// client carries in its User-Agent. main sets it before anything else.
+var AppVersion = "dev"
+
+// userAgent names the app in its requests: "llama-swap-launcher/0.3.2".
+const userAgent = "llama-swap-launcher"
+
+// CheckUserAgent tags the User-Agent of the app's own checks (MarkCheck),
+// so their lines can be kept out of the app's copy of llama-swap's log.
 const CheckUserAgent = "llama-swap-launcher-healthcheck"
 
+// MarkCheck gives req the checks' User-Agent, with the app's version:
+// "llama-swap-launcher-healthcheck/0.3.2".
+func MarkCheck(req *http.Request) {
+	req.Header.Set("User-Agent", CheckUserAgent+"/"+AppVersion)
+}
+
+// checkAgent matches the checks' User-Agent as llama-swap quotes it, with
+// or without a version (before 0.3.2, the app sent none).
+var checkAgent = regexp.MustCompile(`"` + CheckUserAgent + `(?:/[^"\s]*)?"`)
+
 // checkRequest matches the request in llama-swap's access-log line for one
-// of the app's own checks: its /health, or a peer's through /upstream.
-var checkRequest = regexp.MustCompile(`"GET /(?:upstream/[^ "]+/)?health HTTP/`)
+// of the app's own checks: its /health, a peer's through /upstream, or the
+// /running poll for outdated model servers.
+var checkRequest = regexp.MustCompile(`"GET /(?:(?:upstream/[^ "]+/)?health|running) HTTP/`)
 
 // IsCheckLine reports whether line is llama-swap's access-log line for one
 // of the app's own checks, which the app keeps out of its copy of the log:
-// a GET of a /health, sent with CheckUserAgent, which llama-swap quotes
-// after the status:
+// a GET of a /health or /running, sent with the checks' User-Agent, which
+// llama-swap quotes after the status:
 //
-//	[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck" 36µs
+//	[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck/0.3.2" 36µs
 //
 // The User-Agent alone isn't enough: any client can send it, and would
-// then be left out of the log whatever it asked for.
+// then be left out of the log whatever it asked for. With both, a client
+// can hide only its own reads of /health and /running, which change
+// nothing.
 func IsCheckLine(line []byte) bool {
-	return bytes.Contains(line, []byte(`"`+CheckUserAgent+`"`)) && checkRequest.Match(line)
+	return checkAgent.Match(line) && checkRequest.Match(line)
 }
 
 type Monitor struct {
@@ -174,11 +193,24 @@ type Monitor struct {
 // It ignores proxy settings (HTTP_PROXY and the like), which the app can
 // inherit from the shell that opened it: the requests carry the API key,
 // so they go straight to llama-swap, never through a proxy. (Go already
-// skips the proxy for loopback, but listen can be a LAN address.)
+// skips the proxy for loopback, but listen can be a LAN address.) Every
+// request names the app in its User-Agent, unless it set one itself.
 func NewClient() *http.Client {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.Proxy = nil
-	return &http.Client{Transport: t}
+	return &http.Client{Transport: named{t}}
+}
+
+// named gives a request without a User-Agent the app's, with its version,
+// rather than Go's "Go-http-client/1.1".
+type named struct{ *http.Transport }
+
+func (n named) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req = req.Clone(req.Context()) // a RoundTripper mustn't change the caller's request
+		req.Header.Set("User-Agent", userAgent+"/"+AppVersion)
+	}
+	return n.Transport.RoundTrip(req)
 }
 
 // New returns a monitor for the llama-swap at base, such as
@@ -552,7 +584,7 @@ func (m *Monitor) checkHealth(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	req.Header.Set("User-Agent", CheckUserAgent)
+	MarkCheck(req)
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return false
@@ -569,6 +601,9 @@ func (m *Monitor) Running(ctx context.Context) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A check like /health, kept out of the app's copy of the log: the
+	// outdated-build check asks once a minute.
+	MarkCheck(req)
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return nil, err

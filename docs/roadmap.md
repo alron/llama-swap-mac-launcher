@@ -6,54 +6,38 @@ Items keep their numbers; a new one takes the next, from 57. When one is done, i
 
 ## Next release
 
-With item 52, which is built (CHANGELOG.md's Unreleased). The README's Settings screenshots, due to be retaken from 0.3.1, are better retaken from this release: item 52 changed the tables' height, and item 56 changes About.
+With items 52 and 54 to 56, which are built (CHANGELOG.md's Unreleased; the items are in [done.md](done.md)). The README's Settings screenshots, due to be retaken from 0.3.1, are better retaken from this release: item 52 changed the tables' height, and item 56 changes About.
 
-54. **A Copy button for API keys and secret variables** (the maintainer, 2026-10-28; not started). In the row with + and − (and Generate and Show) under the API keys and the secret variables: select a row, click Copy, and its value is on the clipboard. Today it takes Show, selecting the revealed text, and ⌘C.
-    - **Why** (the maintainer): their password manager handles Basic auth poorly, so they copy a key from the launcher every time they open llama-swap's web UI. Item 53's login page, once llama-swap has it, lets a password manager fill the key itself; this covers the time until then, and every other use of a key or secret.
-    - **This reverses item 14's "no Copy button"**, which kept the app from ever writing the clipboard (the maintainer limits clipboard access where they can). Show and ⌘C put the value there anyway, with no protection at all, so a Copy button that adds the protections password managers use leaves a secret less exposed than today's way, not more:
-      - **Not synced:** `prepareForNewContentsWithOptions:NSPasteboardContentsCurrentHostOnly`, so Universal Clipboard doesn't send it to the user's other Apple devices.
-      - **Kept out of clipboard histories:** the `org.nspasteboard.ConcealedType` and `org.nspasteboard.TransientType` markers (nspasteboard.org's conventions), which clipboard managers such as Raycast, Alfred and Paste honour by not recording the item.
-      - **Cleared after a while:** when the time is up, the app empties the clipboard, but only if nothing has been copied since. `NSPasteboard`'s `changeCount` goes up with every write by anyone, and can be read without reading the contents: the app keeps the count from its own write, and clears only if it's unchanged. So it never reads what else is on the clipboard, and anything copied since is left alone. Quitting the app clears it too, on the same condition. Clearing bumps the count itself, so a clipboard manager may record an empty entry, never the secret.
-      - **How long** (the maintainer, 2026-10-28): a setting on the Tweaks tab (item 51; whichever of the two is built first creates the tab). A menu of fixed choices, in keeping with item 53's sliders: 10, 30, 60 and 90 seconds, 2 and 5 minutes. The default is 90 seconds (decided by the maintainer, 2026-10-28: time to click through an interface before pasting; the exposure is no more than the secrets already have in llama-swap's environment, item 14). No "Never" (decided by the maintainer, 2026-10-28): it would turn the protection off, and Copy is one click again when the key is needed later.
-    - **The button:** "Copy", acting on the selected row like Show, greyed out with no row selected or an empty value. It copies the value as it stands in the table, unsaved edits included, as Fetch Models uses them (item 36). Nothing is logged.
-    - **Also** for item 53's session secret, when that's built. Not for Environment, whose values are on screen already.
-    - **Testing:** the test program mustn't touch the real clipboard (the maintainer's rule). The copy goes through a pasteboard the shim is given, so the test program passes `[NSPasteboard pasteboardWithUniqueName]` and checks it: the value, the two markers, the current-host-only option, and the clear after a shortened delay, with a newer copy left alone. The maintainer checks the real one by hand.
-    - **After it's built,** the "Checked and found sound" line on secrets ("never writes the clipboard") changes to what the app writes and how, and the README's API keys section mentions the button and the 90 seconds.
-
-55. **Name the app in every request it makes to llama-swap** (the maintainer, 2026-10-29, noticed in llama-swap's log; not started; to go in the same batch as item 54). Only the `/health` checks and `llsl status`'s peer checks carry a User-Agent (`health.CheckUserAgent`, `llama-swap-launcher-healthcheck`), which exists only so their lines can be dropped from the app's copy of the log (item 25). Everything else goes out as Go's default, `Go-http-client/1.1`: the event stream, the `/api/metrics/activity` lookups (item 8), the model log streams (the GPU-fault watch), unloads, `-load`, and the keyless `/api/version` probe (item 27). The `/running` poll of item 5's outdated-build check is the one that shows: once a minute while Mark models whose server program was updated is ticked, a `Go-http-client` line in the log.
-    - **Every request names the app and its version:** `llama-swap-launcher/0.3.1`, set once in `health.NewClient`'s transport (a `RoundTripper` that adds the header when a request has none), so nothing can be missed. The `health` package gets the version from `main.version` (set by the Makefile; "dev" in a plain `go build`).
-    - **The checks carry it too:** `llama-swap-launcher-healthcheck/0.3.1` (the maintainer: "tagging the version of the launcher in the poll is a nice touch"). `IsCheckLine` matches the tag with or without a version, so lines logged by an older app are still recognised.
-    - **The `/running` poll counts as a check:** it gets the check tag, and `checkRequest` also matches `GET /running`, so the once-a-minute poll stays out of the app's copy of the log like `/health`. Item 25's rule stands: the tag and the request must match together, so a client spoofing the tag could hide only its own reads of `/running`, which change nothing.
-    - **Fetch Models' requests to a peer** (another llama-swap, or a service such as OpenRouter) are the app's too, so they carry `llama-swap-launcher/<version>` as well; the peer's log then shows what's asking (the maintainer, 2026-10-29: fine to name the app to outside services). They go through their own client (`noRedirects`, item 39), so it needs the same transport.
-    - **Tests:** every request through the shared client carries the tag unless it set one; `IsCheckLine` with and without the version, and with `GET /running`; a `POST` or another path with the check tag still kept. The real-llama-swap test reads the access lines back to check what llama-swap logs. The README's health-check notes, if any, and Components §3's line on the User-Agent change with it.
-
-56. **The About panel: the credits' size, and llama-swap's whole version and build date** (the maintainer, 2026-10-31; not started; for the same batch as items 54 and 55).
-    - **What's wanted, top to bottom** (below the icon and name):
-      - **Version,** as AppKit draws it.
-      - **The app's Built line** directly under it.
-      - **llama-swap's version:** `Running: llama-swap v269` for a release, or the whole version for a build from source: `v269-2-g581d29`. The point (the maintainer, 2026-10-31) is that only a release reads as a bare `vNNN`.
-      - **llama-swap's build date,** where Built is today: `llama-swap built 2026-11-01`. Its wording was confirmed by the maintainer from a mock-up (2026-10-31): a second plain "Built" would be ambiguous.
-      - **A blank line,** then MIT License and the link, so the license doesn't read as llama-swap's.
-      
-      The two llama-swap lines show only while it runs, as today.
-    - **The credits in 10 pt** (decided by the maintainer, 2026-10-31), with their colour unchanged.
-      - **Why:** a test program that opens the standard panel and lists its views showed what AppKit uses. The name is bold 14 pt, and the version and the copyright line are regular 10 pt, in the primary text colour. The credits were 11 pt (`smallSystemFontSize`, item 21), larger than the version above them, which is what made the version look small.
-      - **The result:** at 10 pt the whole panel is in AppKit's size. The version differs from the credits only in colour, theirs being secondary.
-      - **Considered first, and dropped:** a 12 pt version, made by setting AppKit's label's font after the panel opens. It worked, but it relies on the panel's undocumented layout. This way needs only the panel's public options.
-      - **The gap:** between the version and Built it's the panel's 8 points, a little more than between the credits' lines.
-    - **llama-swap's version:**
-      - **The problem:** `versionPattern` stops at `v269`, dropping a build's `-2-g581d29`.
-      - **The fix:** widen it to git's describe form, `-<count>-g<hash>` with an optional `-dirty`.
-      - **No bracketed commit in the panel** (the maintainer, 2026-10-31): the describe form names the commit already, and a release's is its tag. The panel shows the version's first word, as `llsl status`'s line already does.
-      - **Elsewhere:** `llsl status -json` and diagnostics keep llama-swap's whole text, commit included. `VersionNumber` still reads 269.
-      - **The width:** at 10 pt, a long one such as `Running: llama-swap v269-12-g581d29c-dirty` fits the panel's 268 points. With the bracket it would be 277 and wrap.
-    - **llama-swap's build date:** `-version` already prints it (`built at 2026-11-01T03:36:54Z`, in v260's wording and v262's).
-      - `BinaryVersion` returns it from the same run, and the status carries it beside the version, from the llama-swap that was started.
-      - It's shown as the date in UTC, like the app's own Built line. Both read a day ahead for a build in the evening in the Americas.
-      - The line is left out when the output has no date.
-    - **Tests:**
-      - the parser with git's describe forms and the date;
-      - the test program, for the credits' size and order.
+57. **Pause and resume inference, from the menu** (the maintainer, 2026-11-01; not started; for the next release). llama-swap v268 added both: pausing unloads every local model and turns requests for them away until resumed, freeing the Mac's memory and GPU while llama-swap keeps running (for a game, say). Today a paused llama-swap looks "ready" in the menu.
+    - **What llama-swap does** (read in v269's `internal/server/pause.go` and `apigroup.go`; tested against v269 on a spare port, 2026-11-01):
+      - `POST /api/models/pause` and `/resume`, both behind the API key, each answering `{"paused": …}`. Pause returns once every local model has stopped. Requests in progress stop with their model.
+      - **While paused:** a request for a local model gets `503` with "all inference is paused". That includes `/upstream/<model>/…`, so the app's `-load` gets it too. `/health` still answers `200`, and `/running` is empty. Peer models aren't affected.
+      - **The event stream** sends `pauseChanged` (`{"paused": true}`) with the snapshot on connect and with every change, so the monitor follows it as it follows model states. Before v268 there's no such event.
+      - **A reload** (`-watch-config`) keeps the pause. **A restart** starts unpaused: llama-swap keeps it only in memory.
+      - The log says "inference paused" and "inference resumed".
+    - **The menu:** one item whose title says what a click does (the maintainer, 2026-11-01): **Pause All** while llama-swap serves, **Resume All** while it's paused. "All", as llama-swap's own "all inference is paused" says, and as Unload All Models does; a tooltip says peer models still work.
+      - It sits with Start, Stop and Restart, since it's an action on llama-swap as a whole.
+      - It's enabled while llama-swap is running and answers, and shown only for a llama-swap that sent `pauseChanged` (v268 or later).
+      - Like Stop and the menu's unloads, it doesn't refuse while requests are in flight (item 2).
+    - **Start and Stop become one item too** (the maintainer, 2026-11-01, for consistency): **Start** while llama-swap is stopped or failed, **Stop** while it's running or waiting to restart after a crash. It's greyed out with its current title while llama-swap is stopping, or while another action is under way, as both are today. systray's `SetTitle` and `SetTooltip` do it, while the menu is open too. Restart stays its own item. The README's menu section and Components §1's menu line change with it. So the group reads:
+      ```
+      Stop
+      Restart
+      Pause All
+      ```
+    - **While paused:** the status line says "llama-swap: paused (pid …)". The explanation under it says local models are unloaded and refused until resumed, and peers still work. **The menu bar** (decided by the maintainer, 2026-11-01): **L** and **S** dimmed (`secondaryLabelColor`, as when stopped), the arrow in the letters' usual colour. No other state looks like that: llama-swap is running, but not taking requests. `lookFor` (`icon.go`) gets the case.
+    - **Restarts** (the maintainer, 2026-11-01: "Good idea", with a checkbox for it on the Tweaks tab):
+      - **Keep inference paused when llama-swap restarts**, on by default: the app remembers the pause until Resume, or until the app quits. It pauses llama-swap again as soon as it answers after any start the app makes: Restart, a restart from Settings, crash recovery, Stop then Start. Otherwise a crash or a Settings restart during a game would quietly load models again.
+      - Unticked, a restart resumes, as llama-swap itself does.
+      - A request arriving in the moment before the app re-pauses could start a model.
+      - Quitting forgets the pause, as llama-swap does, so a launch at login starts unpaused.
+      - In `prefs.json` it's `keepPausedOnRestart`, written only when it's off, the exception to the default, so 0.3.1 can still read a file saved with the default.
+    - **`llsl`:**
+      - `llsl pause` and `llsl resume`, with `-json`. `pause` refuses while requests are in flight (exit 7, `busy`) unless given `-force`, like `stop` and `unload`.
+      - `status` shows `paused` in its text and as `"paused": true` in its JSON.
+      - **A new exit code, 8 (`paused`)** (the maintainer, 2026-11-01: a distinct, unused one, "that way script callers can directly identify when things are paused"). `status` exits 8 while paused, not 0, since llama-swap won't serve local models. So do `start -load` and `restart -load`, which fail at once while paused, saying to resume first, rather than waiting out the timeout.
+      - The README covers all of it.
+    - **Tests:** the monitor following `pauseChanged` (a fake stream); a real-llama-swap test pausing, checking the 503 and the event, reloading, resuming, and re-pausing after a restart; the menu and status text; `llsl` against a fake app.
 
 ## 0.3.x
 

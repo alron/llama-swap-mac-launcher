@@ -44,7 +44,7 @@ exec /usr/bin/python3 -m http.server "$1" --bind 127.0.0.1
 	os.WriteFile(config, fmt.Appendf(nil, "models:\n  faulty:\n    cmd: /bin/sh %s ${PORT}\n", script), 0o600)
 
 	// A pass against a newer llama-swap means TestedVersion can move up.
-	if v := supervisor.BinaryVersion(bin); supervisor.VersionNumber(v) > TestedVersion {
+	if v, _ := supervisor.BinaryVersion(bin); supervisor.VersionNumber(v) > TestedVersion {
 		t.Cleanup(func() {
 			if !t.Failed() {
 				t.Logf("passed against llama-swap %s: raise TestedVersion (v%d) to match", v, TestedVersion)
@@ -87,6 +87,84 @@ exec /usr/bin/python3 -m http.server "$1" --bind 127.0.0.1
 	waitFor(t, "the model to stop", func() bool { return modelState(m, "faulty") == "stopped" })
 	if f := m.Snapshot().Faulted(); len(f) != 0 {
 		t.Errorf("still faulted after unloading: %v", f)
+	}
+}
+
+// llama-swap's own access log names the app in every request it made: its
+// checks with the checks' tag and version, which IsCheckLine recognises,
+// the rest with the app's, which it doesn't.
+func TestRealLlamaSwapLogsTheApp(t *testing.T) {
+	bin := os.Getenv("LLAMA_SWAP_BIN")
+	if bin == "" {
+		t.Skip("set LLAMA_SWAP_BIN to run against a real llama-swap")
+	}
+	defer func(v string) { AppVersion = v }(AppVersion)
+	AppVersion = "0.0.0-test"
+	dir := t.TempDir()
+	config := filepath.Join(dir, "config.yaml")
+	os.WriteFile(config, []byte("logToStdout: \"proxy,http\"\nmodels:\n  m:\n    cmd: /bin/sleep 600 ${PORT}\n"), 0o600)
+
+	addr := freeAddr(t)
+	var out strings.Builder
+	swap := exec.Command(bin, "-config", config, "-listen", addr)
+	swap.Stdout, swap.Stderr = &out, &out
+	if err := swap.Start(); err != nil {
+		t.Fatal(err)
+	}
+	stopped := false
+	stop := func() {
+		if !stopped {
+			swap.Process.Signal(syscall.SIGTERM)
+			swap.Wait() // and the copying of its output
+			stopped = true
+		}
+	}
+	t.Cleanup(stop)
+
+	m := New("http://" + addr)
+	m.HealthEvery = 200 * time.Millisecond
+	m.SkipWhenActive = false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go m.Run(ctx)
+	waitFor(t, "llama-swap to be healthy", func() bool { return m.Snapshot().Healthy })
+	waitFor(t, "the probe to find it open", func() bool { return m.Snapshot().Open })
+	if _, err := m.Running(ctx); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond) // another /health check
+	cancel()
+	stop()
+
+	saw := map[string]bool{}
+	for line := range strings.Lines(out.String()) {
+		if !strings.Contains(line, `] Request `) {
+			continue
+		}
+		if strings.Contains(line, "Go-http-client") {
+			t.Errorf("a request without the app's name: %s", line)
+		}
+		check := strings.Contains(line, `"GET /health `) || strings.Contains(line, `"GET /running `)
+		agent := `"llama-swap-launcher/0.0.0-test"`
+		if check {
+			agent = `"llama-swap-launcher-healthcheck/0.0.0-test"`
+		}
+		if !strings.Contains(line, agent) {
+			t.Errorf("want %s in %s", agent, line)
+		}
+		if IsCheckLine([]byte(line)) != check {
+			t.Errorf("IsCheckLine = %v, want %v: %s", !check, check, line)
+		}
+		for _, path := range []string{"/health", "/running", "/api/version"} {
+			if strings.Contains(line, `"GET `+path+` `) {
+				saw[path] = true
+			}
+		}
+	}
+	for _, path := range []string{"/health", "/running", "/api/version"} {
+		if !saw[path] {
+			t.Errorf("llama-swap logged no GET %s:\n%s", path, out.String())
+		}
 	}
 }
 

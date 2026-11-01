@@ -176,6 +176,7 @@ func (a *app) onReady() {
 // systray's own Quit doesn't call it: that just makes systray.Run return,
 // and main calls shutdown then.
 func (a *app) onExit() {
+	macos.ClearCopiedSecret() // on the main thread, so at once
 	a.shutdown()
 }
 
@@ -202,6 +203,8 @@ func (a *app) quit() {
 			os.Exit(0)
 		}
 		a.sup.Stop()
+		// While AppKit's event loop still runs: clearing happens there.
+		macos.ClearCopiedSecret()
 		systray.Quit()
 	})
 }
@@ -312,7 +315,7 @@ func (a *app) spec() (supervisor.Spec, error) {
 		return supervisor.Spec{}, fmt.Errorf("can't read the config: %w", err)
 	}
 
-	v := supervisor.BinaryVersion(bin)
+	v, built := supervisor.BinaryVersion(bin)
 	switch n := supervisor.VersionNumber(v); {
 	case n > health.TestedVersion:
 		a.sup.Logf("llama-swap %s is newer than v%d, the last version this app was tested with. "+
@@ -356,6 +359,7 @@ func (a *app) spec() (supervisor.Spec, error) {
 		Dir:         filepath.Dir(config),
 		Listen:      listen,
 		Version:     v,
+		Built:       built,
 		APIKey:      appKey,
 		ConfigDir:   dir,
 		ConfigFiles: files,
@@ -453,17 +457,33 @@ func (a *app) render() {
 	enable(a.prefsItem, idle)
 }
 
-// showAbout shows the About panel, with llama-swap's version while it runs.
+// showAbout shows the About panel.
 func (a *app) showAbout() {
+	macos.ShowAbout(version, aboutCredits(buildDate, a.sup.Status()), homepage)
+}
+
+// aboutCredits returns the About panel's lines under the app's version:
+// the app's build date, then llama-swap's version and build date while it
+// runs, then the license, a line apart so it doesn't read as llama-swap's.
+func aboutCredits(buildDate string, st supervisor.Status) []string {
 	var credits []string
-	if st := a.sup.Status(); st.State == supervisor.Running && st.Version != "" {
-		credits = append(credits, "llama-swap "+st.Version)
-	}
 	if buildDate != "" {
 		credits = append(credits, "Built "+buildDate)
 	}
-	credits = append(credits, "MIT License")
-	macos.ShowAbout(version, credits, homepage)
+	if st.State == supervisor.Running && st.Version != "" {
+		// The version's first word, without the commit in brackets: a
+		// release is then a bare "v269", and a build from source shows
+		// git's "v269-2-g581d29".
+		credits = append(credits, "Running: llama-swap "+strings.Fields(st.Version)[0])
+		if t, err := time.Parse(time.RFC3339, st.Built); err == nil {
+			// In UTC, like the app's own build date.
+			credits = append(credits, "llama-swap built "+t.UTC().Format(time.DateOnly))
+		}
+	}
+	if len(credits) > 0 {
+		credits = append(credits, "")
+	}
+	return append(credits, "MIT License")
 }
 
 // recentOutput returns up to n of llama-swap's last output lines, leaving

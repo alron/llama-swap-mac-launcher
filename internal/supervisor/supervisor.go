@@ -57,8 +57,9 @@ type Status struct {
 	Err error
 	// Listen is where the running llama-swap listens.
 	Listen string
-	// Version is the running llama-swap's, from its Spec.
+	// Version and Built are the running llama-swap's, from its Spec.
 	Version string
+	Built   string
 	// APIKey is the key for requests to the running llama-swap, from its
 	// Spec. It's a secret: never show it.
 	APIKey string
@@ -81,8 +82,9 @@ type Spec struct {
 	// elsewhere.
 	Listen string
 	// Version is the binary's version (BinaryVersion), if known, for the
-	// status and the log.
+	// status and the log, and Built when it was built, for the status.
 	Version string
+	Built   string
 	// APIKey is the key the app's own requests to this llama-swap send,
 	// if its config sets apiKeys. The supervisor only hands it on, in the
 	// status, so requests use the key this llama-swap was started with.
@@ -372,7 +374,7 @@ func (s *Supervisor) launch() error {
 		name += " " + spec.Version
 	}
 	s.Logf("started %s (pid %d): %s", name, pid, strings.Join(cmd.Args, " "))
-	s.setStatus(Status{State: Running, Pid: pid, Listen: spec.Listen, Version: spec.Version, APIKey: spec.APIKey,
+	s.setStatus(Status{State: Running, Pid: pid, Listen: spec.Listen, Version: spec.Version, Built: spec.Built, APIKey: spec.APIKey,
 		ConfigDir: spec.ConfigDir, KeysRequired: spec.KeysRequired, WatchConfig: spec.WatchConfig})
 	go r.watchTree()
 	go s.wait(r)

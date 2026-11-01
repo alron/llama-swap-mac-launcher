@@ -202,8 +202,39 @@ func TestChecksIdentifyThemselves(t *testing.T) {
 	f, srv := newFakeSwap(t)
 	m := startMonitor(t, srv.URL)
 	waitFor(t, "healthy", func() bool { return m.Snapshot().Healthy })
-	if ua := f.checkUA.Load(); ua != CheckUserAgent {
-		t.Errorf("health check User-Agent %q, want %q so the app can filter its log lines", ua, CheckUserAgent)
+	if ua, want := f.checkUA.Load(), CheckUserAgent+"/"+AppVersion; ua != want {
+		t.Errorf("health check User-Agent %q, want %q so the app can filter its log lines", ua, want)
+	}
+}
+
+// Every request through the app's client names the app and its version,
+// unless it set a User-Agent itself, and the caller's request is left as
+// it was.
+func TestNewClientNamesTheApp(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("User-Agent"))
+	}))
+	defer srv.Close()
+	defer func(v string) { AppVersion = v }(AppVersion)
+	AppVersion = "0.3.2"
+
+	c := NewClient()
+	plain, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/events", nil)
+	check, _ := http.NewRequest(http.MethodGet, srv.URL+"/running", nil)
+	MarkCheck(check)
+	for _, req := range []*http.Request{plain, check} {
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	if want := []string{"llama-swap-launcher/0.3.2", "llama-swap-launcher-healthcheck/0.3.2"}; !slices.Equal(got, want) {
+		t.Errorf("User-Agents %q, want %q", got, want)
+	}
+	if ua := plain.Header.Get("User-Agent"); ua != "" {
+		t.Errorf("the caller's request was given User-Agent %q", ua)
 	}
 }
 
@@ -460,12 +491,22 @@ func TestTokensPerSecond(t *testing.T) {
 // sends the app's User-Agent with any other request is kept.
 func TestIsCheckLine(t *testing.T) {
 	for line, want := range map[string]bool{
-		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck" 36µs`:                       true,
-		`[INFO] Request 127.0.0.1 "GET /upstream/studio/gemma4/health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck" 1ms`: true,
-		`[INFO] Request 127.0.0.1 "POST /api/models/unload HTTP/1.1" 200 13 "llama-swap-launcher-healthcheck" 36µs`:          false,
-		`[INFO] Request 10.0.0.9 "GET /v1/models HTTP/1.1" 200 900 "llama-swap-launcher-healthcheck" 1ms`:                    false,
-		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "curl/8.7.1" 20µs`:                                            false,
-		`[INFO] Request 127.0.0.1 "GET /healthz?x=llama-swap-launcher-healthcheck HTTP/1.1" 404 9 "x" 2µs`:                   false,
+		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck" 36µs`:                           true, // before 0.3.2
+		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck/0.3.2" 36µs`:                     true,
+		`[INFO] Request 127.0.0.1 "GET /upstream/studio/gemma4/health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck" 1ms`:     true,
+		`[INFO] Request 127.0.0.1 "GET /upstream/studio/gemma4/health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheck/dev" 1ms`: true,
+		`[INFO] Request 127.0.0.1 "GET /running HTTP/1.1" 200 120 "llama-swap-launcher-healthcheck/0.3.2" 90µs`:                  true,
+		`[INFO] Request 127.0.0.1 "GET /running HTTP/1.1" 200 120 "llama-swap-launcher/0.3.2" 90µs`:                              false,
+		`[INFO] Request 127.0.0.1 "GET /running HTTP/1.1" 200 120 "Go-http-client/1.1" 90µs`:                                     false,
+		`[INFO] Request 127.0.0.1 "POST /running HTTP/1.1" 405 0 "llama-swap-launcher-healthcheck/0.3.2" 9µs`:                    false,
+		`[INFO] Request 127.0.0.1 "GET /running/x HTTP/1.1" 404 9 "llama-swap-launcher-healthcheck/0.3.2" 9µs`:                   false,
+		`[INFO] Request 127.0.0.1 "POST /api/models/unload HTTP/1.1" 200 13 "llama-swap-launcher-healthcheck" 36µs`:              false,
+		`[INFO] Request 127.0.0.1 "POST /api/models/unload HTTP/1.1" 200 13 "llama-swap-launcher-healthcheck/0.3.2" 36µs`:        false,
+		`[INFO] Request 10.0.0.9 "GET /v1/models HTTP/1.1" 200 900 "llama-swap-launcher-healthcheck" 1ms`:                        false,
+		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "curl/8.7.1" 20µs`:                                                false,
+		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher-healthcheckers" 20µs`:                        false,
+		`[INFO] Request 127.0.0.1 "GET /health HTTP/1.1" 200 2 "llama-swap-launcher/0.3.2" 20µs`:                                 false,
+		`[INFO] Request 127.0.0.1 "GET /healthz?x=llama-swap-launcher-healthcheck HTTP/1.1" 404 9 "x" 2µs`:                       false,
 	} {
 		if got := IsCheckLine([]byte(line)); got != want {
 			t.Errorf("IsCheckLine(%q) = %v, want %v", line, got, want)
@@ -477,11 +518,11 @@ func TestIsCheckLine(t *testing.T) {
 // carry the API key.
 func TestNewClientIgnoresProxies(t *testing.T) {
 	t.Setenv("HTTP_PROXY", "http://proxy.invalid:3128")
-	tr, ok := NewClient().Transport.(*http.Transport)
+	tr, ok := NewClient().Transport.(named)
 	if !ok || tr.Proxy != nil {
 		t.Fatalf("the client's transport has a proxy function")
 	}
-	if m := New("http://192.168.1.20:8080"); m.client.Transport.(*http.Transport).Proxy != nil {
+	if m := New("http://192.168.1.20:8080"); m.client.Transport.(named).Proxy != nil {
 		t.Error("the monitor's client has a proxy function")
 	}
 }

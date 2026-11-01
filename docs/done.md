@@ -193,7 +193,7 @@ Checked and found sound, so the next review needn't repeat it:
 - **The 0.2.0 release app:** hardened runtime, no entitlements (so no injected libraries, no debugger), notarized and stapled, the designated requirement is the bundle ID plus the team ID, no local paths in either binary, and `vcs.modified=false`. `make test`, `make lint`, `make sec` and `govulncheck` are clean.
 - **What can reach the app:** only the control socket (mode 0600 in a 0700 folder, plus the peer-UID check; checked on the installed app). It isn't HTTP, so no web page can reach it. The app has no listening port, URL scheme or Apple Events interface.
 - **What the app runs:** llama-swap's environment is built from scratch (no `DYLD_*` or proxy variables reach it), every subprocess is started without a shell, and `lsof` and `open` get fixed paths and checked arguments.
-- **Secrets:** keys come from `SecRandomCopyBytes` (48 bytes); they aren't synced, never logged, and absent from `prefs.json`, the status and the diagnostics summary (names only); the dialog uses secure fields and never writes the clipboard.
+- **Secrets:** keys come from `SecRandomCopyBytes` (48 bytes); they aren't synced, never logged, and absent from `prefs.json`, the status and the diagnostics summary (names only); the dialog uses secure fields. (Up to 0.3.1 it never wrote the clipboard. Item 54's Copy writes one value: only for this Mac, marked concealed and transient, and cleared after the Tweaks tab's delay or at Quit if the change count says nothing was copied since. The app never reads the clipboard's contents; to be reviewed with the next security review.)
 - **Files:** preferences, pidfile, logs and the diagnostics zip are 0600. The pidfile cleanup checks pid, start time and name before it stops anything.
 - **The repository:** the tree and `main`'s commit messages pass `CLAUDE.local.md`'s check, commits carry the noreply address, and the PNGs carry no metadata beyond a colour profile.
 - **The 0.3 work** (reviewed 2026-10-18; items 39 to 46 have what wasn't sound):
@@ -441,6 +441,96 @@ Item 51, the GPU's wired memory limit, is open: see the [roadmap](roadmap.md).
     - **Measured** in the dialog test program: rows are 24 points, the header 28, and the border 2, so 4 rows is a 126-point table. Today: Environment 90 (2.5 rows), API keys 110 (3.3), secret variables 90 (2.5), peers 80 (2.1), and the Peers tab's models 150 (5).
     - **The change:** all five at 126 (`secretTable`'s height, and `peersTab`'s two). The models list gives up a row to make room for the peers'.
     - **The window:** General grows to 557 points, Secrets to 504, and Peers to 561, the tallest, so the window grows 22 points, from 817 to about 839: still shorter than 0.3.0's 851 (item 48 freed 34).
+
+## Items 54 to 56
+
+For the release after 0.3.1. Item 53, browser login through a form, is open: see the [roadmap](roadmap.md).
+
+54. **A Copy button for API keys and secret variables** (the maintainer, 2026-10-28; **built and verified hands-on 2026-11-01**; **done**). In the row with + and − (and Generate and Show) under the API keys and the secret variables: select a row, click Copy, and its value is on the clipboard. Today it takes Show, selecting the revealed text, and ⌘C.
+    - **Built:** `internal/macos/clipboard.m` (`lsl_copy_secret`, `lsl_clear_copied`, and `lsl_use_pasteboard` for test programs); Copy in `LSLSecretTable` beside Show, enabled for a selected row with a value, finishing an edit in progress first; the Tweaks tab's menu; `prefs.ClipboardClearSeconds` (`clipboardClearSeconds`, written only when it isn't the default 90, so 0.3.1 can still read a file saved with the default); `macos.ClearCopiedSecret` in Quit (before `systray.Quit`, while the run loop runs, and not on the path where a dialog won't close) and in `onExit`.
+    - **Tested:**
+      - unit tests: the values allowed, the default not written, the form's round trip;
+      - a test program driving the real dialog, three runs (and three more after the changes below), with nothing in AppKit's log. It checks the button's enabling, that an unsaved edit is what's copied, the markers, and the current-host-only option (recorded by intercepting the call, since it leaves no trace on the pasteboard). It also checks the clear after the unsaved 10-second choice, a newer copy left alone, the Quit clear both ways, a timer firing after the dialog has closed, and the Save reply.
+    - **Why** (the maintainer): their password manager handles Basic auth poorly, so they copy a key from the launcher every time they open llama-swap's web UI. Item 53's login page, once llama-swap has it, lets a password manager fill the key itself; this covers the time until then, and every other use of a key or secret.
+    - **This reverses item 14's "no Copy button"**, which kept the app from ever writing the clipboard (the maintainer limits clipboard access where they can). Show and ⌘C put the value there anyway, with no protection at all, so a Copy button that adds the protections password managers use leaves a secret less exposed than today's way, not more:
+      - **Not synced:** `prepareForNewContentsWithOptions:NSPasteboardContentsCurrentHostOnly`, so Universal Clipboard doesn't send it to the user's other Apple devices.
+      - **Kept out of clipboard histories:** the `org.nspasteboard.ConcealedType` and `org.nspasteboard.TransientType` markers (nspasteboard.org's conventions), which clipboard managers such as Raycast, Alfred and Paste honour by not recording the item.
+      - **Cleared after a while:** when the time is up, the app empties the clipboard, but only if nothing has been copied since. `NSPasteboard`'s `changeCount` goes up with every write by anyone, and can be read without reading the contents: the app keeps the count from its own write, and clears only if it's unchanged. So it never reads what else is on the clipboard, and anything copied since is left alone. Quitting the app clears it too, on the same condition. Clearing bumps the count itself, so a clipboard manager may record an empty entry, never the secret.
+      - **How long** (the maintainer, 2026-10-28): a setting on the Tweaks tab (item 51; whichever of the two is built first creates the tab). A menu of fixed choices, in keeping with item 53's sliders: 10, 30, 60 and 90 seconds, 2 and 5 minutes. The default is 90 seconds (decided by the maintainer, 2026-10-28: time to click through an interface before pasting; the exposure is no more than the secrets already have in llama-swap's environment, item 14). No "Never" (decided by the maintainer, 2026-10-28): it would turn the protection off, and Copy is one click again when the key is needed later. **Reversed by the maintainer, 2026-11-01**, after the hands-on check: "Not my personal use case, but likely something that others will want." **Never** comes last in the menu, and is `0` in `prefs.json`. A copy made with it isn't cleared, not even at Quit, and keeps the other protections.
+    - **The button:** "Copy", acting on the selected row like Show, greyed out with no row selected or an empty value. It copies the value as it stands in the table, unsaved edits included, as Fetch Models uses them (item 36). Nothing is logged.
+    - **Also** for item 53's session secret, when that's built. Not for Environment, whose values are on screen already.
+    - **Testing:** the test program mustn't touch the real clipboard (the maintainer's rule). The copy goes through a pasteboard the shim is given, so the test program passes `[NSPasteboard pasteboardWithUniqueName]` and checks it: the value, the two markers, the current-host-only option, and the clear after a shortened delay, with a newer copy left alone. The maintainer checks the real one by hand.
+    - **Verified hands-on by the maintainer** (2026-11-01):
+      - Copy in its place, greyed out until a row is selected;
+      - a copied key pasted, with no macOS prompt about clipboard access;
+      - cleared after the time, and at Quit;
+      - something copied since left alone;
+      - the Tweaks setting saved and removed with no restart offer;
+      - not sent through Universal Clipboard.
+    - **Changes asked for then, both built 2026-11-01:**
+      - the Never choice above;
+      - **−**, **Generate** and **Show** greyed out without a selected row, as Copy is. They're the shared table code's (`updateButtons`), so Environment's **−** follows.
+
+      The prefs field became a pointer (`*int`): unset is the default and isn't written, and `0` is Never. The test program checks both: the seven choices, Never surviving Quit, and the buttons in all three tables.
+    - **After it's built,** the "Checked and found sound" line on secrets ("never writes the clipboard") changes to what the app writes and how, and the README's API keys section mentions the button and the 90 seconds.
+
+55. **Name the app in every request it makes to llama-swap** (the maintainer, 2026-10-29, noticed in llama-swap's log; **built and verified hands-on 2026-11-01**; **done**). Only the `/health` checks and `llsl status`'s peer checks carry a User-Agent (`health.CheckUserAgent`, `llama-swap-launcher-healthcheck`), which exists only so their lines can be dropped from the app's copy of the log (item 25). Everything else goes out as Go's default, `Go-http-client/1.1`: the event stream, the `/api/metrics/activity` lookups (item 8), the model log streams (the GPU-fault watch), unloads, `-load`, and the keyless `/api/version` probe (item 27). The `/running` poll of item 5's outdated-build check is the one that shows: once a minute while Mark models whose server program was updated is ticked, a `Go-http-client` line in the log.
+    - **Every request names the app and its version:** `llama-swap-launcher/0.3.1`, set once in `health.NewClient`'s transport (a `RoundTripper` that adds the header when a request has none), so nothing can be missed. The `health` package gets the version from `main.version` (set by the Makefile; "dev" in a plain `go build`).
+    - **The checks carry it too:** `llama-swap-launcher-healthcheck/0.3.1` (the maintainer: "tagging the version of the launcher in the poll is a nice touch"). `IsCheckLine` matches the tag with or without a version, so lines logged by an older app are still recognised.
+    - **The `/running` poll counts as a check:** it gets the check tag, and `checkRequest` also matches `GET /running`, so the once-a-minute poll stays out of the app's copy of the log like `/health`. Item 25's rule stands: the tag and the request must match together, so a client spoofing the tag could hide only its own reads of `/running`, which change nothing.
+    - **Fetch Models' requests to a peer** (another llama-swap, or a service such as OpenRouter) are the app's too, so they carry `llama-swap-launcher/<version>` as well; the peer's log then shows what's asking (the maintainer, 2026-10-29: fine to name the app to outside services). They go through their own client (`noRedirects`, item 39), so it needs the same transport.
+    - **Tests:** every request through the shared client carries the tag unless it set one; `IsCheckLine` with and without the version, and with `GET /running`; a `POST` or another path with the check tag still kept. The real-llama-swap test reads the access lines back to check what llama-swap logs. The README's health-check notes, if any, and Components §3's line on the User-Agent change with it.
+    - **Built:**
+      - `health.AppVersion`, set first thing in `main`;
+      - `NewClient`'s transport wrapped in `named`, which adds the app's User-Agent to a request without one, on a clone, so the caller's request is left as it was;
+      - `health.MarkCheck` for `/health`, `/running` and the peer checks;
+      - `IsCheckLine`'s tag matched with or without a version (`checkAgent`), and `checkRequest` taking `GET /running`.
+      
+      Fetch Models' `noRedirects` shares `direct`'s transport, so it carries the name too.
+    - **Tested:**
+      - unit tests: the client's User-Agents, the caller's request untouched, `IsCheckLine` with 16 lines, and Fetch Models' User-Agent;
+      - `TestRealLlamaSwapLogsTheApp` against v269, with `logToStdout: "proxy,http"`. llama-swap's access lines show the check tag on `/health` and `/running`, recognised as checks, and the app's tag on `/api/version`, kept. Nothing shows as `Go-http-client`.
+    - **Verified hands-on by the maintainer** (2026-11-01): every poll and request named in llama-swap's log (the checks with the check tag and version, the rest with the app's), and Fetch Models showing as `llama-swap-launcher/0.3.1` in the peer's log.
+
+56. **The About panel: the credits' size, and llama-swap's whole version and build date** (the maintainer, 2026-10-31; **built and verified hands-on 2026-11-01**; **done**).
+    - **What's wanted, top to bottom** (below the icon and name):
+      - **Version,** as AppKit draws it.
+      - **The app's Built line** directly under it.
+      - **llama-swap's version:** `Running: llama-swap v269` for a release, or the whole version for a build from source: `v269-2-g581d29`. The point (the maintainer, 2026-10-31) is that only a release reads as a bare `vNNN`.
+      - **llama-swap's build date,** where Built is today: `llama-swap built 2026-11-01`. Its wording was confirmed by the maintainer from a mock-up (2026-10-31): a second plain "Built" would be ambiguous.
+      - **A blank line,** then MIT License and the link, so the license doesn't read as llama-swap's.
+      
+      The two llama-swap lines show only while it runs, as today.
+    - **The credits in 10 pt** (decided by the maintainer, 2026-10-31), with their colour unchanged.
+      - **Why:** a test program that opens the standard panel and lists its views showed what AppKit uses. The name is bold 14 pt, and the version and the copyright line are regular 10 pt, in the primary text colour. The credits were 11 pt (`smallSystemFontSize`, item 21), larger than the version above them, which is what made the version look small.
+      - **The result:** at 10 pt the whole panel is in AppKit's size. The version differs from the credits only in colour, theirs being secondary.
+      - **Considered first, and dropped:** a 12 pt version, made by setting AppKit's label's font after the panel opens. It worked, but it relies on the panel's undocumented layout. This way needs only the panel's public options.
+      - **The gap:** between the version and Built it's the panel's 8 points, a little more than between the credits' lines.
+    - **llama-swap's version:**
+      - **The problem:** `versionPattern` stops at `v269`, dropping a build's `-2-g581d29`.
+      - **The fix:** widen it to git's describe form, `-<count>-g<hash>` with an optional `-dirty`.
+      - **No bracketed commit in the panel** (the maintainer, 2026-10-31): the describe form names the commit already, and a release's is its tag. The panel shows the version's first word, as `llsl status`'s line already does.
+      - **Elsewhere:** `llsl status -json` and diagnostics keep llama-swap's whole text, commit included. `VersionNumber` still reads 269.
+      - **The width:** at 10 pt, a long one such as `Running: llama-swap v269-12-g581d29c-dirty` fits the panel's 268 points. With the bracket it would be 277 and wrap.
+    - **llama-swap's build date:** `-version` already prints it (`built at 2026-11-01T03:36:54Z`, in v260's wording and v262's).
+      - `BinaryVersion` returns it from the same run, and the status carries it beside the version, from the llama-swap that was started.
+      - It's shown as the date in UTC, like the app's own Built line. Both read a day ahead for a build in the evening in the Americas.
+      - The line is left out when the output has no date.
+    - **Tests:**
+      - the parser with git's describe forms and the date;
+      - the test program, for the credits' size and order.
+    - **Built:**
+      - `BinaryVersion` returns the build time too;
+      - `Spec.Built` and `Status.Built`;
+      - `aboutCredits` in `app.go`, a pure function, so it's unit-tested;
+      - 10 pt in `about.m`;
+      - llama-swap's build time in the diagnostics summary, beside its version.
+    - **Tested:**
+      - the parser with v260's and v262's wording, the describe forms with and without `-dirty`, a time zone and fractions;
+      - both real binaries: Homebrew's v269 reads as `v269 (9fbc47c)`, and the maintainer's build from source as `v269-2-g581d29 (581d29c)`, each with its build time;
+      - `aboutCredits` in six cases: a release, a build from source built in another time zone, no build time, stopped, no version, and a plain `go build`;
+      - a test program opening the real panel: the version and every credit 10 pt, the lines in order, and `v269-12-g581d29c-dirty` on one line, with no scroll bar.
+    - **Verified hands-on by the maintainer** (2026-11-01): the fonts, positions and sizes, and a build from source showing as `v269-2-g581d29`.
 
 ## Milestone 0 results (2026-09-28)
 

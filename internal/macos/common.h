@@ -66,6 +66,12 @@ static inline void ensure_edit_menu(void) {
 // exactly those (see dialogs.m). Every dialog here goes through it.
 NSModalResponse lsl_run_modal(id modal);
 
+// lsl_copy_secret puts value on the clipboard, only for this Mac and marked
+// for clipboard managers not to record, and clears it after seconds unless
+// something has been copied since (see clipboard.m); 0 seconds leaves it
+// there. Main thread.
+void lsl_copy_secret(NSString *value, NSTimeInterval seconds);
+
 // str converts a C string from Go, which may be NULL, to an NSString. It
 // never returns nil: AppKit raises an exception for a nil title or text.
 // Go passes only valid UTF-8 (see cString in dialogs.go), so the fallback,

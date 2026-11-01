@@ -18,7 +18,9 @@ void lsl_show_about(const char *version, const char *credits, const char *link) 
 		NSMutableParagraphStyle *centred = [[NSMutableParagraphStyle alloc] init];
 		centred.alignment = NSTextAlignmentCenter;
 		NSDictionary *attrs = @{
-			NSFontAttributeName : [NSFont systemFontOfSize:NSFont.smallSystemFontSize],
+			// 10 pt, the size AppKit draws the version and copyright in,
+			// so the credits aren't larger than the version above them.
+			NSFontAttributeName : [NSFont systemFontOfSize:10],
 			NSForegroundColorAttributeName : NSColor.secondaryLabelColor,
 			NSParagraphStyleAttributeName : centred,
 		};

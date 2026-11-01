@@ -165,9 +165,12 @@ func (a *app) diagnosticSummary(p prefs.Prefs, secrets map[string]string) string
 		home, _ := os.UserHomeDir()
 		bin = supervisor.FindBinary("llama-swap", supervisor.SearchDirs(home))
 	}
-	v := st.Version
+	v, built := st.Version, st.Built
 	if v == "" && bin != "" {
-		v = supervisor.BinaryVersion(bin)
+		v, built = supervisor.BinaryVersion(bin)
+	}
+	if v != "" && built != "" {
+		v += ", built " + built
 	}
 	line("llama-swap", "%s at %s (tested with v%d; v%d at least)", orUnknown(v), orUnknown(bin), health.TestedVersion, health.MinimumVersion)
 	line("State", "%s", describe(st, a.snapshot()))

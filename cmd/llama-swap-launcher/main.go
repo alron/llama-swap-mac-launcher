@@ -12,6 +12,7 @@ import (
 	"fyne.io/systray"
 
 	"github.com/alron/llama-swap-mac-launcher/internal/control"
+	"github.com/alron/llama-swap-mac-launcher/internal/health"
 	"github.com/alron/llama-swap-mac-launcher/internal/paths"
 	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
 )
@@ -27,6 +28,7 @@ var (
 const homepage = "https://github.com/alron/llama-swap-mac-launcher"
 
 func main() {
+	health.AppVersion = version // named in every request to llama-swap, before any is made
 	p, err := paths.New(bundleID)
 	if err != nil {
 		fatal(err)

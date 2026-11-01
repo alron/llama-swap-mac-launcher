@@ -313,6 +313,7 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		LauncherLog:      p.LauncherLog,
 		LlamaSwapLog:     p.LogMode(),
 		LlamaSwapLogFile: p.LlamaSwapLogFile,
+		ClipboardSeconds: p.ClipboardSeconds(),
 		KeyPrefix:        prefs.KeyPrefix,
 		Tab:              "general",
 	}
@@ -474,6 +475,10 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 		LauncherLog:               strings.TrimSpace(f.LauncherLog),
 		LlamaSwapLog:              f.LlamaSwapLog,
 		LlamaSwapLogFile:          strings.TrimSpace(f.LlamaSwapLogFile),
+	}
+	// The default isn't written, so an older app can still read the file.
+	if s := f.ClipboardSeconds; s != prefs.DefaultClipboardSeconds {
+		p.ClipboardClearSeconds = &s
 	}
 	// Not in the dialog any more, but kept as the file has them, for flags
 	// newer than the app.
