@@ -11,7 +11,9 @@ import (
 // menuBarLook is how the menu bar's "L→S" shows a state: the letters stay
 // in the menu bar's normal colour, and the arrow is normal when llama-swap
 // is working, grey while something is in progress, and red when something
-// needs attention. Everything is faded when llama-swap is stopped.
+// needs attention. Everything is faded when llama-swap is stopped, and only
+// the letters while its inference is paused: it's running, but not taking
+// requests.
 type menuBarLook struct {
 	letters, arrow macos.Color
 }
@@ -31,7 +33,9 @@ func lookFor(st supervisor.Status, snap health.Snapshot) menuBarLook {
 	case snap.Healthy && len(snap.Faulted()) > 0:
 		return normal(macos.ColorAlert)
 	case snap.Healthy && modelChanging(snap):
-		return normal(macos.ColorBusy)
+		return normal(macos.ColorBusy) // pausing, too, until its models have stopped
+	case snap.Healthy && snap.Paused:
+		return menuBarLook{macos.ColorFaded, macos.ColorNormal}
 	case snap.Healthy:
 		return normal(macos.ColorNormal)
 	case snap.Problem != "":
@@ -61,6 +65,9 @@ func (a *app) showMenuBar(look menuBarLook) {
 	}
 	if !macos.SetMenuBarTitle("L", "S", look.letters, look.arrow) {
 		title := "L→S"
+		if look == (menuBarLook{macos.ColorFaded, macos.ColorNormal}) {
+			title += " ‖" // paused
+		}
 		switch look.arrow {
 		case macos.ColorBusy:
 			title += " …"

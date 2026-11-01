@@ -42,6 +42,10 @@ func TestExitCode(t *testing.T) {
 		{"timeout", control.Response{Code: control.CodeTimeout}, false, exitTimeout},
 		{"start failed", control.Response{Code: control.CodeStartFailed}, false, exitFailed},
 		{"usage", control.Response{Code: control.CodeUsage}, false, exitUsage},
+		{"status paused", control.Response{OK: true, Status: &control.Status{State: "paused", Paused: true}}, true, exitPaused},
+		{"pause ok", control.Response{OK: true, Status: &control.Status{State: "paused", Paused: true}}, false, exitOK},
+		{"load refused while paused", control.Response{Code: control.CodePaused}, false, exitPaused},
+		{"busy", control.Response{Code: control.CodeBusy}, false, exitBusy},
 	}
 	for _, tt := range tests {
 		if got := exitCode(tt.resp, tt.isStatus); got != tt.want {

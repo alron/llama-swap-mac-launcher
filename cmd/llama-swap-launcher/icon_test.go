@@ -31,10 +31,49 @@ func TestLookFor(t *testing.T) {
 		{"GPU fault", running, health.Snapshot{Healthy: true, WasHealthy: true, Models: []health.Model{{ID: "m", State: "ready", Faulted: true}}}, menuBarLook{macos.ColorNormal, macos.ColorAlert}},
 		{"not responding", running, health.Snapshot{WasHealthy: true}, menuBarLook{macos.ColorNormal, macos.ColorAlert}},
 		{"refusing the app", running, health.Snapshot{Problem: "wants an API key"}, menuBarLook{macos.ColorNormal, macos.ColorAlert}},
+		{"paused", running, health.Snapshot{Healthy: true, WasHealthy: true, CanPause: true, Paused: true}, menuBarLook{macos.ColorFaded, macos.ColorNormal}},
+		{"pausing: models still stopping", running, health.Snapshot{Healthy: true, WasHealthy: true, CanPause: true, Paused: true,
+			Models: []health.Model{{ID: "m", State: "stopping"}}}, menuBarLook{macos.ColorNormal, macos.ColorBusy}},
+		{"paused, not responding", running, health.Snapshot{WasHealthy: true, CanPause: true, Paused: true}, menuBarLook{macos.ColorNormal, macos.ColorAlert}},
 	}
 	for _, tt := range tests {
 		if got := lookFor(tt.st, tt.snap); got != tt.want {
 			t.Errorf("%s: got %+v, want %+v", tt.name, got, tt.want)
+		}
+	}
+}
+
+// Paused is a state of its own, while llama-swap answers.
+func TestDescribePaused(t *testing.T) {
+	running := supervisor.Status{State: supervisor.Running}
+	for _, tt := range []struct {
+		snap health.Snapshot
+		want string
+	}{
+		{health.Snapshot{Healthy: true, CanPause: true, Paused: true}, "paused"},
+		{health.Snapshot{Healthy: true, CanPause: true}, "ready"},
+		{health.Snapshot{WasHealthy: true, CanPause: true, Paused: true}, "not responding"},
+	} {
+		if got := describe(running, tt.snap); got != tt.want {
+			t.Errorf("%+v: got %q, want %q", tt.snap, got, tt.want)
+		}
+	}
+}
+
+// A llama-swap that says it isn't paused is paused again only when it's
+// new, a pause was wanted, and the preference is on.
+func TestPauseAgain(t *testing.T) {
+	for _, tt := range []struct {
+		wanted, paused, fresh, keep, want bool
+	}{
+		{true, false, true, true, true},   // restarted while paused
+		{true, false, true, false, false}, // the preference is off
+		{true, false, false, true, false}, // resumed elsewhere, same llama-swap: adopted
+		{false, false, true, true, false}, // never paused
+		{true, true, true, true, false},   // already paused
+	} {
+		if got := pauseAgain(tt.wanted, tt.paused, tt.fresh, tt.keep); got != tt.want {
+			t.Errorf("pauseAgain(wanted %v, paused %v, fresh %v, keep %v) = %v", tt.wanted, tt.paused, tt.fresh, tt.keep, got)
 		}
 	}
 }

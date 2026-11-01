@@ -40,6 +40,10 @@ commands:
   stop    [-force]         stop llama-swap and everything it started
   unload  MODEL | -all [-force]
                            unload a model, or every model
+  pause   [-force]         pause inference: unload every local model, and
+                           turn requests for them away until resume
+                           (llama-swap v268 or later)
+  resume                   let requests through again
   logs    [-n N] [-f] [-launcher]
                            print the end of llama-swap's log, or follow it;
                            with -launcher, the launcher log
@@ -48,9 +52,9 @@ flags:
   -wait      return once llama-swap is ready, or has failed
   -load M    also load model M and wait until it's ready (implies -wait)
   -timeout D how long -wait and -load may take (default 10m)
-  -json      print the result as JSON (status, start, restart, stop, unload)
-  -force     restart, stop or unload even while llama-swap is serving
-             requests; without it they refuse (exit 7)
+  -json      print the result as JSON (all but logs)
+  -force     restart, stop, unload or pause even while llama-swap is
+             serving requests; without it they refuse (exit 7)
 
 exit status:
   0  ok; for status, llama-swap is ready and no model's GPU backend has failed
@@ -61,6 +65,8 @@ exit status:
   5  the model didn't load
   6  timed out
   7  busy: llama-swap is serving requests, so nothing was done; see -force
+  8  paused: for status, inference is paused; for -load, it couldn't load
+     because of that
 `
 
 const (
@@ -72,6 +78,7 @@ const (
 	exitLoadFailed
 	exitTimeout
 	exitBusy
+	exitPaused
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -97,7 +104,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	c := &cli{id: id, paths: p, stdout: stdout, stderr: stderr}
 
 	switch cmd {
-	case "status", "stop":
+	case "status", "stop", "pause", "resume":
 		return c.simple(cmd, args)
 	case "start", "restart":
 		return c.start(cmd, args)
@@ -124,12 +131,12 @@ func (c *cli) flags(name string) *flag.FlagSet {
 	return fs
 }
 
-// simple runs status and stop, which never launch the app.
+// simple runs status, stop, pause and resume, which never launch the app.
 func (c *cli) simple(cmd string, args []string) int {
 	fs := c.flags(cmd)
 	asJSON := fs.Bool("json", false, "")
 	force := new(bool)
-	if cmd == "stop" {
+	if cmd == "stop" || cmd == "pause" {
 		force = fs.Bool("force", false, "")
 	}
 	if fs.Parse(args) != nil || fs.NArg() > 0 {
@@ -137,9 +144,13 @@ func (c *cli) simple(cmd string, args []string) int {
 	}
 	resp, err := c.call(control.Request{Cmd: cmd, Force: *force}, 30*time.Second)
 	if errors.Is(err, control.ErrNotRunning) {
-		if cmd == "stop" {
+		switch cmd {
+		case "stop":
 			fmt.Fprintln(c.stderr, "llsl: the app isn't running, so neither is llama-swap")
 			return exitOK
+		case "pause", "resume":
+			fmt.Fprintln(c.stderr, "llsl: the app isn't running, so neither is llama-swap")
+			return exitNoApp
 		}
 		if *asJSON {
 			c.printJSON(control.Response{Code: "not_running", Error: err.Error()})
@@ -300,10 +311,15 @@ func exitCode(resp control.Response, isStatus bool) int {
 			return exitTimeout
 		case control.CodeBusy:
 			return exitBusy
+		case control.CodePaused:
+			return exitPaused
 		}
 		return exitFailed
 	}
 	if isStatus && resp.Status != nil {
+		if resp.Status.Paused {
+			return exitPaused
+		}
 		if resp.Status.State != "ready" {
 			return exitFailed
 		}

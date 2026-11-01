@@ -168,6 +168,85 @@ func TestRealLlamaSwapLogsTheApp(t *testing.T) {
 	}
 }
 
+// Pausing a real llama-swap (v268 on): the monitor hears of it on connect
+// and on every change, the model stops and requests for it get 503, a
+// reload keeps the pause, and resuming lets requests through again.
+func TestRealLlamaSwapPause(t *testing.T) {
+	bin := os.Getenv("LLAMA_SWAP_BIN")
+	if bin == "" {
+		t.Skip("set LLAMA_SWAP_BIN to run against a real llama-swap")
+	}
+	if v, _ := supervisor.BinaryVersion(bin); supervisor.VersionNumber(v) < PauseVersion {
+		t.Skipf("llama-swap %s can't pause; that came in v%d", v, PauseVersion)
+	}
+	dir := t.TempDir()
+	www := filepath.Join(dir, "www")
+	os.Mkdir(www, 0o700)
+	os.WriteFile(filepath.Join(www, "health"), []byte("OK\n"), 0o600)
+	script := filepath.Join(dir, "model.sh")
+	os.WriteFile(script, []byte(`cd "$(dirname "$0")/www" && exec /usr/bin/python3 -m http.server "$1" --bind 127.0.0.1`), 0o700)
+	config := filepath.Join(dir, "config.yaml")
+	os.WriteFile(config, fmt.Appendf(nil, "models:\n  m:\n    cmd: /bin/sh %s ${PORT}\n", script), 0o600)
+
+	addr := freeAddr(t)
+	swap := exec.Command(bin, "-config", config, "-listen", addr, "-watch-config")
+	if err := swap.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		swap.Process.Signal(syscall.SIGTERM)
+		swap.Wait()
+	})
+	base := "http://" + addr
+	m := New(base)
+	m.HealthEvery = 200 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go m.Run(ctx)
+	waitFor(t, "llama-swap to say whether it's paused", func() bool { return m.Snapshot().CanPause })
+	if m.Snapshot().Paused {
+		t.Fatal("paused at start")
+	}
+	status := func() int {
+		resp, err := http.Get(base + "/upstream/m/health")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if s := status(); s != http.StatusOK {
+		t.Fatalf("loading m: HTTP %d", s)
+	}
+	waitFor(t, "m to be ready", func() bool { return modelState(m, "m") == "ready" })
+
+	if err := m.Pause(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the monitor to hear of the pause", func() bool { return m.Snapshot().Paused })
+	waitFor(t, "m to stop", func() bool { return modelState(m, "m") == "stopped" })
+	if s := status(); s != http.StatusServiceUnavailable {
+		t.Errorf("a request while paused: HTTP %d, want 503", s)
+	}
+
+	// A reload ends the event stream; the monitor reconnects and hears the
+	// pause again, which the reload kept.
+	os.WriteFile(config, fmt.Appendf(nil, "models:\n  m:\n    cmd: /bin/sh %s ${PORT}\n    name: m\n", script), 0o600)
+	time.Sleep(3 * time.Second) // llama-swap checks every 2 seconds
+	waitFor(t, "the monitor to reconnect", func() bool { return m.Snapshot().Healthy })
+	if !m.Snapshot().Paused || status() != http.StatusServiceUnavailable {
+		t.Error("the reload resumed inference")
+	}
+
+	if err := m.Resume(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the monitor to hear of the resume", func() bool { return !m.Snapshot().Paused })
+	if s := status(); s != http.StatusOK {
+		t.Errorf("a request after resuming: HTTP %d", s)
+	}
+}
+
 func modelState(m *Monitor, id string) string {
 	for _, mod := range m.Snapshot().Models {
 		if mod.ID == id {

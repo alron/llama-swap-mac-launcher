@@ -50,8 +50,9 @@ const (
 	CodeStartFailed   = "start_failed"   // llama-swap couldn't start, or exited
 	CodeLoadFailed    = "load_failed"    // the model didn't load
 	CodeTimeout       = "timeout"
-	CodeBusy          = "busy"  // requests were in flight, so nothing was done; Force overrides
-	CodeError         = "error" // anything else
+	CodeBusy          = "busy"   // requests were in flight, so nothing was done; Force overrides
+	CodePaused        = "paused" // inference is paused, so no model can load; resume first
+	CodeError         = "error"  // anything else
 )
 
 type Response struct {
@@ -68,9 +69,12 @@ type Status struct {
 	AppPid     int    `json:"appPid"`
 	AppVersion string `json:"appVersion"`
 	BundleID   string `json:"bundleID"`
-	// State is llama-swap's: stopped, starting, ready, not responding,
-	// stopping, restarting (after a crash) or failed.
-	State   string `json:"state"`
+	// State is llama-swap's: stopped, starting, ready, paused, not
+	// responding, stopping, restarting (after a crash) or failed.
+	State string `json:"state"`
+	// Paused says llama-swap's inference is paused: its local models are
+	// unloaded, and requests for them refused until it's resumed.
+	Paused  bool   `json:"paused,omitempty"`
 	Pid     int    `json:"pid,omitempty"`
 	Listen  string `json:"listen,omitempty"`
 	Version string `json:"version,omitempty"` // the running llama-swap's, such as "v262 (079c35a)"

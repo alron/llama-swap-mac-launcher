@@ -310,12 +310,13 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 			Connect:        strconv.Itoa(prefs.DefaultConnect),
 			KeepAlive:      strconv.Itoa(prefs.DefaultKeepAlive),
 		},
-		LauncherLog:      p.LauncherLog,
-		LlamaSwapLog:     p.LogMode(),
-		LlamaSwapLogFile: p.LlamaSwapLogFile,
-		ClipboardSeconds: p.ClipboardSeconds(),
-		KeyPrefix:        prefs.KeyPrefix,
-		Tab:              "general",
+		LauncherLog:         p.LauncherLog,
+		LlamaSwapLog:        p.LogMode(),
+		LlamaSwapLogFile:    p.LlamaSwapLogFile,
+		ClipboardSeconds:    p.ClipboardSeconds(),
+		KeepPausedOnRestart: p.KeepsPause(),
+		KeyPrefix:           prefs.KeyPrefix,
+		Tab:                 "general",
 	}
 }
 
@@ -479,6 +480,9 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 	// The default isn't written, so an older app can still read the file.
 	if s := f.ClipboardSeconds; s != prefs.DefaultClipboardSeconds {
 		p.ClipboardClearSeconds = &s
+	}
+	if !f.KeepPausedOnRestart {
+		p.KeepPausedOnRestart = &f.KeepPausedOnRestart
 	}
 	// Not in the dialog any more, but kept as the file has them, for flags
 	// newer than the app.

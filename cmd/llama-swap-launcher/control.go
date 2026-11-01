@@ -55,6 +55,8 @@ func (a *app) handle(ctx context.Context, req control.Request) control.Response 
 		}
 	case "unload":
 		err = a.controlUnload(ctx, req)
+	case "pause", "resume":
+		err = a.controlPause(ctx, req)
 	case "output":
 		// For llsl logs when llama-swap's output isn't saved.
 		return control.Response{OK: true, Output: a.recentOutput(min(max(req.Lines, 1), 100))}
@@ -112,7 +114,45 @@ func (a *app) controlStart(ctx context.Context, req control.Request) error {
 		return err
 	}
 	if req.Load != "" {
+		if a.inferencePaused(a.snapshot()) {
+			return codeError{control.CodePaused, fmt.Errorf("inference is paused, so %s can't load. Resume it first (llsl resume)", req.Load)}
+		}
 		return a.loadModel(ctx, req.Load)
+	}
+	return nil
+}
+
+// controlPause pauses or resumes inference, for llsl pause and resume.
+// Pause refuses while local models are serving requests, unless forced.
+func (a *app) controlPause(ctx context.Context, req control.Request) error {
+	st := a.sup.Status()
+	snap, ok := a.healthFor(st.Pid)
+	m := a.monitor()
+	switch {
+	case st.State != supervisor.Running || !ok || !snap.Healthy || m == nil:
+		return errors.New("llama-swap isn't running, or isn't answering")
+	case !snap.CanPause:
+		v := "" // the version's first word, without the commit
+		if f := strings.Fields(st.Version); len(f) > 0 {
+			v = " " + f[0]
+		}
+		return fmt.Errorf("llama-swap%s can't pause; that came in v%d", v, health.PauseVersion)
+	}
+	pause := req.Cmd == "pause"
+	if pause {
+		if err := a.refuseIfBusy(req); err != nil {
+			return err
+		}
+	}
+	if err := a.setPaused(m, pause, " (asked by llsl)"); err != nil {
+		return err
+	}
+	// So the reply's status says so: llama-swap's event comes separately.
+	for range 40 {
+		if s, _ := a.healthFor(st.Pid); s.Paused == pause || ctx.Err() != nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	return nil
 }
@@ -235,7 +275,7 @@ func (a *app) refuseIfBusy(req control.Request) error {
 	switch {
 	case req.Cmd == "unload" && !req.All:
 		busy = snap.Busy(req.Model)
-	case req.Cmd == "unload":
+	case req.Cmd == "unload" || req.Cmd == "pause":
 		// Requests for a peer's models don't care about this Mac's.
 		peer := map[string]bool{}
 		for _, m := range snap.Models {
@@ -329,6 +369,7 @@ func (a *app) controlStatus() *control.Status {
 		Pid:         st.Pid,
 		Listen:      st.Listen,
 		Version:     st.Version,
+		Paused:      st.State == supervisor.Running && snap.Healthy && snap.Paused,
 		Message:     message(st, snap),
 		Binary:      bin,
 		Config:      p.ConfigPath(),

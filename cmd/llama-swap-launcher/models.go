@@ -151,7 +151,7 @@ func (a *app) syncMonitor(st supervisor.Status) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.mon, a.monCancel, a.monPid = m, cancel, st.Pid
 	go m.Run(ctx)
-	go a.watchHealth(ctx, m)
+	go a.watchHealth(ctx, m, st.Pid)
 }
 
 // restartMonitor replaces the running llama-swap's health monitor, so it
@@ -164,12 +164,15 @@ func (a *app) restartMonitor() {
 	a.render()
 }
 
-func (a *app) watchHealth(ctx context.Context, m *health.Monitor) {
+func (a *app) watchHealth(ctx context.Context, m *health.Monitor, pid int) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-m.Changed():
+			if snap := m.Snapshot(); snap.CanPause {
+				a.followPause(ctx, m, pid, snap.Paused)
+			}
 			a.forgetStopped(m.Snapshot())
 			a.render()
 			a.reportFaults(m.Snapshot())
@@ -262,6 +265,79 @@ func (a *app) unloadModel(id string) {
 	if err := m.Unload(ctx, id); err != nil {
 		a.problem("Couldn't unload "+id, err)
 	}
+}
+
+// followPause keeps pauseWanted in step with what llama-swap pid says, so
+// a pause or resume made elsewhere (llama-swap's web UI, say) is adopted.
+// The exception is the first word from a llama-swap the app has started
+// since inference was paused: with KeepPausedOnRestart, it's paused again.
+func (a *app) followPause(ctx context.Context, m *health.Monitor, pid int, paused bool) {
+	a.mu.Lock()
+	again := pauseAgain(a.pauseWanted, paused, pid != a.pausePid, a.prefs.KeepsPause())
+	a.pausePid = pid
+	if !again {
+		a.pauseWanted = paused
+	}
+	a.mu.Unlock()
+	if again {
+		a.sup.Logf("pausing inference again, as it was before llama-swap started")
+		go func() {
+			if err := m.Pause(ctx); err != nil && ctx.Err() == nil {
+				a.sup.Logf("couldn't pause inference again: %v", err)
+			}
+		}()
+	}
+}
+
+// pauseAgain reports whether to pause a llama-swap that says it isn't
+// paused: only one just started (fresh), while a pause was wanted, and with
+// the preference on.
+func pauseAgain(wanted, paused, fresh, keep bool) bool {
+	return wanted && !paused && fresh && keep
+}
+
+// inferencePaused reports whether llama-swap's inference is paused, or is
+// about to be again, after a start the app just made.
+func (a *app) inferencePaused(snap health.Snapshot) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return snap.Paused || (a.pauseWanted && a.prefs.KeepsPause())
+}
+
+// togglePause is Pause All and Resume All in the menu.
+func (a *app) togglePause() {
+	m := a.monitor()
+	if m == nil {
+		return
+	}
+	snap := m.Snapshot()
+	if !snap.CanPause {
+		return
+	}
+	if err := a.setPaused(m, !snap.Paused, ""); err != nil {
+		if snap.Paused {
+			a.problem("Couldn't resume inference", err)
+		} else {
+			a.problem("Couldn't pause inference", err)
+		}
+	}
+}
+
+// setPaused pauses or resumes inference, and remembers which, for the
+// next llama-swap the app starts. Pausing waits until every local model
+// has stopped.
+func (a *app) setPaused(m *health.Monitor, pause bool, why string) error {
+	a.mu.Lock()
+	a.pauseWanted = pause
+	a.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if pause {
+		a.sup.Logf("pausing inference%s", why)
+		return m.Pause(ctx)
+	}
+	a.sup.Logf("resuming inference%s", why)
+	return m.Resume(ctx)
 }
 
 func (a *app) unloadAllModels() {

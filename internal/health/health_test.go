@@ -26,6 +26,7 @@ type fakeSwap struct {
 	logs      map[string]chan string
 	watchedBy map[string]string // model ID -> query string of its log request
 	unloaded  []string
+	pauses    []string // "pause" and "resume", as they were asked for
 }
 
 func newFakeSwap(t *testing.T) (*fakeSwap, *httptest.Server) {
@@ -86,6 +87,14 @@ func newFakeSwap(t *testing.T) (*fakeSwap, *httptest.Server) {
 		f.unloaded = append(f.unloaded, r.PathValue("id"))
 		f.mu.Unlock()
 	})
+	for _, action := range []string{"pause", "resume"} {
+		mux.HandleFunc("POST /api/models/"+action, func(w http.ResponseWriter, r *http.Request) {
+			f.mu.Lock()
+			f.pauses = append(f.pauses, action)
+			f.mu.Unlock()
+			fmt.Fprintf(w, `{"paused":%v}`, action == "pause")
+		})
+	}
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return f, srv
@@ -338,6 +347,43 @@ func TestReconnectsAfterStreamEnds(t *testing.T) {
 	f.events <- "" // end the stream
 	f.events <- modelStatus(model("a", "ready", ""), model("b", "starting", ""))
 	waitFor(t, "snapshot after reconnecting", func() bool { return len(m.Snapshot().Models) == 2 })
+}
+
+// pauseChanged is llama-swap's event saying whether inference is paused.
+func pauseChanged(paused bool) string {
+	ev, _ := json.Marshal(map[string]string{"type": "pauseChanged", "data": fmt.Sprintf(`{"paused":%v}`, paused)})
+	return "event:message\ndata:" + string(ev) + "\n\n"
+}
+
+// The monitor follows whether inference is paused, once llama-swap says
+// (v268 on), and asks it to pause and resume.
+func TestPause(t *testing.T) {
+	f, srv := newFakeSwap(t)
+	m := startMonitor(t, srv.URL)
+	f.events <- modelStatus(model("a", "ready", ""))
+	waitFor(t, "the models", func() bool { return len(m.Snapshot().Models) == 1 })
+	if s := m.Snapshot(); s.CanPause || s.Paused {
+		t.Errorf("before llama-swap said: CanPause %v, Paused %v", s.CanPause, s.Paused)
+	}
+	f.events <- pauseChanged(false) // as on connect
+	waitFor(t, "CanPause", func() bool { return m.Snapshot().CanPause })
+	if m.Snapshot().Paused {
+		t.Error("paused before it was")
+	}
+	f.events <- pauseChanged(true)
+	waitFor(t, "Paused", func() bool { return m.Snapshot().Paused })
+
+	if err := m.Pause(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Resume(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !slices.Equal(f.pauses, []string{"pause", "resume"}) {
+		t.Errorf("asked for %v", f.pauses)
+	}
 }
 
 func TestUnload(t *testing.T) {

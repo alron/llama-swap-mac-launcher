@@ -78,6 +78,21 @@ func TestClipboardSecondsFromForm(t *testing.T) {
 	}
 }
 
+// Keep inference paused is on by default, and written only when it's off.
+func TestKeepPausedFromForm(t *testing.T) {
+	f := formFrom(prefs.Defaults(), nil)
+	if !f.KeepPausedOnRestart {
+		t.Error("shown unticked by default")
+	}
+	for _, on := range []bool{true, false} {
+		f.KeepPausedOnRestart = on
+		p, _, err := prefsFrom(f)
+		if err != nil || p.KeepsPause() != on || (p.KeepPausedOnRestart == nil) != on {
+			t.Errorf("ticked %v: got %v (stored %v), %v", on, p.KeepsPause(), p.KeepPausedOnRestart, err)
+		}
+	}
+}
+
 func TestPrefsFromKeys(t *testing.T) {
 	form := macos.PreferencesForm{
 		APIKeys:   []macos.SecretField{{Name: " ADMIN ", Value: " sk-a\n"}, {Name: "B", Value: "sk-b"}},

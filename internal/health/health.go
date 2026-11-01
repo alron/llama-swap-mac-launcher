@@ -34,6 +34,10 @@ const TestedVersion = 269
 // The app notes in its log when it runs an older one.
 const MinimumVersion = 252
 
+// PauseVersion is the first llama-swap release that can pause and resume
+// inference (Monitor.Pause).
+const PauseVersion = 268
+
 // FaultMarker is what a llama-server logs when a GPU error has left its
 // backend unusable. From then on every completion against that model fails
 // with HTTP 500 while /health still answers, until the model's process is
@@ -78,6 +82,11 @@ type Snapshot struct {
 	// keys are set, sent without one: its config sets no apiKeys, so anyone
 	// who can reach it can use it. Checked once per connection.
 	Open bool
+	// CanPause means llama-swap has said whether its inference is paused,
+	// which it does from v268 on, and Paused is what it said: its local
+	// models are unloaded, and requests for them refused until it's
+	// resumed. Peer models aren't affected.
+	CanPause, Paused bool
 }
 
 // Request is a request llama-swap is serving.
@@ -178,6 +187,8 @@ type Monitor struct {
 	problem   string // see Snapshot.Problem
 	refusal   int    // the last refusal's HTTP status, so each is logged once
 	open      bool   // see Snapshot.Open
+	canPause  bool   // see Snapshot.CanPause
+	paused    bool   // see Snapshot.Paused
 	inflight  map[string]Request
 	speed     map[string]float64 // tokens per second, by model; see Model.TokensPerSecond
 	connected bool
@@ -233,7 +244,8 @@ func (m *Monitor) Changed() <-chan struct{} { return m.changed }
 func (m *Monitor) Snapshot() Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := Snapshot{Healthy: m.connected && m.healthOK, WasHealthy: m.was, Problem: m.problem, Open: m.open}
+	s := Snapshot{Healthy: m.connected && m.healthOK, WasHealthy: m.was, Problem: m.problem, Open: m.open,
+		CanPause: m.canPause, Paused: m.paused}
 	for _, r := range m.inflight {
 		s.InFlight = append(s.InFlight, r)
 	}
@@ -324,6 +336,15 @@ func (m *Monitor) handleEvent(ctx context.Context, raw string) {
 		return
 	case "activity":
 		go m.recordSpeed(ctx, ev.Data)
+		return
+	case "pauseChanged":
+		// Sent on connect, and with every change (v268 on).
+		var p struct {
+			Paused bool `json:"paused"`
+		}
+		if json.Unmarshal([]byte(ev.Data), &p) == nil {
+			m.update(func() { m.canPause, m.paused = true, p.Paused })
+		}
 		return
 	case "modelStatus":
 	default:
@@ -637,6 +658,18 @@ func (m *Monitor) Unload(ctx context.Context, id string) error {
 // UnloadAll stops every model.
 func (m *Monitor) UnloadAll(ctx context.Context) error {
 	return m.post(ctx, "/api/models/unload")
+}
+
+// Pause pauses inference: llama-swap unloads every local model, and turns
+// requests for them away until Resume. It returns once they've stopped;
+// requests in progress stop with them.
+func (m *Monitor) Pause(ctx context.Context) error {
+	return m.post(ctx, "/api/models/pause")
+}
+
+// Resume lets requests through again; models load on the next request.
+func (m *Monitor) Resume(ctx context.Context) error {
+	return m.post(ctx, "/api/models/resume")
 }
 
 // probeOpen asks llama-swap, without a key, for something that needs one

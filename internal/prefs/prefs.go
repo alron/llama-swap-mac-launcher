@@ -106,6 +106,16 @@ type Prefs struct {
 	// means the default, which isn't written, so an older app can still
 	// read the file.
 	ClipboardClearSeconds *int `json:"clipboardClearSeconds,omitempty"`
+	// KeepPausedOnRestart has the app pause llama-swap again after any
+	// start it makes while inference was paused, until it's resumed (TODO
+	// item 57). Unset means on, which isn't written, so an older app can
+	// still read the file.
+	KeepPausedOnRestart *bool `json:"keepPausedOnRestart,omitempty"`
+}
+
+// KeepsPause is KeepPausedOnRestart, on unless it's set off.
+func (p Prefs) KeepsPause() bool {
+	return p.KeepPausedOnRestart == nil || *p.KeepPausedOnRestart
 }
 
 // ClipboardChoices are the times, in seconds, a copied secret can stay on

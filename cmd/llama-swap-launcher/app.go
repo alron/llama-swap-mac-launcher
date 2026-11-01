@@ -44,14 +44,21 @@ type app struct {
 	alerted   map[string]bool // faulted models already reported
 	lastFault *control.Fault  // the latest GPU fault since the app started
 	updated   map[string]bool // models whose server program changed since they loaded
+	// pauseWanted is whether inference should be paused, as last seen or
+	// asked for, and pausePid the llama-swap last seen saying so: a new one
+	// is paused again (followPause).
+	pauseWanted bool
+	pausePid    int
 
-	status               *systray.MenuItem
-	details              []*systray.MenuItem // the status's explanation, wrapped over several lines
-	faultItem            *systray.MenuItem   // the last GPU fault, once there's been one
-	noModels, unloadAll  *systray.MenuItem
-	models               []*modelSlot
-	start, stop, restart *systray.MenuItem
-	openUI               *systray.MenuItem
+	status              *systray.MenuItem
+	details             []*systray.MenuItem // the status's explanation, wrapped over several lines
+	faultItem           *systray.MenuItem   // the last GPU fault, once there's been one
+	noModels, unloadAll *systray.MenuItem
+	models              []*modelSlot
+	// startStop is Start or Stop, and pauseItem Pause All or Resume All,
+	// whichever a click would do.
+	startStop, restart, pauseItem *systray.MenuItem
+	openUI                        *systray.MenuItem
 	// The Logs submenu. The llama-swap log's items show only while its
 	// output has its own file.
 	logsMenu                         *systray.MenuItem
@@ -112,9 +119,10 @@ func (a *app) onReady() {
 	}
 	a.unloadAll = systray.AddMenuItem("Unload All Models", "")
 	systray.AddSeparator()
-	a.start = systray.AddMenuItem("Start", "")
-	a.stop = systray.AddMenuItem("Stop", "")
+	a.startStop = systray.AddMenuItem("Start", "")
 	a.restart = systray.AddMenuItem("Restart", "")
+	a.pauseItem = systray.AddMenuItem("Pause All",
+		"Unloads every local model, and turns requests for them away until resumed. Peer models still work.")
 	systray.AddSeparator()
 	a.logsMenu = systray.AddMenuItem("Logs", "")
 	a.openLauncherLog = a.logsMenu.AddSubMenuItem("Open Launcher Log", "")
@@ -212,10 +220,14 @@ func (a *app) quit() {
 func (a *app) handleClicks() {
 	for {
 		select {
-		case <-a.start.ClickedCh:
-			go a.startLlamaSwap()
-		case <-a.stop.ClickedCh:
-			go a.sup.Stop()
+		case <-a.startStop.ClickedCh:
+			if up(a.sup.Status()) {
+				go a.sup.Stop()
+			} else {
+				go a.startLlamaSwap()
+			}
+		case <-a.pauseItem.ClickedCh:
+			go a.togglePause()
 		case <-a.restart.ClickedCh:
 			go a.restartLlamaSwap()
 		case <-a.unloadAll.ClickedCh:
@@ -425,6 +437,10 @@ func (a *app) render() {
 	if msg == "" {
 		msg = openWarning(a.currentPrefs(), st, snap)
 	}
+	if msg == "" && describe(st, snap) == "paused" {
+		msg = "Inference is paused: llama-swap has unloaded its local models, and turns requests for them away " +
+			"until Resume All. Peer models still work."
+	}
 	a.showDetail(msg)
 	a.mu.Lock()
 	fault := a.lastFault
@@ -438,10 +454,26 @@ func (a *app) render() {
 	a.renderModels(st, snap, idle)
 	a.renderLoginItem()
 
-	up := st.State == supervisor.Running || st.State == supervisor.Waiting
-	enable(a.start, idle && (st.State == supervisor.Stopped || st.State == supervisor.Failed))
-	enable(a.stop, idle && up)
-	enable(a.restart, idle && up)
+	if up(st) {
+		a.startStop.SetTitle("Stop")
+	} else {
+		a.startStop.SetTitle("Start")
+	}
+	enable(a.startStop, idle && (up(st) || st.State == supervisor.Stopped || st.State == supervisor.Failed))
+	enable(a.restart, idle && up(st))
+	// Pause All or Resume All, except for a llama-swap known to be too old
+	// to have them.
+	if n := supervisor.VersionNumber(st.Version); n > 0 && n < health.PauseVersion {
+		a.pauseItem.Hide()
+	} else {
+		if snap.Paused {
+			a.pauseItem.SetTitle("Resume All")
+		} else {
+			a.pauseItem.SetTitle("Pause All")
+		}
+		enable(a.pauseItem, idle && st.State == supervisor.Running && snap.Healthy && snap.CanPause)
+		a.pauseItem.Show()
+	}
 	enable(a.logsMenu, idle)
 	// llama-swap's own log, only while its output has a file of its own.
 	launcher, own := a.logs.paths()
@@ -501,6 +533,8 @@ func describe(st supervisor.Status, snap health.Snapshot) string {
 		return st.State.String()
 	}
 	switch {
+	case snap.Healthy && snap.Paused:
+		return "paused"
 	case snap.Healthy:
 		return "ready"
 	case snap.Problem != "":
@@ -562,6 +596,12 @@ func disabledItem(title string) *systray.MenuItem {
 	item := systray.AddMenuItem(title, "")
 	item.Disable()
 	return item
+}
+
+// up reports whether llama-swap is running, or about to be again after a
+// crash: what Stop and Restart act on.
+func up(st supervisor.Status) bool {
+	return st.State == supervisor.Running || st.State == supervisor.Waiting
 }
 
 func enable(item *systray.MenuItem, on bool) {

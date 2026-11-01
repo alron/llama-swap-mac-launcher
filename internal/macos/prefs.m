@@ -1411,7 +1411,12 @@ char *lsl_preferences(const char *json, int *result) {
 		        @"clipboard managers don't record it. After this long the app clears it, unless something else has been "
 		        @"copied since. Quitting the app clears it too. With Never, it stays until something else is copied.",
 		        @[ clearLabel, clearAfter ]);
-		NSGridView *tweaks = grid(@[ @[ clearLabel, clearAfter ] ]);
+		NSButton *keepPaused = checkbox(@"Keep inference paused when llama-swap restarts", in[@"keepPausedOnRestart"]);
+		explain(@"After Pause All, the app pauses llama-swap again whenever it starts it (Restart, a restart from Settings, "
+		        @"after a crash), until Resume All. Unticked, a restart resumes, as llama-swap itself does. Quitting the app "
+		        @"forgets the pause.",
+		        @[ keepPaused ]);
+		NSStackView *tweaks = column(@[ grid(@[ @[ clearLabel, clearAfter ] ]), keepPaused ]);
 
 		// Secrets: the API keys, then the secret environment variables.
 		c.keys = [[LSLSecretTable alloc] initWithRows:in[@"apiKeys"]];
@@ -1606,6 +1611,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@"llamaSwapLog" : c.logMode.selectedItem.representedObject ?: @"launcher",
 			@"llamaSwapLogFile" : c.ownLog.stringValue,
 			@"clipboardSeconds" : @(clearAfter.selectedTag),
+			@"keepPausedOnRestart" : keepPaused.state == NSControlStateValueOn ? @YES : @NO,
 			@"tab" : tabs.selectedTabViewItem.identifier ?: @"general",
 		};
 		NSData *encoded = [NSJSONSerialization dataWithJSONObject:fields options:0 error:nil];

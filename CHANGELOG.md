@@ -12,6 +12,15 @@ not published; they're listed for people who had them.
   on the new **Tweaks** tab. The app never reads the clipboard.
 - On the Secrets tab, **−**, **Generate** and **Show** are greyed out until
   a row is selected, as Copy is (and **−** under Environment too).
+- **Pause All** and **Resume All** in the menu, and `llsl pause` and
+  `llsl resume` (llama-swap v268 or later): pausing unloads every model on
+  this Mac and turns requests for them away until resumed, freeing its
+  memory and GPU while llama-swap keeps running. Peer models still work.
+  While paused, only the menu bar's letters are faded, `llsl status` says
+  `paused` and exits 8 (new), and so does a `-load`. The app pauses
+  llama-swap again after any restart it makes, unless **Keep inference
+  paused when llama-swap restarts** (Settings → Tweaks) is off.
+- **Start** and **Stop** are one menu item, showing whichever applies.
 - **About** shows llama-swap's build date, and its whole version for a
   build from source (`v269-2-g581d29`), so only a release reads as a bare
   `v269`. The lines under the version are in the version's size, and the
@@ -27,7 +36,8 @@ not published; they're listed for people who had them.
 - Tested with llama-swap v269.
 
 Upgrading: going back to 0.3.1 after changing how long a copied secret
-stays means removing `clipboardClearSeconds` from `prefs.json` by hand,
+stays, or turning off keeping a pause, means removing
+`clipboardClearSeconds` or `keepPausedOnRestart` from `prefs.json` by hand,
 since older versions refuse keys they don't know.
 
 ## 0.3.1 (2026-10-24)

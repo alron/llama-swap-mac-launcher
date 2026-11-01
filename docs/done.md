@@ -442,7 +442,7 @@ Item 51, the GPU's wired memory limit, is open: see the [roadmap](roadmap.md).
     - **The change:** all five at 126 (`secretTable`'s height, and `peersTab`'s two). The models list gives up a row to make room for the peers'.
     - **The window:** General grows to 557 points, Secrets to 504, and Peers to 561, the tallest, so the window grows 22 points, from 817 to about 839: still shorter than 0.3.0's 851 (item 48 freed 34).
 
-## Items 54 to 56
+## Items 54 to 57
 
 For the release after 0.3.1. Item 53, browser login through a form, is open: see the [roadmap](roadmap.md).
 
@@ -531,6 +531,59 @@ For the release after 0.3.1. Item 53, browser login through a form, is open: see
       - `aboutCredits` in six cases: a release, a build from source built in another time zone, no build time, stopped, no version, and a plain `go build`;
       - a test program opening the real panel: the version and every credit 10 pt, the lines in order, and `v269-12-g581d29c-dirty` on one line, with no scroll bar.
     - **Verified hands-on by the maintainer** (2026-11-01): the fonts, positions and sizes, and a build from source showing as `v269-2-g581d29`.
+
+57. **Pause and resume inference, from the menu** (the maintainer, 2026-11-01; **built and verified hands-on 2026-11-01**; **done**). llama-swap v268 added both: pausing unloads every local model and turns requests for them away until resumed, freeing the Mac's memory and GPU while llama-swap keeps running (for a game, say). Today a paused llama-swap looks "ready" in the menu.
+    - **What llama-swap does** (read in v269's `internal/server/pause.go` and `apigroup.go`; tested against v269 on a spare port, 2026-11-01):
+      - `POST /api/models/pause` and `/resume`, both behind the API key, each answering `{"paused": …}`. Pause returns once every local model has stopped. Requests in progress stop with their model.
+      - **While paused:** a request for a local model gets `503` with "all inference is paused". That includes `/upstream/<model>/…`, so the app's `-load` gets it too. `/health` still answers `200`, and `/running` is empty. Peer models aren't affected.
+      - **The event stream** sends `pauseChanged` (`{"paused": true}`) with the snapshot on connect and with every change, so the monitor follows it as it follows model states. Before v268 there's no such event.
+      - **A reload** (`-watch-config`) keeps the pause. **A restart** starts unpaused: llama-swap keeps it only in memory.
+      - The log says "inference paused" and "inference resumed".
+    - **The menu:** one item whose title says what a click does (the maintainer, 2026-11-01): **Pause All** while llama-swap serves, **Resume All** while it's paused. "All", as llama-swap's own "all inference is paused" says, and as Unload All Models does; a tooltip says peer models still work.
+      - It sits with Start, Stop and Restart, since it's an action on llama-swap as a whole.
+      - It's enabled while llama-swap is running and answers, and shown only for a llama-swap that sent `pauseChanged` (v268 or later).
+      - Like Stop and the menu's unloads, it doesn't refuse while requests are in flight (item 2).
+    - **Start and Stop become one item too** (the maintainer, 2026-11-01, for consistency): **Start** while llama-swap is stopped or failed, **Stop** while it's running or waiting to restart after a crash. It's greyed out with its current title while llama-swap is stopping, or while another action is under way, as both are today. systray's `SetTitle` and `SetTooltip` do it, while the menu is open too. Restart stays its own item. The README's menu section and Components §1's menu line change with it. So the group reads:
+      ```
+      Stop
+      Restart
+      Pause All
+      ```
+    - **While paused:** the status line says "llama-swap: paused (pid …)". The explanation under it says local models are unloaded and refused until resumed, and peers still work. **The menu bar** (decided by the maintainer, 2026-11-01): **L** and **S** dimmed (`secondaryLabelColor`, as when stopped), the arrow in the letters' usual colour. No other state looks like that: llama-swap is running, but not taking requests. `lookFor` (`icon.go`) gets the case.
+    - **Restarts** (the maintainer, 2026-11-01: "Good idea", with a checkbox for it on the Tweaks tab):
+      - **Keep inference paused when llama-swap restarts**, on by default: the app remembers the pause until Resume, or until the app quits. It pauses llama-swap again as soon as it answers after any start the app makes: Restart, a restart from Settings, crash recovery, Stop then Start. Otherwise a crash or a Settings restart during a game would quietly load models again.
+      - Unticked, a restart resumes, as llama-swap itself does.
+      - A request arriving in the moment before the app re-pauses could start a model.
+      - Quitting forgets the pause, as llama-swap does, so a launch at login starts unpaused.
+      - In `prefs.json` it's `keepPausedOnRestart`, written only when it's off, the exception to the default, so 0.3.1 can still read a file saved with the default.
+    - **`llsl`:**
+      - `llsl pause` and `llsl resume`, with `-json`. `pause` refuses while requests are in flight (exit 7, `busy`) unless given `-force`, like `stop` and `unload`.
+      - `status` shows `paused` in its text and as `"paused": true` in its JSON.
+      - **A new exit code, 8 (`paused`)** (the maintainer, 2026-11-01: a distinct, unused one, "that way script callers can directly identify when things are paused"). `status` exits 8 while paused, not 0, since llama-swap won't serve local models. So do `start -load` and `restart -load`, which fail at once while paused, saying to resume first, rather than waiting out the timeout.
+      - The README covers all of it.
+    - **Tests:** the monitor following `pauseChanged` (a fake stream); a real-llama-swap test pausing, checking the 503 and the event, reloading, resuming, and re-pausing after a restart; the menu and status text; `llsl` against a fake app.
+    - **Built:**
+      - **The monitor:** `health.Snapshot` gains `CanPause` and `Paused`, from `pauseChanged`, and `Monitor.Pause` and `Resume`. `health.PauseVersion` is 268.
+      - **Following the pause:** `followPause` (`models.go`), from each monitor's `watchHealth`, keeps `app.pauseWanted` in step with what llama-swap says, so a pause made in llama-swap's web UI is adopted too. The first word from a new pid is the exception: `pauseAgain` (wanted, not paused, a new llama-swap, the preference on) pauses it again.
+      - **Refusing a load:** `-load` is refused while `inferencePaused` (paused, or about to be paused again), so it can't slip in before the re-pause.
+      - **The menu:** `startStop` and `pauseItem`, each retitled in `render`.
+      - **The paused look:** a case in `lookFor` after the busy case, so a pause shows grey while its models stop. The fallback text title gets "‖".
+      - **The status:** `describe` says `paused`, and the menu's explanation shows when no warning does.
+      - **The control socket:** `pause` and `resume`. Pause refuses while local requests are in flight, like `unload -all`, and waits up to 2 seconds for the event, so the reply's status shows it. `control.CodePaused`, `Status.Paused`, and `llsl`'s `exitPaused` (8).
+      - **The setting:** `prefs.KeepPausedOnRestart` (`*bool`, unset meaning on), and a checkbox on the Tweaks tab.
+    - **Tested:**
+      - unit tests: the monitor against a fake stream (no `CanPause` before the event, then `Paused`, and the two requests), the look (paused, pausing, and paused but not responding), `describe`, `pauseAgain`'s five cases, the setting's round trip, and `llsl`'s exit codes;
+      - `TestRealLlamaSwapPause` against v269: the event on connect, a model stopping and a 503 while paused, the pause outlasting a reload (with the monitor reconnecting), and a 200 after resuming;
+      - the dialog test program, for the Tweaks checkbox and its reply, two runs with nothing in AppKit's log.
+    - **Verified hands-on by the maintainer** (2026-11-01):
+      - Stop, Restart and Pause All enabled while running, and only Start while stopped;
+      - Pause All unloading the models, with the menu-bar look, the explanation, and Resume All;
+      - 503 with llama-swap's message while paused;
+      - Resume All loading models again;
+      - a resume from llama-swap's web UI followed;
+      - the pause kept across restarts, and not with the Tweaks checkbox off;
+      - `llsl status` saying paused and exiting 8, and `-load` exiting 8;
+      - `llsl resume`, and `llsl pause` exiting 7 with a request in flight, and going ahead with `-force`.
 
 ## Milestone 0 results (2026-09-28)
 

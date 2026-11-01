@@ -57,9 +57,10 @@ The app doesn't include llama-swap; install that separately.
 
 ## The menu
 
-- **Status:** starting, ready, not responding, running (but refusing the
-  app; the line below says why, such as a missing API key), stopping,
-  restarting (after a crash), stopped or failed, with llama-swap's pid.
+- **Status:** starting, ready, paused, not responding, running (but
+  refusing the app; the line below says why, such as a missing API key),
+  stopping, restarting (after a crash), stopped or failed, with llama-swap's
+  pid.
 - **Last GPU fault**, once a model's GPU backend has failed since the app
   started: which model, when, and whether it was unloaded automatically. A
   fault otherwise brings an alert offering to unload the model, or, with the
@@ -71,7 +72,17 @@ The app doesn't include llama-swap; install that separately.
   have fallen back to the CPU. With the `markUpdatedModels` preference, a
   model whose server program was updated since it loaded (by `brew
   upgrade`, say) shows "outdated build, unload to update".
-- **Start**, **Stop**, **Restart**.
+- **Start** or **Stop**, whichever applies, and **Restart**.
+- **Pause All** or **Resume All** (llama-swap v268 or later): pausing
+  unloads every model on this Mac and turns requests for them away (HTTP
+  503) until you resume, while llama-swap keeps running, so the Mac's memory
+  and GPU are free for something else, such as a game. Requests in progress
+  stop with their model. Peer models still work. A pause or resume from
+  llama-swap's own web UI shows here too. llama-swap forgets a pause when it
+  restarts; the app doesn't: after any restart it makes (Restart, a restart
+  from Settings, after a crash), it pauses llama-swap again until you
+  resume, unless **Keep inference paused when llama-swap restarts** is off
+  (Settings → Tweaks). Quitting the app forgets the pause.
 - **Logs:** open the launcher log in Console, or show it in the Finder
   (drag it into a terminal for its path); the same for llama-swap's log while
   its output has a file of its own; **Log Settings…**, which opens
@@ -94,7 +105,9 @@ In the menu bar, the app shows **L→S**, and the arrow's colour is the status:
 - **red:** something needs attention: llama-swap failed or isn't responding,
   or a model's GPU backend has failed.
 
-When llama-swap is stopped, the whole **L→S** is faded.
+When llama-swap is stopped, the whole **L→S** is faded. While its
+inference is paused, only the letters are, and the arrow keeps its colour:
+llama-swap is running, but not taking requests.
 
 <p>
   <img src="docs/images/menu-stopped.png" width="354" alt="The menu with llama-swap stopped: L→S faded, Stop and Restart greyed out">
@@ -109,6 +122,8 @@ llsl start   [-wait] [-load MODEL] [-timeout D]
 llsl restart [-wait] [-load MODEL] [-timeout D] [-force]
 llsl stop    [-force]                        stop llama-swap and everything it started
 llsl unload  MODEL | -all [-force]           unload one model, or all of them
+llsl pause   [-force]                        pause inference: unload every local model, refuse requests
+llsl resume                                  let requests through again
 llsl logs    [-n N] [-f] [-launcher]         the end of llama-swap's log, or follow it
 ```
 
@@ -124,9 +139,9 @@ commands never launch the app.
 | `-wait` | Return once llama-swap is ready (answering requests), or has failed. |
 | `-load MODEL` | Also load `MODEL` and wait until llama-swap reports it ready, or it has failed. Implies `-wait`. `MODEL` is a model ID from your llama-swap config, and one of this Mac's: a peer loads its own models when a request needs them, so a peer's model (`peer/model`) is refused, like a name that isn't in the config (exit 2). |
 | `-timeout D` | How long `-wait` and `-load` may take, e.g. `90s`, `5m`. Default `10m`, since big models can take minutes to load. |
-| `-json` | Print the result as JSON (`status`, `start`, `restart`, `stop`, `unload`). |
+| `-json` | Print the result as JSON (every command but `logs`). |
 | `-all` | With `unload`: every model. |
-| `-force` | With `restart`, `stop` and `unload`: go ahead even while llama-swap is serving requests, cutting them off. Without it they refuse (exit 7). |
+| `-force` | With `restart`, `stop`, `unload` and `pause`: go ahead even while llama-swap is serving requests, cutting them off. Without it they refuse (exit 7). |
 | `-n N` | With `logs`: how many lines. Default 50. |
 | `-f` | With `logs`: keep following the log, across rotations. |
 | `-launcher` | With `logs`: the launcher log instead of llama-swap's output. |
@@ -154,15 +169,22 @@ Flags can be written with one dash or two.
   running, there's nothing to stop, and it exits 0.
 - **`unload`** unloads a model. llama-swap loads it again, in a new process,
   on the next request for it.
+- **`pause`** pauses inference, as **Pause All** does: llama-swap unloads
+  every model on this Mac and answers requests for them with 503 until
+  **`resume`**. Peer models still work. While paused, `status` says
+  `paused` and exits 8, and `start -load` and `restart -load` fail at once
+  with exit 8 rather than waiting. The pause outlasts a restart the app
+  makes, as in the menu. Both need llama-swap v268 or later; with an older
+  one they say so and exit 1.
 - **While llama-swap is serving requests,** `restart` and `stop` refuse, and
-  so does `unload` if one of the requests is for that model (`-all`: for any
-  of this Mac's models). They say what's in flight, such as "1 request
+  so does `unload` if one of the requests is for that model (`-all`, and
+  `pause`: for any of this Mac's models). They say what's in flight, such as "1 request
   (gemma4-31b-q8 for 1m12s)", do nothing, and exit 7, so one script or agent
   doesn't cut off another's work. `-force` goes ahead anyway; llama-swap then
   waits for its requests for up to 15 seconds before the app stops it and
   everything it started. If the app can't see llama-swap (it isn't
   answering, say), they go ahead, so a stuck llama-swap can always be
-  stopped. The menu's Stop and Restart never ask.
+  stopped. The menu's Stop, Restart and Pause All never ask.
 - **`logs`** prints the end of the file llama-swap's output goes to (see
   [Logs](#logs)), or with `-launcher` the launcher log. It reads the file
   directly, so it works even when the app isn't running. When llama-swap's
@@ -189,7 +211,8 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
 | 4 | The config isn't valid. llama-swap was left as it was. |
 | 5 | The model given to `-load` didn't load. |
 | 6 | Timed out. |
-| 7 | Busy: llama-swap is serving requests, so `restart`, `stop` or `unload` did nothing. See `-force`. |
+| 7 | Busy: llama-swap is serving requests, so `restart`, `stop`, `unload` or `pause` did nothing. See `-force`. |
+| 8 | Paused: for `status`, llama-swap's inference is paused; for `-load`, the model couldn't load because of that. See `llsl resume`. |
 
 ### JSON output
 
@@ -223,8 +246,10 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
 }
 ```
 
-- `state` is one of `stopped`, `starting`, `ready`, `not responding`,
-  `running`, `stopping`, `restarting` or `failed`. `running` means
+- `state` is one of `stopped`, `starting`, `ready`, `paused`, `not
+  responding`, `running`, `stopping`, `restarting` or `failed`. `paused`
+  comes with `"paused": true`: llama-swap answers, but its inference is
+  paused (see [`pause`](#what-each-command-does)), and `status` exits 8. `running` means
   llama-swap runs but refuses the app, so the app can't see its models or
   health: usually an API key the app doesn't have (see
   [API keys](#api-keys)). A `message` field explains the failure, or the
@@ -258,8 +283,8 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
   `faulted` has cleared, so a script can see that a fault happened.
 - On failure, `ok` is `false`, and `code` and `error` say why. `code` is one
   of `usage`, `invalid_config`, `start_failed`, `load_failed`, `timeout`,
-  `busy` or `error`, or `not_running` from `status` when the app isn't
-  running.
+  `busy`, `paused` or `error`, or `not_running` from `status` when the app
+  isn't running.
 
 ### For scripts and AI agents
 
@@ -281,6 +306,8 @@ config says.
   successful restart alone doesn't prove every model's command line is right.
 - **Health check:** `llsl status` exits 0 only when llama-swap is ready and
   no model's GPU backend has failed. Use `llsl status -json` to see which.
+  Exit 8 means someone has paused inference, perhaps to free the Mac for
+  something else: don't resume it unasked.
 - **A model's GPU backend failed** (after a Metal error, its requests return
   HTTP 500 while llama-swap itself looks healthy): `llsl unload MODEL`. The
   next request loads it again in a fresh process. For long unattended runs,
@@ -299,8 +326,9 @@ environment variables (a table, with **+** and **−**), and the settings below;
 environment variables, the **Peers** tab the peers the app manages (see
 [Peers](#peers)), the **Security** tab which web pages may use llama-swap
 (see [Web pages](#web-pages)), the **Logs** tab where the logs go (see
-below), and the **Tweaks** tab settings that fit no other tab, such as how
-long a copied secret stays on the clipboard (see [API keys](#api-keys)).
+below), and the **Tweaks** tab settings that fit no other tab: how long a
+copied secret stays on the clipboard (see [API keys](#api-keys)), and
+whether a pause outlasts a restart (see [The menu](#the-menu)).
 Rest the pointer on a setting, or its label, for what it's for;
 warnings stay on screen. Save checks
 them first: if something's wrong, an alert says what, and the dialog comes back
@@ -346,6 +374,7 @@ misspelling, is reported as an error rather than ignored.
 | `apiKeys` | `[]` | The names of llama-swap's API keys, without `LLSL_`. The keys themselves are in the keychain; see below. |
 | `appApiKey` | `""` | Which of them the app uses for its own requests. Empty: the first. |
 | `secretEnv` | `[]` | The names of secret environment variables. Their values are in the keychain; see below. |
+| `keepPausedOnRestart` | `true` | After **Pause All** or `llsl pause`, pause llama-swap again whenever the app restarts it, until it's resumed. Not written while it's the default. |
 | `clipboardClearSeconds` | `90` | How long a key or secret variable copied in Settings stays on the clipboard: `10`, `30`, `60`, `90`, `120` or `300`, or `0` to leave it there (Never). Not written while it's the default. |
 
 **llama-swap doesn't inherit your shell's environment.** It gets `HOME`,
