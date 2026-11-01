@@ -462,6 +462,34 @@ From use after publishing:
     - **Fetch Models' requests to a peer** (another llama-swap, or a service such as OpenRouter) are the app's too, so they carry `llama-swap-launcher/<version>` as well; the peer's log then shows what's asking (the maintainer, 2026-10-29: fine to name the app to outside services). They go through their own client (`noRedirects`, item 39), so it needs the same transport.
     - **Tests:** every request through the shared client carries the tag unless it set one; `IsCheckLine` with and without the version, and with `GET /running`; a `POST` or another path with the check tag still kept. The real-llama-swap test reads the access lines back to check what llama-swap logs. The README's health-check notes, if any, and Components §3's line on the User-Agent change with it.
 
+56. **The About panel: the credits' size, and llama-swap's whole version and build date** (the maintainer, 2026-10-31; not started; for the same batch as items 54 and 55).
+    - **What's wanted, top to bottom** (below the icon and name):
+      - **Version,** as AppKit draws it.
+      - **The app's Built line** directly under it.
+      - **llama-swap's version:** `Running: llama-swap v269` for a release, or the whole version for a build from source: `v269-2-g581d29`. The point (the maintainer, 2026-10-31) is that only a release reads as a bare `vNNN`.
+      - **llama-swap's build date,** where Built is today: `llama-swap built 2026-11-01`. Its wording was confirmed by the maintainer from a mock-up (2026-10-31): a second plain "Built" would be ambiguous.
+      - **A blank line,** then MIT License and the link, so the license doesn't read as llama-swap's.
+      
+      The two llama-swap lines show only while it runs, as today.
+    - **The credits in 10 pt** (decided by the maintainer, 2026-10-31), with their colour unchanged.
+      - **Why:** a test program that opens the standard panel and lists its views showed what AppKit uses. The name is bold 14 pt, and the version and the copyright line are regular 10 pt, in the primary text colour. The credits were 11 pt (`smallSystemFontSize`, item 21), larger than the version above them, which is what made the version look small.
+      - **The result:** at 10 pt the whole panel is in AppKit's size. The version differs from the credits only in colour, theirs being secondary.
+      - **Considered first, and dropped:** a 12 pt version, made by setting AppKit's label's font after the panel opens. It worked, but it relies on the panel's undocumented layout. This way needs only the panel's public options.
+      - **The gap:** between the version and Built it's the panel's 8 points, a little more than between the credits' lines.
+    - **llama-swap's version:**
+      - **The problem:** `versionPattern` stops at `v269`, dropping a build's `-2-g581d29`.
+      - **The fix:** widen it to git's describe form, `-<count>-g<hash>` with an optional `-dirty`.
+      - **No bracketed commit in the panel** (the maintainer, 2026-10-31): the describe form names the commit already, and a release's is its tag. The panel shows the version's first word, as `llsl status`'s line already does.
+      - **Elsewhere:** `llsl status -json` and diagnostics keep llama-swap's whole text, commit included. `VersionNumber` still reads 269.
+      - **The width:** at 10 pt, a long one such as `Running: llama-swap v269-12-g581d29c-dirty` fits the panel's 268 points. With the bracket it would be 277 and wrap.
+    - **llama-swap's build date:** `-version` already prints it (`built at 2026-11-01T03:36:54Z`, in v260's wording and v262's).
+      - `BinaryVersion` returns it from the same run, and the status carries it beside the version, from the llama-swap that was started.
+      - It's shown as the date in UTC, like the app's own Built line. Both read a day ahead for a build in the evening in the Americas.
+      - The line is left out when the output has no date.
+    - **Tests:**
+      - the parser with git's describe forms and the date;
+      - the test program, for the credits' size and order.
+
 Considered for 0.3 and set aside (the maintainer, 2026-10-18):
 - **Preloading models at startup** (`hooks.on_startup.preload`, a list, so it would merge safely): it names models the app doesn't manage, which can change between starts and reloads. It belongs with a managed model config, if one comes. The maintainer has ideas for that, from their own configs, but it needs a fully managed config, macros included; not now.
 - **Single values** such as `logLevel`: llama-swap refuses to load when two files set one differently, so they'd need a "here or in your config, not both" hint. Hold until one is needed.
