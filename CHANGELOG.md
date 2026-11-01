@@ -22,6 +22,10 @@ not published; they're listed for people who had them.
   on the new **Tweaks** tab. The app never reads the clipboard.
 - On the Secrets tab, **−**, **Generate** and **Show** are greyed out until
   a row is selected, as Copy is (and **−** under Environment too).
+- Settings → Peers: the note beside **Key** is no longer cut off when a
+  secret variable has a long name (since 0.3.1). It's shorter, and says
+  what matters, that the key is sent to the peer with every request; the
+  rest is in its tooltip.
 - Settings' tables (Environment, the API keys, the secret variables and the
   peers) show four rows, where some showed two and a half. The models list
   shows four instead of five, and the window is a little taller.

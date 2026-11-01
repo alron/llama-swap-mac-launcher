@@ -585,6 +585,8 @@ For the release after 0.3.1. Item 53, browser login through a form, is open: see
       - `llsl status` saying paused and exiting 8, and `-load` exiting 8;
       - `llsl resume`, and `llsl pause` exiting 7 with a request in flight, and going ahead with `-force`.
 
+**Found while taking 0.3.2's screenshots** (2026-11-01): the Peers tab's note beside Key was cut off at the dialog's edge ("sent to this pee"), since item 48 narrowed the dialog in 0.3.1. A long item widens the Key menu, and both it and the note resisted squeezing equally, so AppKit cut either one: here, a secret variable named `LLAMA_SWAP_SESSION_SECRET`. The note is now the warning alone ("sent to this peer with every request"), with the explanation in a tooltip on Key (item 48's rule), and the menu gives way first, shortening its title with "…" (`NSLayoutPriorityDefaultLow`). The dialog test program checks the note is whole and inside the tab with each of two peers selected, one with a 50-character key name and one whose variable is gone.
+
 ## Milestone 0 results (2026-09-28)
 
 Test app: `spike/localnet/` (removed 2026-10-18; in Git history up to dad4e08), Developer ID-signed under the `.dev` bundle ID, launched with `open` from tmux, connecting to the LAN peer.

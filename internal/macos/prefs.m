@@ -1235,9 +1235,19 @@ static NSView *peersTab(LSLPeers *p) {
 	p.detail = @[ remove, p.key, p.responseHeader, p.connect, p.keepalive, p.filter, p.fetch, list, tick, untick, p.addField, addModel ];
 	p.all = @[ table, add ];
 
-	NSTextField *keyHint = label(@"a secret variable (Secrets tab), sent to this peer with every request");
+	// The warning stays on screen (item 46); what the menu offers is
+	// explained in its tooltip, as the dialog's explanations are (item 48).
+	// Both on the row could be wider than the tab, with a long item such as
+	// "NAME (not a secret variable)" widening the menu, and AppKit then cut
+	// off either one. Now the menu gives way, shortening its title with "…".
+	NSTextField *keyHint = label(@"sent to this peer with every request");
 	keyHint.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
 	keyHint.textColor = NSColor.secondaryLabelColor;
+	[p.key setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+	NSTextField *keyLabel = label(@"Key:");
+	explain(@"One of the secret variables on the Secrets tab, or None. llama-swap sends it to this peer with every "
+	        @"request, as Authorization: Bearer and x-api-key.",
+	        @[ keyLabel, p.key ]);
 	NSTextField *title = label(@"Peers");
 	title.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
 	explain(@"Other llama-swaps, or servers with the same API, whose models llama-swap offers as name/model.", @[ title, peerScroll ]);
@@ -1246,7 +1256,7 @@ static NSView *peersTab(LSLPeers *p) {
 		title,
 		peerScroll,
 		peerButtons,
-		row(@[ label(@"Key:"), p.key, keyHint ]),
+		row(@[ keyLabel, p.key, keyHint ]),
 		timeouts,
 		row(@[ label(@"Models:"), p.filter, p.fetch, p.spinner ]),
 		p.status,
