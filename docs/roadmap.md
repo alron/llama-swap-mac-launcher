@@ -81,6 +81,20 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
 
 47. **The next configuration push** (the maintainer, 2026-10-18; not planned in detail yet, "a lot more work").
     - **The order follows the dependencies:** macros first, then models (which use macros), then routing (groups, matrix, profiles and selectors, which name models).
+    - **Routing: the capacity router only, at first** (the maintainer, 2026-11-01). It's the easiest of llama-swap's routers to manage from a UI: no expressions such as `(model1 | model2) & +list`, only numbers. The maintainer's own large-model Mac runs it, and their other Macs are to move to it from the matrix.
+      - **Pools:** `routing.router.settings.capacity.pools`, named by the user, each with a size the user chooses: memory in MB, say, for a pool such as `unified`.
+      - **Each model's size:** `models.<id>.capacities.<pool>`, its real requirement: as llama-server reports it, configured context included.
+      - **Each model's `evict_cost`,** optional: by default its size in the first pool in GB (MB with the last three digits dropped), and left out when that's 0, which is llama-swap's own default. A cost in proportion to size fits the router's plan: it evicts the set with the lowest total cost, so it keeps big models, which are slow to reload, rather than small ones.
+      - **What llama-swap enforces** (read in v269's `internal/config/capacity.go`, `model_config.go` and `docs/config.example.yaml`):
+        - pools are named and have positive integer sizes, at least one;
+        - a model's sizes and `evict_cost` are non-negative integers (YAML `!!int`: a fraction is refused, not rounded);
+        - a model's size can't exceed its pool's, nor name a pool that isn't defined;
+        - **a model with no `capacities` uses nothing**, so it loads on top of a full pool. The app should require a size in every pool for each model it manages.
+        - The router plans to minimise the evicted models' total cost, then their number, then their IDs, and only among the models already loaded.
+        - `capacity` can't be mixed with groups or a matrix, and `routing.router.use` is a single value, so the user's own config can't keep a matrix beside it: this belongs in the fully managed mode below.
+      - **With item 51:** the app knows the GPU's wired memory limit, so it could suggest a `unified` pool of that size, and warn when a pool is bigger than the limit.
+      - **Later:** measuring a loaded model's real size (llama-server's buffer sizes in its output, say) to fill in its capacity, rather than the user typing it. Not decided.
+      - Groups, the matrix, profiles and selectors wait until the capacity router is in, if they're wanted at all.
     - **After those, the root single values:** `logLevel`, `logToStdout`, `logTimeFormat`, `logRequests`, `store`, `captureBuffer`, `startPort`, `globalTTL`, `healthCheckTimeout` and the rest.
     - **Things to settle then:**
       - `models`, `groups`, `profiles`, `selectors` and `matrix` merge by ID, so each entity lives wholly in one file, as peers do (item 36).
