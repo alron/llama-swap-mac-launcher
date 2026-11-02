@@ -6,7 +6,12 @@ Items keep their numbers; a new one takes the next, from 57. When one is done, i
 
 ## Next release
 
-Items 52 and 54 to 57 are built and verified (CHANGELOG.md's 0.3.2 section; the items are in [done.md](done.md)); nothing else is planned for it. The README's screenshots were retaken from it (2026-11-01), the Peers tab's after a fix it showed up.
+0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, has:
+
+58. **Table text centred in its row** (the maintainer, 2026-11-01, from 0.3.2's screenshots; not started; cosmetic, for 0.3.3). In Environment, the secret variables, the peers and the models list, a cell's text sits at the top of its row, against the header and the next row's stripe. In the API keys, the key's value does too, but its name doesn't.
+    - **Why** (read in `prefs.m`): every text cell is a bare `NSTextField`, which the table stretches to the row's height (24 points) and which draws its text at the top. The API keys' name is the exception: its fixed `LLSL_` prefix and the name are in an `NSStackView`, which centres them.
+    - **The fix:** the same centring for every text cell: in `LSLSecretTable` (both columns) and in `LSLPeers` (the peers' name and URL, and the models list). That's a container, a stack or an `NSTableCellView` with a centre-Y constraint, and the field inside it. The code that finds a cell's field (`rowForView:`, and the restyling in place, which mustn't replace cells: Components §1) has to look through the container.
+    - **Tests:** the dialog test program checks that each text cell's text is centred in its row on every table, edits still reach the rows, and nothing turns up in AppKit's log ("pointing at it"). The README's Settings screenshots then show it, at the next retake.
 
 ## 0.3.x
 

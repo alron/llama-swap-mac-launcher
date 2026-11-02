@@ -8,7 +8,7 @@ The app does **not** bundle or redistribute llama-swap. The user installs llama-
 
 ## Current status and decisions
 
-- **Stage** (2026-11-01): 0.3.1 is the latest release (2026-10-24). Milestones 0 to 6 are done; milestone 7 waits until the repository has been public a while without major problems. The next release has items 52 and 54 to 57, all built and verified (see "Work list"). How the project got here is in [docs/done.md](docs/done.md), "History".
+- **Stage** (2026-11-01): 0.3.2 is the latest release (2026-11-01). Milestones 0 to 6 are done; milestone 7 waits until the repository has been public a while without major problems. Next is 0.3.3, with item 58; item 51 is likely the last major feature of the 0.3 series (see "Work list"). How the project got here is in [docs/done.md](docs/done.md), "History".
 - **The primary goal is met** (2026-09-28): llama-swap runs under a signed, notarized app and reaches the LAN from anywhere, tmux included. Polish and publishing followed, with the aim of sharing the project with llama-swap's developer. The repository has been public since 2026-10-04, as a single fresh commit of the scrubbed tree; the detailed history stays on a local branch that's never pushed. Personal context (machines, hostnames, the setup before the launcher) is in `CLAUDE.local.md`, which Claude Code loads alongside this file and `.gitignore` keeps out of the repo; it also has the check to run before any push. The Makefile's `SIGN_IDENTITY` default carries the maintainer's name and team ID; both are in `LICENSE` and in every signed binary already, so it stays.
 - **0.3.x: managed configuration** (decided 2026-10-18). The 0.2 series meets the original goal: llama-swap runs under a signed app with the Local Network permission, much as a launchd job would, but with a UI and status. The 0.3 series adds configuration the app manages for the user, to make llama-swap easier for less technical Mac users: so far a config folder, `apiKeys`, peers and CORS (items 34, 36 and 38). The next push, item 47, is meant for 0.4.
 - **Machines and the real setup:** a development Mac, and a second Mac on the LAN running its own llama-swap (the peer, also through the release app). Before the launcher, llama-swap ran from the maintainer's shell scripts, with a config whose `peers:` entry is the LAN connection that gets blocked. The details are in `CLAUDE.local.md`.
@@ -32,8 +32,8 @@ Items keep their numbers for good, since code comments and commit messages cite 
 Each change to `llsl` or the preferences also needs `README.md` updated.
 
 The open items (2026-11-01):
-- **Next release:** nothing open. Items 52 and 54 to 57 are built and verified: taller tables, a Copy button for keys and secrets, the app's name and version in every request, the About panel's credits and llama-swap's whole version and build date, and pause and resume (with Start and Stop as one menu item).
-- **0.3.x:** 51 (the GPU's wired memory limit, through a helper that runs as root).
+- **Next release (0.3.3):** 58 (table text centred in its row; cosmetic).
+- **0.3.x:** 51 (the GPU's wired memory limit, through a helper that runs as root; likely the last major feature of 0.3).
 - **Blocked:** 53 (browser login through a form), on a llama-swap release that has it.
 - **0.4:** 47 (macros, models and routing, managed by the app).
 - **Later:** 35 (TLS), 37 (Tailcat) and milestone 7 (the DMG, and the Homebrew cask and tap).
