@@ -2,7 +2,7 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 57. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 61. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
@@ -25,7 +25,7 @@ Items keep their numbers; a new one takes the next, from 57. When one is done, i
 
 ## 0.3.x
 
-Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026-11-01), for a release after 0.3.2.
+Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026-11-01), for a release after 0.3.2. Item 60, notifications, is for a 0.3.x release too, before or after 51.
 
 51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; decided the same day, below). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
@@ -50,6 +50,53 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
     - **First, a spike** (validate before building): register a minimal daemon from the dev build, with the maintainer approving it in System Settings. Check that it runs as root, whether the app must be in `/Applications`, that the XPC signature check accepts the dev app and refuses another program, and, after a reboot, whether the setting exists when the daemon starts.
     - **Where:** a new **Tweaks** tab (the maintainer), for settings that are risky or fit no other tab; General has no room.
     - **When:** a 0.3.x release, before item 47's 0.4 work, is fine. Before it ships, the maintainer has Claude Fable (at Max effort) and some local models with million-token context review it hard.
+
+60. **macOS notifications for problems, at a high priority** (the maintainer, 2026-11-02; not started; for a 0.3.x release). Today a problem shows as text in the menu and a red arrow, and two of them also open an alert: llama-swap stopping with a problem, and a model's GPU backend failing. Neither reaches anyone who isn't looking at the Mac's screen. The app should post macOS notifications for anything that needs a person.
+    - **They stay on the Mac** (checked 2026-11-02). The maintainer hoped they'd reach every device on the iCloud account, but macOS doesn't forward a Mac app's notifications anywhere. Apple's forwarding only goes from iPhone to Mac (iPhone Mirroring). The maintainer: notifications on the Mac alone are still worth having, and fit the app's other macOS touches. Reaching a phone takes something else: see "Later" below.
+    - **How:** `UNUserNotificationCenter`, in a small shim (`notify.m`).
+      - **Permission:** macOS asks once (`requestAuthorizationWithOptions:`, for alerts and sounds); when to ask is to decide, below. After that, what gets through (banners or alerts, sounds, time-sensitive) is the user's choice, in System Settings → Notifications, under the app's name. The dev and release apps are separate entries there.
+      - **While the app is active** (it activates itself for dialogs), macOS shows no banner unless the centre's delegate answers `willPresentNotification:` with banner, list and sound. So it does.
+      - **Clicks and action buttons** reach the delegate's response handler. Go waits for them in a goroutine, through a C function that blocks until the next one, so no Go function is exported to Objective-C.
+      - **One per kind:** each kind of problem has its own identifier. A new one replaces the last of its kind, so a crash loop is one notification, not one per restart. When the problem clears, the app removes it from Notification Centre.
+    - **High priority is the time-sensitive level** (`UNNotificationInterruptionLevelTimeSensitive`), which gets through a Focus. It needs the entitlement `com.apple.developer.usernotifications.time-sensitive`. Without it, macOS posts at the ordinary level instead.
+      - **On macOS that takes a provisioning profile:** an App ID for each bundle ID (release and `.dev`) in the developer account, with the Time Sensitive Notifications capability (which the account holder turns on, with no request to Apple), and a Developer ID provisioning profile for each, embedded as `Contents/embedded.provisionprofile`. Signing then needs an entitlements file (`codesign --entitlements`), the project's first.
+      - **Ad-hoc builds sign without it.** An app that claims the entitlement without a matching profile won't launch, so CI's builds and those of contributors without the certificate leave it out, and post at the ordinary level.
+      - **Evidence so far** (2026-11-02): one public project's Developer ID profile carries the entitlement. Apple's capabilities table for macOS lists it, but its Developer ID column didn't come through when fetched. The spike settles it.
+      - **Profiles:** turning a capability on for an App ID invalidates that App ID's existing profiles, which matters only once there are some. A profile isn't secret (it holds no private key), but it's tied to the developer account. Whether it's committed or kept with the certificate is to decide. It expires, so note when.
+      - **Not critical alerts,** the level above: Apple grants those to health and safety apps.
+    - **What notifies** (proposed, to decide):
+      - **Time-sensitive:**
+        - llama-swap stopped with a problem: the crash-loop cap, a quarantined binary, or one that couldn't start.
+        - llama-swap not responding.
+        - A model's GPU backend failed, with automatic unloading off.
+      - **Ordinary:**
+        - llama-swap restarted after an unexpected exit.
+        - A faulted model was unloaded automatically.
+        - llama-swap refused the app, over its API key.
+      - **Nothing** for what the user just did in the menu or Settings, for `llsl` requests (whose caller gets the answer), or for a pause.
+    - **Actions:**
+      - The GPU fault's notification offers **Unload**, as its alert does (`UNNotificationCategory`).
+      - Clicking a failure's notification shows the alert with llama-swap's last lines.
+    - **A Tweaks checkbox, on by default** (the maintainer, 2026-11-02), worded something like **Native notifications**, so turning them off doesn't mean blocking the app in System Settings.
+      - **In `prefs.json`:** `notifications`, a `*bool` like item 57's checkbox, written only when it's off. A file saved with the default then stays readable by older versions, whose `prefs.Load` rejects keys it doesn't know.
+      - **Permission:** macOS asks at the first launch with the box ticked. By default, that's the first launch of the version that has notifications; otherwise, when the box is ticked again. Never at the first problem, which is the worst moment for the question.
+      - **When macOS doesn't allow them** (the user said no, or turned them off in System Settings), the box stays ticked, and a hint under it says so and where to change it. It's a warning that changes with the settings, so it's a hint, not a tooltip (item 48).
+      - **Unticking** stops new notifications and clears the app's notifications from Notification Centre.
+    - **Decided by the maintainer** (2026-11-02):
+      - **Notifications replace those two alerts while the box is ticked.** Unticked, the alerts come back as today. Clicking a failure's notification still opens its alert, with llama-swap's last lines.
+      - **No Send Test Notification button,** unless notifications turn out to be troublesome and users need a way to check them.
+    - **To check:**
+      - **The default style:** banners go away on their own; alerts stay until dismissed. `NSUserNotificationAlertStyle` = `alert` in Info.plist asked for alerts with the old API. Whether `UNUserNotificationCenter` honours it is to check.
+    - **First, a spike** (validate before building): post from the dev build, with and without the entitlement and its profile. Check that:
+      - the permission prompt names the app;
+      - a time-sensitive notification gets through a Focus;
+      - the delegate gets an action button's click;
+      - notarization accepts a release build carrying its profile.
+    - **Tests:**
+      - Which status changes notify, and which clear a notification, is decided in Go and tested on its own, like `lookFor`.
+      - The shim is checked hands-on: a test program would need a signed bundle to post at all, and would put notifications on the maintainer's screen.
+    - **Also:** the README (what notifies, and what to allow in System Settings) and Collect Diagnostics (whether notifications and time-sensitive ones are allowed, from `getNotificationSettingsWithCompletionHandler:`).
+    - **Later, reaching a phone** (not decided): a command, chosen by the user, that the app runs for each notification with its title and text. The user's own script sends it on, through ntfy, Pushover, Home Assistant or a message. It would run as the app's child, with the app's Local Network permission. A command keeps any third-party service out of the app itself.
 
 ## Blocked
 
