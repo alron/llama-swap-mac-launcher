@@ -17,10 +17,10 @@ Items keep their numbers; a new one takes the next, from 57. When one is done, i
     - **A second Tweaks checkbox**, worded something like **Keep inference paused when Llama Swap Launcher restarts**. It's off by default, so a fresh start is unpaused, as today, unless the user chooses otherwise.
     - **In `prefs.json`:** `keepPausedOnAppRestart`, written only when it's on (Go's zero value is the default, so `omitempty` does it), so 0.3.2 can still read a file saved with the default.
     - **Kept on disk:** with it on, the app writes a small file in its own folder (beside `prefs.json`) when inference is paused, and removes it on resume. At launch, a llama-swap the app starts is paused again (item 57's `pauseAgain`, with the file standing in for the memory). The file is state, not a preference, so it isn't in `prefs.json`, which the dialog and hand edits own.
-    - **To settle when building:**
-      - whether it only makes sense with item 57's checkbox on, and is greyed out without it (proposed: an app restart restarts llama-swap too);
-      - what a pause made in llama-swap's web UI does (item 57 adopts it, so the file follows it);
-      - whether a pause noted in the file is dropped once it's old, after a long time switched off, say.
+    - **Decided by the maintainer** (2026-11-01):
+      - **It depends on item 57's checkbox,** greyed out unless **Keep inference paused when llama-swap restarts** is ticked: "two sides of the same coin". An app restart restarts llama-swap too.
+      - **A pause made in llama-swap's web UI counts the same** as one made in the app or with `llsl`: with the boxes ticked, it outlasts a restart of llama-swap or of the app. Item 57 already adopts such a pause, so the file follows it too.
+      - **A pause never expires.** The only times inference is resumed without being asked are a restart of llama-swap, or of the app, whose checkbox isn't ticked. A long pause is the user's choice, and a useful one: a llama-swap that stays paused still serves its peers' models and its web UI, without its local models using the Mac's memory.
     - **Also:** the README's Pause All paragraph and settings table, and `llsl status -json` if it should say a pause was carried over.
 
 ## 0.3.x
