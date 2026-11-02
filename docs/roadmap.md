@@ -13,6 +13,16 @@ Items keep their numbers; a new one takes the next, from 57. When one is done, i
     - **The fix:** the same centring for every text cell: in `LSLSecretTable` (both columns) and in `LSLPeers` (the peers' name and URL, and the models list). That's a container, a stack or an `NSTableCellView` with a centre-Y constraint, and the field inside it. The code that finds a cell's field (`rowForView:`, and the restyling in place, which mustn't replace cells: Components §1) has to look through the container.
     - **Tests:** the dialog test program checks that each text cell's text is centred in its row on every table, edits still reach the rows, and nothing turns up in AppKit's log ("pointing at it"). The README's Settings screenshots then show it, at the next retake.
 
+59. **Keep a pause across the app's own restarts, as a choice** (the maintainer, 2026-11-01: "I see both sides of the pause as legitimate"; not started; for 0.3.3, with milestone 7's `llsl quit`). Item 57 keeps a pause across restarts of llama-swap that the app makes, but only in memory, so quitting the app forgets it: an upgrade through `brew` (milestone 7), a Quit and reopen, a reboot with Launch at Login.
+    - **A second Tweaks checkbox**, worded something like **Keep inference paused when Llama Swap Launcher restarts**. It's off by default, so a fresh start is unpaused, as today, unless the user chooses otherwise.
+    - **In `prefs.json`:** `keepPausedOnAppRestart`, written only when it's on (Go's zero value is the default, so `omitempty` does it), so 0.3.2 can still read a file saved with the default.
+    - **Kept on disk:** with it on, the app writes a small file in its own folder (beside `prefs.json`) when inference is paused, and removes it on resume. At launch, a llama-swap the app starts is paused again (item 57's `pauseAgain`, with the file standing in for the memory). The file is state, not a preference, so it isn't in `prefs.json`, which the dialog and hand edits own.
+    - **To settle when building:**
+      - whether it only makes sense with item 57's checkbox on, and is greyed out without it (proposed: an app restart restarts llama-swap too);
+      - what a pause made in llama-swap's web UI does (item 57 adopts it, so the file follows it);
+      - whether a pause noted in the file is dropped once it's old, after a long time switched off, say.
+    - **Also:** the README's Pause All paragraph and settings table, and `llsl status -json` if it should say a pause was carried over.
+
 ## 0.3.x
 
 Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026-11-01), for a release after 0.3.2.
@@ -113,7 +123,7 @@ The Homebrew cask, from our own tap, with a `.dmg` beside the zip: the plans are
   - **`uninstall_preflight`:** runs the installed app's `Contents/Helpers/llsl quit`, and notes for `postflight` that the app was running.
   - **`postflight`:** reopens the app with `open -b` if it was running.
   - **Needs a new `llsl quit`:** stops llama-swap as Quit does, then quits the app. Proposed: it refuses while requests are in flight (exit 7), like `stop`, so `brew upgrade` stops with that message rather than cutting someone off; `-force` overrides.
-  - **What's lost:** a pause is in memory only (item 57), so an upgrade resumes inference. To settle when building: whether `llsl quit` hands it to the next launch.
+  - **A pause:** item 57 keeps it in memory only, so an upgrade resumes inference, unless the user has ticked item 59's checkbox (decided by the maintainer, 2026-11-01).
 - **To validate first, with a local tap and a `file://` URL:**
   - `system_command` in both blocks during `brew upgrade --cask`;
   - `appdir` in `uninstall_preflight`;
