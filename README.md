@@ -110,9 +110,11 @@ inference is paused, only the letters are, and the arrow keeps its colour:
 llama-swap is running, but not taking requests.
 
 <p>
-  <img src="docs/images/menu-stopped.png" width="354" alt="The menu with llama-swap stopped: L→S faded, Stop and Restart greyed out">
-  <img src="docs/images/menu-loading.png" width="364" alt="The menu while a model loads: the arrow grey">
+  <img src="docs/images/menu-stopped.png" width="366" alt="The menu with llama-swap stopped: L→S faded, Start enabled, Restart and Pause All greyed out">
+  <img src="docs/images/menu-loading.png" width="365" alt="The menu while a model loads: the arrow grey">
 </p>
+
+![The menu while inference is paused: L and S faded with the arrow in full colour, the status paused with its explanation, and Resume All](docs/images/menu-paused.png)
 
 ## `llsl`
 
@@ -376,6 +378,8 @@ misspelling, is reported as an error rather than ignored.
 | `secretEnv` | `[]` | The names of secret environment variables. Their values are in the keychain; see below. |
 | `keepPausedOnRestart` | `true` | After **Pause All** or `llsl pause`, pause llama-swap again whenever the app restarts it, until it's resumed. Not written while it's the default. |
 | `clipboardClearSeconds` | `90` | How long a key or secret variable copied in Settings stays on the clipboard: `10`, `30`, `60`, `90`, `120` or `300`, or `0` to leave it there (Never). Not written while it's the default. |
+
+![Settings, Tweaks tab: how long a copied secret stays on the clipboard, and keeping inference paused across restarts](docs/images/settings-tweaks.png)
 
 **llama-swap doesn't inherit your shell's environment.** It gets `HOME`,
 `USER`, `LOGNAME`, `SHELL` and `TMPDIR`, a `PATH` made of llama-swap's own

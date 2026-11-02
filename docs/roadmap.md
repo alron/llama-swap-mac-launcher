@@ -6,7 +6,7 @@ Items keep their numbers; a new one takes the next, from 57. When one is done, i
 
 ## Next release
 
-Items 52 and 54 to 57 are built and verified (CHANGELOG.md's Unreleased; the items are in [done.md](done.md)); nothing else is planned for it. The README's screenshots, the Settings ones due to be retaken from 0.3.1, are better retaken from this release: item 52 changed the tables' height, item 54 added Copy and the Tweaks tab, item 56 changed About, and item 57 changed the menu (one Start or Stop item, and Pause All), so the menu shots and their alt text change too.
+Items 52 and 54 to 57 are built and verified (CHANGELOG.md's 0.3.2 section; the items are in [done.md](done.md)); nothing else is planned for it. The README's screenshots were retaken from it (2026-11-01), the Peers tab's after a fix it showed up.
 
 ## 0.3.x
 
