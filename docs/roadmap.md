@@ -104,7 +104,22 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
 
 ### Milestone 7
 
-The Homebrew cask, from our own tap, with a `.dmg` beside the zip: the plans are in CLAUDE.md, "Signing, notarization, distribution". It waits until the repository has been public a while without major problems (the maintainer, 2026-10-04). Two things to check then: whether Homebrew unpacks a cask's zip as `unzip` does (item 23), and whether the cask needs an `uninstall launchctl:` entry once item 51's helper exists.
+The Homebrew cask, from our own tap, with a `.dmg` beside the zip: the plans are in CLAUDE.md, "Signing, notarization, distribution". It waited until the repository had been public a while without major problems (the maintainer, 2026-10-04). **Now planned alongside 0.3.3** (the maintainer, 2026-11-01): from our own tap only, with no submission to Homebrew's own repository, so installs and upgrades are managed by `brew`. Two things to check: whether Homebrew unpacks a cask's zip as `unzip` does (item 23), and whether the cask needs an `uninstall launchctl:` entry once item 51's helper exists.
+
+**Upgrading while the app runs** (the maintainer, 2026-11-01: no "quit the app before `brew upgrade`"). Replacing the running app by hand fails because its files are in use, and the app has to stop and start anyway: llama-swap is its child.
+- **Homebrew's own way** (read in Homebrew 7.0.11's `cask/artifact/abstract_uninstall.rb` and `cask/upgrade.rb`): `uninstall quit: "<bundle id>"` quits the app before an upgrade and reopens it afterwards (`lsregister -f`, then `open -b`). But it quits through `osascript` (`Application(id).quit()`), an Apple Event, which needs Automation access for Terminal ("Terminal → System Events"). The maintainer never grants that, and nor will many people, so it would time out after 10 seconds and carry on with the app running.
+- **The plan: the cask quits and reopens the app through `llsl`,** the control socket, which needs no permission.
+  - **During an upgrade** (read in `cask/installer.rb`): the old cask's `uninstall_preflight` block runs before the old app is removed (`start_upgrade` → `uninstall_artifacts`, flight blocks before the `Uninstall` directives), and the new cask's `postflight` runs once the new one is in place.
+  - **`uninstall_preflight`:** runs the installed app's `Contents/Helpers/llsl quit`, and notes for `postflight` that the app was running.
+  - **`postflight`:** reopens the app with `open -b` if it was running.
+  - **Needs a new `llsl quit`:** stops llama-swap as Quit does, then quits the app. Proposed: it refuses while requests are in flight (exit 7), like `stop`, so `brew upgrade` stops with that message rather than cutting someone off; `-force` overrides.
+  - **What's lost:** a pause is in memory only (item 57), so an upgrade resumes inference. To settle when building: whether `llsl quit` hands it to the next launch.
+- **To validate first, with a local tap and a `file://` URL:**
+  - `system_command` in both blocks during `brew upgrade --cask`;
+  - `appdir` in `uninstall_preflight`;
+  - how a block's failure (exit 7) stops the upgrade;
+  - whether replacing the running bundle ever succeeds without quitting, leaving the old app running.
+- **Zip installs** still need the app quit first. The app could notice its own bundle being replaced and restart itself, which would serve both; noted, not planned.
 
 ## Considered and set aside
 
