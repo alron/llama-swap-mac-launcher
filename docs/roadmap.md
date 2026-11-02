@@ -93,7 +93,10 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
         - The router plans to minimise the evicted models' total cost, then their number, then their IDs, and only among the models already loaded.
         - `capacity` can't be mixed with groups or a matrix, and `routing.router.use` is a single value, so the user's own config can't keep a matrix beside it: this belongs in the fully managed mode below.
       - **With item 51:** the app knows the GPU's wired memory limit, so it could suggest a `unified` pool of that size, and warn when a pool is bigger than the limit.
-      - **Later:** measuring a loaded model's real size (llama-server's buffer sizes in its output, say) to fill in its capacity, rather than the user typing it. Not decided.
+      - **Later:** measuring a loaded model's real size to fill in its capacity, rather than the user typing it. Not decided.
+        - **It's what the maintainer did by hand** (2026-11-01): set the model's config, load it, and read llama-server's log, which shows the projected maximum use, configured context included, with `--log-verbosity 4`.
+        - **So the app would load the model once with that flag** (llama-swap passes `cmd` as written, so the app would add it for that run), follow the model's output (`/logs/stream/<id>`, as the GPU-fault watch does), and read the figures. Which lines, in which llama.cpp builds, is to check when building.
+        - **The caveat:** other inference servers (vLLM, MLX, …) may not report a projected maximum, at least not in their log. So measuring is an offer for llama.cpp models, and typing the size stays the way for everything else.
       - Groups, the matrix, profiles and selectors wait until the capacity router is in, if they're wanted at all.
     - **After those, the root single values:** `logLevel`, `logToStdout`, `logTimeFormat`, `logRequests`, `store`, `captureBuffer`, `startPort`, `globalTTL`, `healthCheckTimeout` and the rest.
     - **Things to settle then:**
