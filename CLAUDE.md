@@ -35,7 +35,7 @@ The open items (2026-11-02):
 - **Next release (0.3.3):** 58 (table text centred in its row; cosmetic) and 59 (a pause kept across the app's own restarts, as a choice), with milestone 7 alongside (the DMG, and the Homebrew cask from our own tap, quitting and reopening the app through `llsl` during `brew upgrade`).
 - **0.3.x:** 51 (the GPU's wired memory limit, through a helper that runs as root; likely the last major feature of 0.3) and 60 (macOS notifications for problems, time-sensitive through a provisioning profile).
 - **Blocked:** 53 (browser login through a form), on a llama-swap release that has it.
-- **0.4:** 47 (macros, models and routing, managed by the app).
+- **0.4:** 47 (models, with the app's presets in place of macros, and routing, managed by the app).
 - **Later:** 35 (TLS) and 37 (Tailcat).
 
 ## Working in this repo

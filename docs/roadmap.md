@@ -127,7 +127,13 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
 ## 0.4
 
 47. **The next configuration push** (the maintainer, 2026-10-18; not planned in detail yet, "a lot more work").
-    - **The order follows the dependencies:** macros first, then models (which use macros), then routing (groups, matrix, profiles and selectors, which name models).
+    - **The order follows the dependencies:** models, with the app's presets, then routing (groups, matrix, profiles and selectors, which name models).
+    - **No macros** (decided by the maintainer, 2026-11-02). The app writes no `macros:` section. Shared settings are the app's own **presets**, written out in full into each model that uses one. llama-swap expands macros when it loads the config, so what runs is the same either way; only the file differs.
+      - **Why:** macros keep hand edits consistent, and nobody hand-edits files the app writes. A preset can do more than a macro: set keys such as `ttl` or `capacities`, which a macro can't add, and override a flag another preset sets, where `${a} ${b}` would pass it twice. Each model's `cmd` then shows exactly what runs, `-validate`'s errors point at the model, and the app's names can't clash with the user's own macros.
+      - **What stays:** llama-swap's own `${PORT}`, `${MODEL_ID}` and `${PID}`, which it assigns, and `${env.NAME}` for secrets, so their values never reach the file (the app already passes the Secrets tab's as environment variables; llama-swap refuses a config naming one that isn't set).
+      - **Importing a config that has macros** is where the app has to understand them: it reads them, never writes them. The maintainer's own show three kinds. Machine paths through `${env.…}` (the server binary, the models folder) become settings. Half an argument (`--model '${models_home}'`, with the path after it) becomes a file picker. Only groups of flags become presets.
+      - **A preset is a model without the model's own parts** (its file, aliases, capacities), so one editor serves both. A model lists its presets in order, its own settings override theirs, and a preview shows the final command, which preset each flag came from, and what was overridden: what macros gave a person reading the YAML.
+    - **Not only llama.cpp** (the maintainer, 2026-11-02). Other inference engines run under llama-swap on macOS, MLX's among them, so the form needs enough that's generic not to be tied to llama-server. Only a model's `cmd` depends on the engine: everything else llama-swap has per model (aliases, `ttl`, `capacities`, `filters`, `useModelName`, `checkEndpoint`, …) means the same for any of them. How the form separates the two is being designed.
     - **Routing: the capacity router only, at first** (the maintainer, 2026-11-01). It's the easiest of llama-swap's routers to manage from a UI: no expressions such as `(model1 | model2) & +list`, only numbers. The maintainer's own large-model Mac runs it, and their other Macs are to move to it from the matrix.
       - **Pools:** `routing.router.settings.capacity.pools`, named by the user, each with a size the user chooses: memory in MB, say, for a pool such as `unified`.
       - **Each model's size:** `models.<id>.capacities.<pool>`, its real requirement: as llama-server reports it, configured context included.
@@ -148,15 +154,15 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
     - **After those, the root single values:** `logLevel`, `logToStdout`, `logTimeFormat`, `logRequests`, `store`, `captureBuffer`, `startPort`, `globalTTL`, `healthCheckTimeout` and the rest.
     - **Things to settle then:**
       - `models`, `groups`, `profiles`, `selectors` and `matrix` merge by ID, so each entity lives wholly in one file, as peers do (item 36).
-      - `macros` merge by name, and a name set differently in two files is an error.
+      - `macros` merge by name, and a name set differently in two files is an error. The app writes none, so the user's own can't clash with it.
       - Single values clash whenever the user's config sets them too, which may argue for a mode where the app writes the whole config rather than adding to the user's.
     - **The maintainer's direction (2026-10-18):**
-      - Keep the folder (`llama-swap.d`) for every section except the root config, one file per section, numbered: `01-macros.yaml`, `02-api-keys.yaml`, `03-security.yaml`, `04-models.yaml`, `05-routing.yaml`, `06-peers.yaml`.
+      - Keep the folder (`llama-swap.d`) for every section except the root config, one file per section, numbered: `01-api-keys.yaml`, `02-security.yaml`, `03-models.yaml`, `04-routing.yaml`, `05-peers.yaml` (`01-macros.yaml` dropped with the macros, 2026-11-02).
       - In fully managed mode, the root config sits beside `prefs.json` in Application Support, and so does llama-swap's SQLite `store` when it's on. The logs stay in `~/Library/Logs`.
       - Fully managed means conflicts are resolved in Settings before anything is written. llama-swap's `-validate` stays the check before every start.
     - **Checked against v265's `merge.go`:**
       - The folder's files are read in name order (`sort.Strings`), so the numbers set it.
-      - The order matters only for where list entries land (API keys, origins): macros are resolved after the merge, on the whole document, so a model in `04-` can use a macro from `01-` whatever the order.
+      - The order matters only for where list entries land (API keys, origins): macros are resolved after the merge, on the whole document, so the user's own macros work from any file, whatever the order.
       - The numbers are mainly for whoever opens the folder.
     - **Renaming today's files** (`api-keys.yaml`, `peers.yaml`, `security.yaml`) needs the app to delete its own old-named ones, those starting with its note, when it switches. Otherwise llama-swap reads both, and a peer defined twice stops it loading.
     - **Preloading models at startup** (set aside below) belongs with the managed models.
