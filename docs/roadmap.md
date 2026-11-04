@@ -6,13 +6,9 @@ Items keep their numbers; a new one takes the next, from 64. When one is done, i
 
 ## Next release
 
-0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, has items 58, 59 and 61 to 63, all done (table text centred in its row, a pause kept across the app's own restarts, Tab and Return in Settings' tables, paths shown with `~`, and the windows asked for from the menu taking the focus; now in done.md), with milestone 7 alongside ([below](#milestone-7)).
+0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58, 59 and 61 to 63, all done (table text centred in its row, a pause kept across the app's own restarts, Tab and Return in Settings' tables, paths shown with `~`, and the windows asked for from the menu taking the focus; now in done.md), and items 51 and 60, below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
 
-## 0.3.x
-
-Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026-11-01), for a release after 0.3.2. Item 60, notifications, is for a 0.3.x release too, before or after 51.
-
-51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; decided the same day, below). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
+51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; decided the same day, below; for 0.3.3, the last major feature of the 0.3 series). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
       - A daemon plist in the bundle's `Contents/Library/LaunchDaemons/`, registered with `[SMAppService daemonServiceWithPlistName:]`. Its `BundleProgram` names an executable inside the bundle, and `AssociatedBundleIdentifiers` makes System Settings show the app's name.
       - The user approves it once, in System Settings → General → Login Items & Extensions (`SMAppService.openSystemSettingsLoginItems`); the status goes from `requiresApproval` to `enabled`.
@@ -36,7 +32,9 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
     - **Where:** a new **Tweaks** tab (the maintainer), for settings that are risky or fit no other tab; General has no room.
     - **When:** a 0.3.x release, before item 47's 0.4 work, is fine. Before it ships, the maintainer has Claude Fable (at Max effort) and some local models with million-token context review it hard.
 
-60. **macOS notifications for problems, at a high priority** (the maintainer, 2026-11-02; not started; for a 0.3.x release). Today a problem shows as text in the menu and a red arrow, and two of them also open an alert: llama-swap stopping with a problem, and a model's GPU backend failing. Neither reaches anyone who isn't looking at the Mac's screen. The app should post macOS notifications for anything that needs a person.
+<!-- Markdown numbers a list from its first item: this one starts its own, so it shows its number. -->
+
+60. **macOS notifications for problems, at a high priority** (the maintainer, 2026-11-02; not started; for 0.3.3). Today a problem shows as text in the menu and a red arrow, and two of them also open an alert: llama-swap stopping with a problem, and a model's GPU backend failing. Neither reaches anyone who isn't looking at the Mac's screen. The app should post macOS notifications for anything that needs a person.
     - **They stay on the Mac** (checked 2026-11-02). The maintainer hoped they'd reach every device on the iCloud account, but macOS doesn't forward a Mac app's notifications anywhere. Apple's forwarding only goes from iPhone to Mac (iPhone Mirroring). The maintainer: notifications on the Mac alone are still worth having, and fit the app's other macOS touches. Reaching a phone takes something else: see "Later" below.
     - **How:** `UNUserNotificationCenter`, in a small shim (`notify.m`).
       - **Permission:** macOS asks once (`requestAuthorizationWithOptions:`, for alerts and sounds); when to ask is to decide, below. After that, what gets through (banners or alerts, sounds, time-sensitive) is the user's choice, in System Settings → Notifications, under the app's name. The dev and release apps are separate entries there.
@@ -82,6 +80,26 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
       - The shim is checked hands-on: a test program would need a signed bundle to post at all, and would put notifications on the maintainer's screen.
     - **Also:** the README (what notifies, and what to allow in System Settings) and Collect Diagnostics (whether notifications and time-sensitive ones are allowed, from `getNotificationSettingsWithCompletionHandler:`).
     - **Later, reaching a phone** (not decided): a command, chosen by the user, that the app runs for each notification with its title and text. The user's own script sends it on, through ntfy, Pushover, Home Assistant or a message. It would run as the app's child, with the app's Local Network permission. A command keeps any third-party service out of the app itself.
+
+### Milestone 7
+
+The Homebrew cask, from our own tap, with a `.dmg` beside the zip: the plans are in CLAUDE.md, "Signing, notarization, distribution". It waited until the repository had been public a while without major problems (the maintainer, 2026-10-04). **Now planned alongside 0.3.3, and done before its release** (the maintainer, 2026-11-01 and 2026-11-03), so the release itself tests `make publish` updating the cask in the tap, which must be public by then: from our own tap only, with no submission to Homebrew's own repository, so installs and upgrades are managed by `brew`. Two things to check: whether Homebrew unpacks a cask's zip as `unzip` does (item 23), and whether the cask needs an `uninstall launchctl:` entry once item 51's helper exists.
+
+**Upgrading while the app runs** (the maintainer, 2026-11-01: no "quit the app before `brew upgrade`"). Replacing the running app by hand fails because its files are in use, and the app has to stop and start anyway: llama-swap is its child.
+- **Homebrew's own way** (read in Homebrew 7.0.11's `cask/artifact/abstract_uninstall.rb` and `cask/upgrade.rb`): `uninstall quit: "<bundle id>"` quits the app before an upgrade and reopens it afterwards (`lsregister -f`, then `open -b`). But it quits through `osascript` (`Application(id).quit()`), an Apple Event, which needs Automation access for Terminal ("Terminal → System Events"). The maintainer never grants that, and nor will many people, so it would time out after 10 seconds and carry on with the app running.
+- **The plan: the cask quits and reopens the app through `llsl`,** the control socket, which needs no permission.
+  - **During an upgrade** (read in `cask/installer.rb`): the old cask's `uninstall_preflight` block runs before the old app is removed (`start_upgrade` → `uninstall_artifacts`, flight blocks before the `Uninstall` directives), and the new cask's `postflight` runs once the new one is in place.
+  - **`uninstall_preflight`:** runs the installed app's `Contents/Helpers/llsl quit`, and notes for `postflight` that the app was running.
+  - **`postflight`:** reopens the app with `open -b` if it was running.
+  - **Needs a new `llsl quit`:** stops llama-swap as Quit does, then quits the app. Proposed: it refuses while requests are in flight (exit 7), like `stop`, so `brew upgrade` stops with that message rather than cutting someone off; `-force` overrides.
+  - **A pause:** item 57 keeps it in memory only, so an upgrade resumes inference, unless the user has ticked item 59's checkbox (decided by the maintainer, 2026-11-01).
+- **To validate first, with a local tap and a `file://` URL:**
+  - `system_command` in both blocks during `brew upgrade --cask`;
+  - `appdir` in `uninstall_preflight`;
+  - how a block's failure (exit 7) stops the upgrade;
+  - whether replacing the running bundle ever succeeds without quitting, leaving the old app running.
+- **Zip installs** still need the app quit first. The app could notice its own bundle being replaced and restart itself, which would serve both; noted, not planned.
+
 
 ## Blocked
 
@@ -201,25 +219,6 @@ Item 51 is likely the last major feature of the 0.3 series (the maintainer, 2026
 ### Tailcat
 
 37. **Tailcat** (the maintainer, 2026-10-18; later, not planned yet, as the maintainer doesn't use it). llama-swap's own tunnel: a peer whose `proxy` is `tailcat://<token>`, with an optional `tailcatKey` file, and the `-listen-tailcat` flag (refused in `args` today, item 32). Peers (item 36) start with `http://` and `https://` only; Tailcat peers, and perhaps the listener, can follow.
-
-### Milestone 7
-
-The Homebrew cask, from our own tap, with a `.dmg` beside the zip: the plans are in CLAUDE.md, "Signing, notarization, distribution". It waited until the repository had been public a while without major problems (the maintainer, 2026-10-04). **Now planned alongside 0.3.3** (the maintainer, 2026-11-01): from our own tap only, with no submission to Homebrew's own repository, so installs and upgrades are managed by `brew`. Two things to check: whether Homebrew unpacks a cask's zip as `unzip` does (item 23), and whether the cask needs an `uninstall launchctl:` entry once item 51's helper exists.
-
-**Upgrading while the app runs** (the maintainer, 2026-11-01: no "quit the app before `brew upgrade`"). Replacing the running app by hand fails because its files are in use, and the app has to stop and start anyway: llama-swap is its child.
-- **Homebrew's own way** (read in Homebrew 7.0.11's `cask/artifact/abstract_uninstall.rb` and `cask/upgrade.rb`): `uninstall quit: "<bundle id>"` quits the app before an upgrade and reopens it afterwards (`lsregister -f`, then `open -b`). But it quits through `osascript` (`Application(id).quit()`), an Apple Event, which needs Automation access for Terminal ("Terminal → System Events"). The maintainer never grants that, and nor will many people, so it would time out after 10 seconds and carry on with the app running.
-- **The plan: the cask quits and reopens the app through `llsl`,** the control socket, which needs no permission.
-  - **During an upgrade** (read in `cask/installer.rb`): the old cask's `uninstall_preflight` block runs before the old app is removed (`start_upgrade` → `uninstall_artifacts`, flight blocks before the `Uninstall` directives), and the new cask's `postflight` runs once the new one is in place.
-  - **`uninstall_preflight`:** runs the installed app's `Contents/Helpers/llsl quit`, and notes for `postflight` that the app was running.
-  - **`postflight`:** reopens the app with `open -b` if it was running.
-  - **Needs a new `llsl quit`:** stops llama-swap as Quit does, then quits the app. Proposed: it refuses while requests are in flight (exit 7), like `stop`, so `brew upgrade` stops with that message rather than cutting someone off; `-force` overrides.
-  - **A pause:** item 57 keeps it in memory only, so an upgrade resumes inference, unless the user has ticked item 59's checkbox (decided by the maintainer, 2026-11-01).
-- **To validate first, with a local tap and a `file://` URL:**
-  - `system_command` in both blocks during `brew upgrade --cask`;
-  - `appdir` in `uninstall_preflight`;
-  - how a block's failure (exit 7) stops the upgrade;
-  - whether replacing the running bundle ever succeeds without quitting, leaving the old app running.
-- **Zip installs** still need the app quit first. The app could notice its own bundle being replaced and restart itself, which would serve both; noted, not planned.
 
 ## Considered and set aside
 
