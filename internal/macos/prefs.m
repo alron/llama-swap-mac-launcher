@@ -14,6 +14,55 @@
 #include "dialogs.h"
 #include "prefs.h"
 
+// tableCell is a table cell for field, centred in its row (TODO item 58): a
+// bare field would be stretched to the row's height, and draws its text at
+// the top. The container is an NSTableCellView with field as its textField,
+// which passes a selected row's look on to the text. rowForView: finds a row
+// from any view inside it, so a field's action still finds its row. With a
+// prefix (LLSL_ before an API key's name), the prefix comes first, fixed,
+// then the field.
+static NSTableCellView *tableCell(NSTextField *field, NSTextField *prefix) {
+	NSTableCellView *cell = [[NSTableCellView alloc] init];
+	cell.textField = field;
+	NSArray<NSTextField *> *views = prefix != nil ? @[ prefix, field ] : @[ field ];
+	NSMutableArray<NSLayoutConstraint *> *c = [NSMutableArray array];
+	for (NSTextField *v in views) {
+		v.translatesAutoresizingMaskIntoConstraints = NO;
+		[cell addSubview:v];
+		[c addObject:[v.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor]];
+	}
+	// Constraints place a field by its alignment rect, which is inset from its
+	// frame (2 points each side); the frames go edge to edge, as a bare
+	// field's did, so the text lines up with the column's heading.
+	NSTextField *first = views.firstObject;
+	[c addObject:[first.leadingAnchor constraintEqualToAnchor:cell.leadingAnchor constant:first.alignmentRectInsets.left]];
+	if (prefix != nil) {
+		[c addObject:[field.leadingAnchor constraintEqualToAnchor:prefix.trailingAnchor]];
+		[prefix setContentHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationHorizontal];
+	}
+	// The field takes the rest of the column, and gives way first when the
+	// column is narrower than its text.
+	[c addObject:[cell.trailingAnchor constraintEqualToAnchor:field.trailingAnchor constant:field.alignmentRectInsets.right]];
+	[field setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+	[field setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+	[NSLayoutConstraint activateConstraints:c];
+	return cell;
+}
+
+// fieldOf is the text field in a cell tableCell made, or nil for any other
+// cell (a checkbox, say).
+static NSTextField *fieldOf(NSView *cell) {
+	return [cell isKindOfClass:[NSTableCellView class]] ? ((NSTableCellView *)cell).textField : nil;
+}
+
+// editCell starts editing the field in a table's cell, as a click on it
+// does. Not editColumn:row:, which tries to make the container itself the
+// first responder; it declines, and AppKit moved on to whatever came next in
+// the dialog's Tab order, a field outside the table or none.
+static void editCell(NSTableView *t, NSInteger column, NSInteger row) {
+	[t.window makeFirstResponder:fieldOf([t viewAtColumn:column row:row makeIfNecessary:YES])];
+}
+
 // LSLSecretTable runs one table of named values and its buttons: the API
 // keys and the secret environment variables, whose values are secret, or
 // Environment, whose values aren't (plain). AppKit asks an object for a
@@ -69,19 +118,17 @@
 		NSTextField *name = [self cellField:r[@"name"] secure:NO action:@selector(nameEdited:)];
 		name.placeholderString = self.placeholder;
 		if (self.prefix.length == 0) {
-			return name;
+			return tableCell(name, nil);
 		}
 		// The prefix, fixed, then the editable rest of the name.
 		NSTextField *prefix = [NSTextField labelWithString:self.prefix];
 		prefix.textColor = NSColor.secondaryLabelColor;
-		NSStackView *s = [NSStackView stackViewWithViews:@[ prefix, name ]];
-		s.spacing = 0;
-		return s;
+		return tableCell(name, prefix);
 	}
 	// The value: dots, unless it's plain or the row Show revealed.
 	NSTextField *value = [self cellField:r[@"value"] secure:(!self.plain && row != self.revealed) action:@selector(valueEdited:)];
 	value.font = [NSFont monospacedSystemFontOfSize:NSFont.smallSystemFontSize weight:NSFontWeightRegular];
-	return value;
+	return tableCell(value, nil);
 }
 
 // cellField is an editable field without a border, for a table cell. Its
@@ -195,7 +242,7 @@ static NSString *newKey(void) {
 	NSInteger row = (NSInteger)self.rows.count - 1;
 	[self.table reloadData];
 	[self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
-	[self.table editColumn:0 row:row withEvent:nil select:YES];
+	editCell(self.table, 0, row);
 	[self changed];
 }
 
@@ -750,7 +797,7 @@ static NSString *sentenceCase(NSString *s) {
 		f.action = name ? @selector(nameEdited:) : @selector(urlEdited:);
 		f.cell.sendsActionOnEndEditing = YES;
 		f.cell.scrollable = YES;
-		return f;
+		return tableCell(f, nil);
 	}
 	NSMutableDictionary *m = self.shown[(NSUInteger)row];
 	if ([column.identifier isEqual:@"on"]) {
@@ -762,7 +809,7 @@ static NSString *sentenceCase(NSString *s) {
 	NSTextField *l = [NSTextField labelWithString:m[@"id"]];
 	l.lineBreakMode = NSLineBreakByTruncatingMiddle;
 	l.toolTip = m[@"id"]; // the whole ID, when it's cut short
-	return l;
+	return tableCell(l, nil);
 }
 
 - (void)nameEdited:(NSTextField *)sender {
@@ -790,10 +837,8 @@ static NSString *sentenceCase(NSString *s) {
 	BOOL off = sender.state != NSControlStateValueOn;
 	self.peers[(NSUInteger)row][@"disabled"] = off ? @YES : @NO;
 	for (NSInteger col = 0; col < self.table.numberOfColumns; col++) {
-		NSView *v = [self.table viewAtColumn:col row:row makeIfNecessary:NO];
-		if ([v isKindOfClass:[NSTextField class]]) {
-			((NSTextField *)v).textColor = off ? NSColor.secondaryLabelColor : NSColor.controlTextColor;
-		}
+		fieldOf([self.table viewAtColumn:col row:row makeIfNecessary:NO]).textColor =
+			off ? NSColor.secondaryLabelColor : NSColor.controlTextColor;
 	}
 }
 
@@ -850,9 +895,10 @@ static NSString *sentenceCase(NSString *s) {
 		for (NSInteger row = 0; row < t.numberOfRows; row++) {
 			for (NSInteger col = 0; col < t.numberOfColumns; col++) {
 				NSView *v = [t viewAtColumn:col row:row makeIfNecessary:NO];
-				if (t == self.table && [v isKindOfClass:[NSTextField class]]) {
-					((NSTextField *)v).editable = self.managed;
-					((NSTextField *)v).selectable = self.managed;
+				NSTextField *f = fieldOf(v);
+				if (t == self.table && f != nil) {
+					f.editable = self.managed;
+					f.selectable = self.managed;
 				} else if ([v isKindOfClass:[NSButton class]]) {
 					((NSButton *)v).enabled = self.managed;
 				}
@@ -1082,7 +1128,7 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 	NSInteger row = (NSInteger)self.peers.count - 1;
 	[self.table reloadData];
 	[self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
-	[self.table editColumn:[self.table columnWithIdentifier:@"name"] row:row withEvent:nil select:YES];
+	editCell(self.table, [self.table columnWithIdentifier:@"name"], row);
 }
 
 - (void)removePeer:(id)sender {
@@ -1449,6 +1495,10 @@ char *lsl_preferences(const char *json, int *result) {
 			return weakClear ? (NSTimeInterval)weakClear.selectedTag : 90;
 		};
 		c.appKey = [[NSPopUpButton alloc] init];
+		// A menu is as wide as its longest item, and a long key name made
+		// the whole dialog wider: it gives way instead, as the Peers tab's
+		// Key menu does, shortening its title with "…".
+		[c.appKey setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
 		[c refreshAppKey];
 		NSInteger chosen = [c.appKey indexOfItemWithRepresentedObject:string(in, @"appApiKey")];
 		if (chosen >= 0) {

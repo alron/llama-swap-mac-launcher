@@ -587,6 +587,25 @@ For the release after 0.3.1. Item 53, browser login through a form, is open: see
 
 **Found while taking 0.3.2's screenshots** (2026-11-01): the Peers tab's note beside Key was cut off at the dialog's edge ("sent to this pee"), since item 48 narrowed the dialog in 0.3.1. A long item widens the Key menu, and both it and the note resisted squeezing equally, so AppKit cut either one: here, a secret variable named `LLAMA_SWAP_SESSION_SECRET`. The note is now the warning alone ("sent to this peer with every request"), with the explanation in a tooltip on Key (item 48's rule), and the menu gives way first, shortening its title with "…" (`NSLayoutPriorityDefaultLow`). The dialog test program checks the note is whole and inside the tab with each of two peers selected, one with a 50-character key name and one whose variable is gone.
 
+## Items 58 and 59
+
+For 0.3.3, with milestone 7 (see the [roadmap](roadmap.md)).
+
+58. **Table text centred in its row** (the maintainer, 2026-11-01, from 0.3.2's screenshots; **built and verified hands-on 2026-11-03**; **done**). In Environment, the secret variables, the peers and the models list, a cell's text sat at the top of its row, against the header and the next row's stripe. In the API keys, the key's value did too, but its name didn't.
+    - **Why** (measured in the dialog test program): every text cell was a bare `NSTextField`, which the table stretched to the row's 24 points and which draws its text at the top: 4 points above the row's middle, 5.5 for the values' smaller fixed-width font. The API keys' name was the exception: its `LLSL_` prefix and the name were in an `NSStackView`, which centred them.
+    - **Built:** `tableCell` in `prefs.m` puts every text cell's field in an `NSTableCellView`, as its `textField`, centred by a constraint; the field's frame still runs edge to edge, as the bare field's did, so the text stays in line with the column's heading. With a prefix, the prefix comes first, then the field. The cell view passes a selected row's look on to the text, and `rowForView:` finds a row from any view inside it, so the fields' actions are unchanged. `fieldOf` finds the field again for the peers' greying and enabling, which change cells in place (Components §1).
+    - **Found on the way:** `editColumn:row:` makes the cell view itself the first responder. A container declines, and AppKit moved on to the next view in the dialog's Tab order: on General, an empty field outside the table; elsewhere, none. The prefix's stack declined the same way, which is why **+** under the API keys never started editing the new key's name, as it does under the other tables. **+** now makes the field the first responder (`editCell`), as a click on it does.
+    - **And:** a long API key name made the whole dialog wider (93 points, with a 60-character name), through **The app uses:**, a menu as wide as its longest item. It now gives way, shortening its title with "…", as the Peers tab's Key menu has since 0.3.2.
+    - **Tested** with the dialog test program, six runs, with nothing in AppKit's log:
+      - every text cell's text within half a point of its row's middle, in all five tables, with a peer added and with a key shown (0.3.2's dialog, run the same way: 4 to 5.5 points above it, except the keys' names);
+      - every cell's fields spanning its column edge to edge, as before; the `LLSL_` prefix moved 2 points right, in line with the other tables' text;
+      - edits reaching the rows and the reply, in Environment, both Secrets tables and the peers; **+** editing the new row's name under the API keys and the peers; Show; a peer greyed and ungreyed in place;
+      - a click on a selected row's URL, posted through the run loop, starts editing it; one in the 4 points above the text now selects the row instead, as in Finder's lists;
+      - with a 300-character model ID, a 60-character key name and a long URL, the dialog stays 663 points wide;
+      - every table drawn to a PNG at 2× (the app's own views, drawn in the test program), before and after, and looked over.
+    - **Unchanged:** Tab from a name ends editing and selects the table, rather than moving to the value, as in 0.3.2 (item 61).
+    - **Verified hands-on** by the maintainer: the text centred in all five tables and in line with the headings, **+** editing the new row's name under every table, a click on a selected row's text editing it and one in the margin selecting the row, and a peer greyed and ungreyed. In a selected row of a focused table the text turns white on the blue, but `LLSL_` stays grey, a little brighter: "It doesn't look bad", and it stays.
+
 ## Milestone 0 results (2026-09-28)
 
 Test app: `spike/localnet/` (removed 2026-10-18; in Git history up to dad4e08), Developer ID-signed under the `.dev` bundle ID, launched with `open` from tmux, connecting to the LAN peer.

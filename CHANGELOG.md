@@ -3,6 +3,15 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
+## Unreleased
+
+- Settings' tables: the text in each row is centred in it, where most of
+  it sat at the row's top.
+- Settings → Secrets: **+** under the API keys starts editing the new key's
+  name, as it does under the other tables, where it needed a click.
+- A long API key name no longer makes the Settings window wider: **The app
+  uses:** shortens it with "…".
+
 ## 0.3.2 (2026-11-01)
 
 - **Pause All** and **Resume All** in the menu, and `llsl pause` and

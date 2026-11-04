@@ -2,16 +2,11 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 61. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 62. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
-0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, has:
-
-58. **Table text centred in its row** (the maintainer, 2026-11-01, from 0.3.2's screenshots; not started; cosmetic, for 0.3.3). In Environment, the secret variables, the peers and the models list, a cell's text sits at the top of its row, against the header and the next row's stripe. In the API keys, the key's value does too, but its name doesn't.
-    - **Why** (read in `prefs.m`): every text cell is a bare `NSTextField`, which the table stretches to the row's height (24 points) and which draws its text at the top. The API keys' name is the exception: its fixed `LLSL_` prefix and the name are in an `NSStackView`, which centres them.
-    - **The fix:** the same centring for every text cell: in `LSLSecretTable` (both columns) and in `LSLPeers` (the peers' name and URL, and the models list). That's a container, a stack or an `NSTableCellView` with a centre-Y constraint, and the field inside it. The code that finds a cell's field (`rowForView:`, and the restyling in place, which mustn't replace cells: Components §1) has to look through the container.
-    - **Tests:** the dialog test program checks that each text cell's text is centred in its row on every table, edits still reach the rows, and nothing turns up in AppKit's log ("pointing at it"). The README's Settings screenshots then show it, at the next retake.
+0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, has item 58, done (table text centred in its row; now in done.md), and:
 
 59. **Keep a pause across the app's own restarts, as a choice** (the maintainer, 2026-11-01: "I see both sides of the pause as legitimate"; not started; for 0.3.3, with milestone 7's `llsl quit`). Item 57 keeps a pause across restarts of llama-swap that the app makes, but only in memory, so quitting the app forgets it: an upgrade through `brew` (milestone 7), a Quit and reopen, a reboot with Launch at Login.
     - **A second Tweaks checkbox**, worded something like **Keep inference paused when Llama Swap Launcher restarts**. It's off by default, so a fresh start is unpaused, as today, unless the user chooses otherwise.
@@ -22,6 +17,8 @@ Items keep their numbers; a new one takes the next, from 61. When one is done, i
       - **A pause made in llama-swap's web UI counts the same** as one made in the app or with `llsl`: with the boxes ticked, it outlasts a restart of llama-swap or of the app. Item 57 already adopts such a pause, so the file follows it too.
       - **A pause never expires.** The only times inference is resumed without being asked are a restart of llama-swap, or of the app, whose checkbox isn't ticked. A long pause is the user's choice, and a useful one: a llama-swap that stays paused still serves its peers' models and its web UI, without its local models using the Mac's memory.
     - **Also:** the README's Pause All paragraph and settings table, and `llsl status -json` if it should say a pause was carried over.
+
+61. **Tab from a name to its value, in Settings' tables** (the maintainer, 2026-11-03, while checking item 58: "a UI/UX element that is fairly baked into my brain, likely from dealing with spreadsheets"; not started; for 0.3.3). Tab while editing a cell ends the edit and selects the table, in 0.3.2 too. It should move to the next cell in the row, as in a spreadsheet: a name to its value, a peer's name to its URL; Shift-Tab back.
 
 ## 0.3.x
 
