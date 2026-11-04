@@ -83,3 +83,11 @@ func Confirm(message, detail, ok, cancel string) bool {
 func CloseDialogs(timeout time.Duration) bool {
 	return C.lsl_close_dialogs(C.double(timeout.Seconds())) != 0
 }
+
+// ActivateForUser makes the app the active one, for a window the user has
+// just asked for from the menu (Settings, About, Collect Diagnostics…), and
+// returns at once. Call it first, at the click, before any slow work: the
+// window's own request came too late, and macOS declined it (TODO item 63).
+func ActivateForUser() {
+	C.lsl_activate_for_user()
+}

@@ -375,3 +375,44 @@ func TestOwnFolderIsntTheManagedOne(t *testing.T) {
 		}
 	}
 }
+
+// Settings shows paths in the home folder starting "~/" (TODO item 62),
+// and saving them so is no change that needs a restart.
+func TestHomePathsShownWithTilde(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip(err)
+	}
+	p := prefs.Defaults()
+	p.Binary = filepath.Join(home, "go/bin/llama-swap")
+	p.Config = filepath.Join(home, "ai/llama-swap.yaml")
+	p.ConfigDirMode, p.ConfigDir = prefs.ConfigDirOwn, filepath.Join(home, "ai/config.d")
+	p.LauncherLog = filepath.Join(home, "Library/Logs/launcher.log")
+	p.LlamaSwapLogFile = "/var/tmp/llama-swap.log" // outside the home folder: as it is
+	f := formFrom(p, nil)
+	for _, got := range []struct{ field, value, want string }{
+		{"binary", f.Binary, "~/go/bin/llama-swap"},
+		{"config", f.Config, "~/ai/llama-swap.yaml"},
+		{"config folder", f.ConfigDir, "~/ai/config.d"},
+		{"launcher log", f.LauncherLog, "~/Library/Logs/launcher.log"},
+		{"llama-swap log", f.LlamaSwapLogFile, "/var/tmp/llama-swap.log"},
+	} {
+		if got.value != got.want {
+			t.Errorf("%s shown as %q, want %q", got.field, got.value, got.want)
+		}
+	}
+	saved, _, err := prefsFrom(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Binary != "~/go/bin/llama-swap" || saved.BinaryPath() != p.Binary {
+		t.Errorf("binary saved as %q (%q)", saved.Binary, saved.BinaryPath())
+	}
+	if restartNeeded(p, saved) {
+		t.Error("the same paths, with ~, need a restart")
+	}
+	saved.Config = "~/ai/other.yaml"
+	if !restartNeeded(p, saved) {
+		t.Error("another config doesn't need a restart")
+	}
+}

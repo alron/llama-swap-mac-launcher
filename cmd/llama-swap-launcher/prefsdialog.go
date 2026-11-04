@@ -28,6 +28,7 @@ func (a *app) openPreferences(tab string) {
 	if !a.inDialog.CompareAndSwap(false, true) {
 		return
 	}
+	macos.ActivateForUser() // first, while the click still counts
 	a.render()
 	restart := a.editPreferences(tab)
 	a.inDialog.Store(false)
@@ -56,8 +57,9 @@ func (a *app) editPreferences(tab string) (restart bool) {
 	home, _ := os.UserHomeDir()
 	form := formFrom(old, oldSecrets)
 	form.Tab = tab
-	form.DefaultLauncherLog, form.DefaultLlamaSwapLog = prefs.Prefs{}.LogPaths(a.paths.LogDir)
-	form.FoundBinary = supervisor.FindBinary("llama-swap", supervisor.SearchDirs(home))
+	launcherLog, ownLog := prefs.Prefs{}.LogPaths(a.paths.LogDir)
+	form.DefaultLauncherLog, form.DefaultLlamaSwapLog = prefs.AbbreviateHome(launcherLog), prefs.AbbreviateHome(ownLog)
+	form.FoundBinary = prefs.AbbreviateHome(supervisor.FindBinary("llama-swap", supervisor.SearchDirs(home)))
 	form.ManagedConfigDir = a.paths.ManagedConfigDir()
 	form.File = a.paths.Prefs()
 
@@ -204,7 +206,9 @@ func (a *app) reloadConfigFiles() {
 // compares). The key the app uses counts: the app keeps using the one it
 // started llama-swap with.
 func restartNeeded(old, p prefs.Prefs) bool {
-	return old.Binary != p.Binary || old.Config != p.Config || old.ListenAddr() != p.ListenAddr() ||
+	// The paths compared expanded: Settings shows and saves one in the home
+	// folder starting "~/", which is no change from the whole path.
+	return old.BinaryPath() != p.BinaryPath() || old.ConfigPath() != p.ConfigPath() || old.ListenAddr() != p.ListenAddr() ||
 		!slices.Equal(old.Args, p.Args) || old.WatchConfig != p.WatchConfig ||
 		old.ConfigDirPath("") != p.ConfigDirPath("") || old.ConfigDirSetting() != p.ConfigDirSetting() ||
 		!maps.Equal(old.Env, p.Env) || !slices.Equal(old.APIKeys, p.APIKeys) || old.AppKey() != p.AppKey() ||
@@ -283,14 +287,16 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		seconds = strconv.Itoa(p.HealthCheckSeconds)
 	}
 	return macos.PreferencesForm{
-		Binary:                    p.Binary,
-		Config:                    p.Config,
+		// Paths in the home folder are shown starting "~/", and saved so
+		// (TODO item 62); everything that uses them expands it.
+		Binary:                    prefs.AbbreviateHome(p.Binary),
+		Config:                    prefs.AbbreviateHome(p.Config),
 		Listen:                    p.Listen,
 		Args:                      strings.Join(p.Args, "\n"),
 		Env:                       env,
 		WatchConfig:               p.WatchConfig,
 		ConfigDirMode:             p.ConfigDirSetting(),
-		ConfigDir:                 p.ConfigDir,
+		ConfigDir:                 prefs.AbbreviateHome(p.ConfigDir),
 		ManageAPIKeys:             p.ManageAPIKeys,
 		HealthCheckSeconds:        seconds,
 		HealthCheckSkipWhenActive: p.HealthCheckSkipWhenActive,
@@ -311,9 +317,9 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 			Connect:        strconv.Itoa(prefs.DefaultConnect),
 			KeepAlive:      strconv.Itoa(prefs.DefaultKeepAlive),
 		},
-		LauncherLog:            p.LauncherLog,
+		LauncherLog:            prefs.AbbreviateHome(p.LauncherLog),
 		LlamaSwapLog:           p.LogMode(),
-		LlamaSwapLogFile:       p.LlamaSwapLogFile,
+		LlamaSwapLogFile:       prefs.AbbreviateHome(p.LlamaSwapLogFile),
 		ClipboardSeconds:       p.ClipboardSeconds(),
 		KeepPausedOnRestart:    p.KeepsPause(),
 		KeepPausedOnAppRestart: p.KeepPausedOnAppRestart,

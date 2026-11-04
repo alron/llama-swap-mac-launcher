@@ -333,3 +333,25 @@ func TestPeerTimeoutsJSON(t *testing.T) {
 		t.Errorf("loaded %+v", to)
 	}
 }
+
+func TestAbbreviateHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip(err)
+	}
+	for in, want := range map[string]string{
+		filepath.Join(home, "Logs/a.log"): "~/Logs/a.log",
+		home:                              home, // "~" alone isn't expanded, so it isn't written
+		home + "x/a.log":                  home + "x/a.log",
+		"/opt/homebrew/bin/llama-swap":    "/opt/homebrew/bin/llama-swap",
+		"~/already":                       "~/already",
+		"":                                "",
+	} {
+		if got := AbbreviateHome(in); got != want {
+			t.Errorf("AbbreviateHome(%q) = %q, want %q", in, got, want)
+		}
+		if got := ExpandHome(AbbreviateHome(in)); got != in && in != "~/already" {
+			t.Errorf("%q doesn't come back: %q", in, got)
+		}
+	}
+}

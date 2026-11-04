@@ -418,6 +418,19 @@ func ExpandHome(path string) string {
 	return path
 }
 
+// AbbreviateHome is ExpandHome's reverse, for showing a path: one inside
+// the home folder starts "~/" instead (TODO item 62).
+func AbbreviateHome(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" || home == "/" {
+		return path
+	}
+	if rest, ok := strings.CutPrefix(path, strings.TrimSuffix(home, "/")+"/"); ok && rest != "" {
+		return "~/" + rest
+	}
+	return path
+}
+
 // KeyPrefix starts the name of every variable that carries an API key to
 // llama-swap. It's reserved for them, so a key can't replace a variable
 // llama-swap or its model servers need, such as PATH.

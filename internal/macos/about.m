@@ -39,7 +39,9 @@ void lsl_show_about(const char *version, const char *credits, const char *link) 
 		// macOS sometimes refuses; the panel then opened behind the active
 		// app's windows (seen 2026-10-04, intermittently). Dialogs don't
 		// mind, since they sit above ordinary windows; the About panel is
-		// one, so it's brought to the front below regardless.
+		// one, so it's brought to the front below regardless. The Go side
+		// now asks first, forcefully, at the user's click, which macOS
+		// honours (lsl_activate_for_user, TODO item 63).
 		[NSApp activate];
 		[NSApp orderFrontStandardAboutPanelWithOptions:@{
 			NSAboutPanelOptionApplicationVersion : versionStr, // shown as "Version …"

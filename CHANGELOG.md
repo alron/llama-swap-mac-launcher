@@ -22,6 +22,12 @@ not published; they're listed for people who had them.
   selects its first row, so you can see where you are.
 - A long API key name no longer makes the Settings window wider: **The app
   uses:** shortens it with "…".
+- Settings shows paths in your home folder as `~/…`, the logs' default
+  places included, and saves them so.
+- **Settings**, **About** and **Collect Diagnostics…** take the keyboard
+  when you open them. The first Settings after the app was opened with
+  `open`, or at login, showed in front, but typing still went to the app
+  you were in.
 
 ## 0.3.2 (2026-11-01)
 

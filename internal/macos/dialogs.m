@@ -175,3 +175,18 @@ int lsl_close_dialogs(double timeout) {
 	});
 	return dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeout * NSEC_PER_SEC))) == 0;
 }
+
+// lsl_activate_for_user makes the app the active one, for a window the user
+// has just asked for from the menu: Settings, About, Collect Diagnostics…
+// (TODO item 63). Each window's own [NSApp activate] is only a request,
+// which macOS declined when it came after the slow work of building the
+// window: the first Settings after a launch with open (or at login)
+// appeared on top of other windows, but typing still went to the app
+// before. Asked for at the click, forcefully, it's honoured. The alerts the
+// app raises by itself never call this, so they don't take the keyboard
+// from someone typing elsewhere.
+void lsl_activate_for_user(void) {
+	main_async(^{
+		[NSApp activateIgnoringOtherApps:YES];
+	});
+}

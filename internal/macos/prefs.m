@@ -551,7 +551,8 @@ static NSString *newKey(void) {
 	NSString *dir = field.stringValue.length > 0 ? field.stringValue.stringByExpandingTildeInPath.stringByDeletingLastPathComponent : fallback;
 	char *path = lsl_choose_file(title.UTF8String, dir.UTF8String, 1, 0);
 	if (path != NULL) {
-		field.stringValue = [NSString stringWithUTF8String:path];
+		// "~/" for the home folder, as every path here is shown (item 62).
+		field.stringValue = [NSString stringWithUTF8String:path].stringByAbbreviatingWithTildeInPath;
 		free(path);
 	}
 }
@@ -1771,6 +1772,9 @@ char *lsl_preferences(const char *json, int *result) {
 		                                     : [shown isEqual:@"logs"]  ? (NSView *)c.launcherLog
 		                                     : [shown isEqual:@"tweaks"] ? (NSView *)clearAfter
 		                                                                 : (NSView *)c.binary;
+		// The Go side has already made the app active, at the user's click
+		// (lsl_activate_for_user, TODO item 63); this request is for the
+		// dialog shown again after a Save that didn't check out.
 		[NSApp activate];
 		// Only this app's key presses, and only while the dialog is open.
 		id returnMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *e) {

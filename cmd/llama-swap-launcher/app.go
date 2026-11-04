@@ -495,6 +495,7 @@ func (a *app) render() {
 
 // showAbout shows the About panel.
 func (a *app) showAbout() {
+	macos.ActivateForUser()
 	macos.ShowAbout(version, aboutCredits(buildDate, a.sup.Status()), homepage)
 }
 

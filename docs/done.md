@@ -587,7 +587,7 @@ For the release after 0.3.1. Item 53, browser login through a form, is open: see
 
 **Found while taking 0.3.2's screenshots** (2026-11-01): the Peers tab's note beside Key was cut off at the dialog's edge ("sent to this pee"), since item 48 narrowed the dialog in 0.3.1. A long item widens the Key menu, and both it and the note resisted squeezing equally, so AppKit cut either one: here, a secret variable named `LLAMA_SWAP_SESSION_SECRET`. The note is now the warning alone ("sent to this peer with every request"), with the explanation in a tooltip on Key (item 48's rule), and the menu gives way first, shortening its title with "…" (`NSLayoutPriorityDefaultLow`). The dialog test program checks the note is whole and inside the tab with each of two peers selected, one with a 50-character key name and one whose variable is gone.
 
-## Items 58, 59 and 61
+## Items 58, 59 and 61 to 63
 
 For 0.3.3, with milestone 7 (see the [roadmap](roadmap.md)).
 
@@ -637,6 +637,17 @@ For 0.3.3, with milestone 7 (see the [roadmap](roadmap.md)).
       
       Run against item 58's commit, every one of these fails.
     - **Verified hands-on** by the maintainer: Tab across cells to the table's end and out, Shift-Tab back, the values as dots while edited, Tab into a table showing its first row, Return editing a selected row, Return still saving outside the tables (and from the models list), and clicks as before.
+
+62. **Paths shown with `~`** (the maintainer, 2026-11-03: "All of the fields that show a default `/Users/<username>/...` should follow the standard `~/...` we show elsewhere"; **built and verified hands-on 2026-11-03**; **done**). The Logs tab's two fields showed their default places as whole paths, and a path chosen for the binary or the config file came back whole, though the config folder's and the logs' choosers already gave `~/…`.
+    - **Built:** `prefs.AbbreviateHome`, `ExpandHome`'s reverse, for every path the dialog shows from Go: the binary, config, config folder and both logs, the logs' default places, and the binary found on its own (greyed in an empty field). Choose… for the binary and the config file abbreviates what it gets, as the other choosers did. A path is saved as shown, `~/` included; everything that uses one already expanded it, and 0.3.2 reads them. Paths outside the home folder, and the home folder alone (which `ExpandHome` doesn't take as `~`), stay as they are.
+    - **Found on the way:** `restartNeeded` compared the binary and config as stored, so a path saved with `~` where the file had it whole would have offered a needless restart. It compares them expanded now, as it did the config folder.
+    - **Tested:** unit tests: `AbbreviateHome` and back through `ExpandHome`, the form showing home paths with `~` and others as they are, saving them so, and no restart for the same path written either way.
+    - **Verified hands-on** by the maintainer: both Logs placeholders with `~/Library/Logs/…`, the binary and config with `~`, Choose… giving `~`, and Save without a restart offer, with `~` in `prefs.json`.
+
+63. **Windows the user asks for take the focus** (the maintainer, 2026-11-03: "The window pops up always on top, but it doesn't pop up focused"; **built and verified hands-on 2026-11-03**; **done**). Settings showed above other windows, as dialogs do, but typing still went to the app before.
+    - **Why**, found with the maintainer's help: the dialog asked to be the active app (`[NSApp activate]`) only once it was built, and macOS declined it: the first Settings after a launch with `open` wasn't focused, and later ones were (a launch from the Finder activates the app, which hid it). Forcing it there (`activateIgnoringOtherApps:YES`) still failed the first time. Asked for at the click, before the slow work of building the dialog (rereading the preferences, the keychain, the dialog itself), it was honoured every time, so the delay is the likely cause. Launch at Login starts the app as `open` does; not checked with a reboot.
+    - **Built:** `macos.ActivateForUser` (`lsl_activate_for_user` in `dialogs.m`: `activateIgnoringOtherApps:YES`, which the SDK says activates "regardless"), called first in the flows the menu opens: Settings (and Log Settings…), About and Collect Diagnostics…. The windows' own `activate` stays, for the dialog shown again after a Save that didn't check out. The alerts the app raises by itself only ask, as before, so they never take the keyboard from someone typing elsewhere. The dialog test program counts activation requests instead of making them, so it never takes the maintainer's focus.
+    - **Verified hands-on** by the maintainer, with the dev app launched with `open` and another app clicked into first: Settings focused the first time and every time after, About in front and focused, and Collect Diagnostics…' Save panel taking the keyboard.
 
 ## Milestone 0 results (2026-09-28)
 

@@ -23,3 +23,7 @@ int lsl_confirm(const char *message, const char *detail, const char *ok_title, c
 // returns at once as cancelled. It waits up to timeout seconds for them to
 // close and returns 1 if they did. Don't call it on the main thread.
 int lsl_close_dialogs(double timeout);
+
+// lsl_activate_for_user makes the app the active one, for a window the
+// user has just asked for from the menu, and returns at once.
+void lsl_activate_for_user(void);

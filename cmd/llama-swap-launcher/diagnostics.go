@@ -31,6 +31,7 @@ func (a *app) collectDiagnostics() {
 	if !a.inDialog.CompareAndSwap(false, true) {
 		return
 	}
+	macos.ActivateForUser() // first, while the click still counts
 	a.render()
 	defer func() {
 		a.inDialog.Store(false)
