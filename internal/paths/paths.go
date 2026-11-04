@@ -43,6 +43,11 @@ func (p Paths) Socket() string  { return filepath.Join(p.SupportDir, "ctl") }
 func (p Paths) Prefs() string   { return filepath.Join(p.SupportDir, "prefs.json") }
 func (p Paths) PidFile() string { return filepath.Join(p.SupportDir, "llama-swap.pid") }
 
+// PauseFile is there while inference is paused and the preferences keep a
+// pause across the app's restarts (TODO item 59). It's state, not a
+// preference, so it isn't in prefs.json, which the dialog and hand edits own.
+func (p Paths) PauseFile() string { return filepath.Join(p.SupportDir, "paused") }
+
 // ManagedConfigDir is the config folder the app manages for llama-swap
 // (-config-dir), with the settings it writes for it.
 func (p Paths) ManagedConfigDir() string { return filepath.Join(p.SupportDir, "llama-swap.d") }

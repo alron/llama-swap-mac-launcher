@@ -282,6 +282,36 @@ func TestClipboardClearSeconds(t *testing.T) {
 	}
 }
 
+// Keeping a pause across the app's restarts is written only when it's on,
+// so a file saved with the default stays readable by 0.3.2, and counts
+// only with keepPausedOnRestart.
+func TestKeepPausedOnAppRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prefs.json")
+	p := Defaults()
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); strings.Contains(string(b), "AppRestart") {
+		t.Errorf("the default was written:\n%s", b)
+	}
+	p.KeepPausedOnAppRestart = true
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); !strings.Contains(string(b), `"keepPausedOnAppRestart": true`) {
+		t.Errorf("saved as:\n%s", b)
+	}
+	got, err := Load(path)
+	if err != nil || !got.KeepsPauseOnAppRestart() {
+		t.Errorf("Load: %v, %v", got.KeepsPauseOnAppRestart(), err)
+	}
+	off := false
+	got.KeepPausedOnRestart = &off
+	if got.KeepsPauseOnAppRestart() {
+		t.Error("in effect with keepPausedOnRestart off")
+	}
+}
+
 func TestPeerTimeoutsJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "prefs.json")
 	p := Defaults()

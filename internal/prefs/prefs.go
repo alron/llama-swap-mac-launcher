@@ -111,11 +111,22 @@ type Prefs struct {
 	// item 57). Unset means on, which isn't written, so an older app can
 	// still read the file.
 	KeepPausedOnRestart *bool `json:"keepPausedOnRestart,omitempty"`
+	// KeepPausedOnAppRestart keeps a pause across the app's own restarts
+	// too, a quit and reopen, say, with KeepPausedOnRestart (TODO item 59).
+	// Off, the default, isn't written, so an older app can still read the
+	// file.
+	KeepPausedOnAppRestart bool `json:"keepPausedOnAppRestart,omitempty"`
 }
 
 // KeepsPause is KeepPausedOnRestart, on unless it's set off.
 func (p Prefs) KeepsPause() bool {
 	return p.KeepPausedOnRestart == nil || *p.KeepPausedOnRestart
+}
+
+// KeepsPauseOnAppRestart is KeepPausedOnAppRestart, which only counts
+// with KeepPausedOnRestart: an app restart restarts llama-swap too.
+func (p Prefs) KeepsPauseOnAppRestart() bool {
+	return p.KeepsPause() && p.KeepPausedOnAppRestart
 }
 
 // ClipboardChoices are the times, in seconds, a copied secret can stay on

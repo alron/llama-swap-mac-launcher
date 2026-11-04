@@ -177,6 +177,9 @@ func (a *app) diagnosticSummary(p prefs.Prefs, secrets map[string]string) string
 	if msg := message(st, a.snapshot()); msg != "" {
 		line("", "%s", msg)
 	}
+	if since, err := os.ReadFile(a.paths.PauseFile()); err == nil { // #nosec G304 -- the app's own state file
+		line("Pause kept", "since %s, for the app's next launch (Settings → Tweaks)", strings.TrimSpace(string(since)))
+	}
 	line("Config", "%s", orUnknown(p.ConfigPath()))
 	switch dir := p.ConfigDirPath(a.paths.ManagedConfigDir()); p.ConfigDirSetting() {
 	case prefs.ConfigDirOwn:

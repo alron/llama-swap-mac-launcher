@@ -5,6 +5,12 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **Keep inference paused when Llama Swap Launcher restarts** (Settings →
+  Tweaks, off by default): with it and the box above it ticked, a pause
+  outlasts quitting and reopening the app, an upgrade, or a restart of the
+  Mac with Launch at Login, until **Resume All** or `llsl resume`. A pause
+  from llama-swap's web UI counts too.
+
 - Settings' tables: the text in each row is centred in it, where most of
   it sat at the row's top.
 - Settings → Secrets: **+** under the API keys starts editing the new key's

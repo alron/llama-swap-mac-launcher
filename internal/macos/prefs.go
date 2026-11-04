@@ -56,9 +56,10 @@ type PreferencesForm struct {
 	LlamaSwapLogFile string `json:"llamaSwapLogFile"`
 	// The Tweaks tab: how long a secret copied on the Secrets tab stays on
 	// the clipboard, in seconds (0 for never), and whether a pause outlasts
-	// a restart of llama-swap.
-	ClipboardSeconds    int  `json:"clipboardSeconds"`
-	KeepPausedOnRestart bool `json:"keepPausedOnRestart"`
+	// a restart of llama-swap, and of the app.
+	ClipboardSeconds       int  `json:"clipboardSeconds"`
+	KeepPausedOnRestart    bool `json:"keepPausedOnRestart"`
+	KeepPausedOnAppRestart bool `json:"keepPausedOnAppRestart"`
 	// Tab is the tab to show first, "general", "secrets", "peers",
 	// "security", "logs" or "tweaks", and comes back as the one showing when
 	// the dialog closed.

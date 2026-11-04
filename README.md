@@ -82,7 +82,10 @@ The app doesn't include llama-swap; install that separately.
   restarts; the app doesn't: after any restart it makes (Restart, a restart
   from Settings, after a crash), it pauses llama-swap again until you
   resume, unless **Keep inference paused when llama-swap restarts** is off
-  (Settings → Tweaks). Quitting the app forgets the pause.
+  (Settings → Tweaks). Quitting the app forgets the pause, unless **Keep
+  inference paused when Llama Swap Launcher restarts** is ticked too: then
+  it outlasts quitting and reopening the app, an upgrade, or a restart of
+  the Mac with Launch at Login.
 - **Logs:** open the launcher log in Console, or show it in the Finder
   (drag it into a terminal for its path); the same for llama-swap's log while
   its output has a file of its own; **Log Settings…**, which opens
@@ -176,7 +179,7 @@ Flags can be written with one dash or two.
   **`resume`**. Peer models still work. While paused, `status` says
   `paused` and exits 8, and `start -load` and `restart -load` fail at once
   with exit 8 rather than waiting. The pause outlasts a restart the app
-  makes, as in the menu. Both need llama-swap v268 or later; with an older
+  makes, and the app's own restarts if you choose, as in the menu. Both need llama-swap v268 or later; with an older
   one they say so and exit 1.
 - **While llama-swap is serving requests,** `restart` and `stop` refuse, and
   so does `unload` if one of the requests is for that model (`-all`, and
@@ -330,7 +333,8 @@ environment variables, the **Peers** tab the peers the app manages (see
 (see [Web pages](#web-pages)), the **Logs** tab where the logs go (see
 below), and the **Tweaks** tab settings that fit no other tab: how long a
 copied secret stays on the clipboard (see [API keys](#api-keys)), and
-whether a pause outlasts a restart (see [The menu](#the-menu)).
+whether a pause outlasts a restart of llama-swap, or of the app (see
+[The menu](#the-menu)).
 Rest the pointer on a setting, or its label, for what it's for;
 warnings stay on screen. Save checks
 them first: if something's wrong, an alert says what, and the dialog comes back
@@ -377,6 +381,7 @@ misspelling, is reported as an error rather than ignored.
 | `appApiKey` | `""` | Which of them the app uses for its own requests. Empty: the first. |
 | `secretEnv` | `[]` | The names of secret environment variables. Their values are in the keychain; see below. |
 | `keepPausedOnRestart` | `true` | After **Pause All** or `llsl pause`, pause llama-swap again whenever the app restarts it, until it's resumed. Not written while it's the default. |
+| `keepPausedOnAppRestart` | `false` | With `keepPausedOnRestart`, a pause also outlasts quitting and reopening the app: it's kept in a file named `paused` beside `prefs.json` until it's resumed. Not written while it's the default. |
 | `clipboardClearSeconds` | `90` | How long a key or secret variable copied in Settings stays on the clipboard: `10`, `30`, `60`, `90`, `120` or `300`, or `0` to leave it there (Never). Not written while it's the default. |
 
 ![Settings, Tweaks tab: how long a copied secret stays on the clipboard, and keeping inference paused across restarts](docs/images/settings-tweaks.png)

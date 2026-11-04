@@ -46,9 +46,11 @@ type app struct {
 	updated   map[string]bool // models whose server program changed since they loaded
 	// pauseWanted is whether inference should be paused, as last seen or
 	// asked for, and pausePid the llama-swap last seen saying so: a new one
-	// is paused again (followPause).
-	pauseWanted bool
-	pausePid    int
+	// is paused again (followPause). pauseRestored is set once the launch
+	// has read a pause kept on disk (restorePause).
+	pauseWanted   bool
+	pausePid      int
+	pauseRestored bool
 
 	status              *systray.MenuItem
 	details             []*systray.MenuItem // the status's explanation, wrapped over several lines
@@ -150,6 +152,7 @@ func (a *app) onReady() {
 	}
 
 	err := a.reloadPrefs()
+	a.restorePause() // before llama-swap starts, below
 	a.render()
 	go a.watchStatus()
 	go a.handleClicks()
@@ -394,6 +397,7 @@ func (a *app) reloadPrefs() error {
 	}
 	a.mu.Lock()
 	a.prefs = p
+	a.recordPause() // a hand edit may have changed whether it's kept
 	a.mu.Unlock()
 	return nil
 }

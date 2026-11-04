@@ -4,7 +4,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"sync"
 	"time"
 
@@ -277,6 +280,7 @@ func (a *app) followPause(ctx context.Context, m *health.Monitor, pid int, pause
 	a.pausePid = pid
 	if !again {
 		a.pauseWanted = paused
+		a.recordPause()
 	}
 	a.mu.Unlock()
 	if again {
@@ -296,12 +300,62 @@ func pauseAgain(wanted, paused, fresh, keep bool) bool {
 	return wanted && !paused && fresh && keep
 }
 
-// inferencePaused reports whether llama-swap's inference is paused, or is
-// about to be again, after a start the app just made.
-func (a *app) inferencePaused(snap health.Snapshot) bool {
+// recordPause keeps pauseWanted on disk for the app's next launch (TODO
+// item 59): the pause file is there while a pause is wanted and the
+// preferences keep it across the app's restarts, and gone otherwise.
+// Nothing is written or removed until restorePause has read it at launch.
+// Call with a.mu held.
+func (a *app) recordPause() {
+	if !a.pauseRestored {
+		return
+	}
+	file := a.paths.PauseFile()
+	if !a.pauseWanted || !a.prefs.KeepsPauseOnAppRestart() {
+		if err := os.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			a.sup.Logf("couldn't remove %s, so the app's next launch may pause inference again: %v", file, err)
+		}
+		return
+	}
+	if _, err := os.Stat(file); err == nil {
+		return // already there, with the time the pause began
+	}
+	// The time is for anyone looking; only the file being there counts.
+	when := []byte(time.Now().Format(time.RFC3339) + "\n")
+	if err := os.WriteFile(file, when, 0o600); err != nil {
+		a.sup.Logf("couldn't write %s, so the pause won't outlast quitting the app: %v", file, err)
+	}
+}
+
+// restorePause, at launch, takes up a pause recorded before the app last
+// quit, if the preferences still keep one: the first llama-swap the app
+// starts is then paused again, as after a restart of llama-swap
+// (followPause). The preferences must be loaded first.
+func (a *app) restorePause() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return snap.Paused || (a.pauseWanted && a.prefs.KeepsPause())
+	_, err := os.Stat(a.paths.PauseFile())
+	a.pauseWanted = err == nil && a.prefs.KeepsPauseOnAppRestart()
+	a.pauseRestored = true
+	if a.pauseWanted {
+		a.sup.Logf("inference was paused when the app last quit; llama-swap is paused again when it starts")
+	}
+	a.recordPause() // removes a file the preferences no longer keep
+}
+
+// inferencePaused reports whether llama-swap's inference is paused, or is
+// about to be again, after a start the app just made. A llama-swap known to
+// be too old to pause won't be, whatever was wanted (by a pause kept from
+// before the app last quit, say, with a newer llama-swap).
+func (a *app) inferencePaused(snap health.Snapshot) bool {
+	if snap.Paused {
+		return true
+	}
+	if n := supervisor.VersionNumber(a.sup.Status().Version); n > 0 && n < health.PauseVersion {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.pauseWanted && a.prefs.KeepsPause()
 }
 
 // togglePause is Pause All and Resume All in the menu.
@@ -329,6 +383,7 @@ func (a *app) togglePause() {
 func (a *app) setPaused(m *health.Monitor, pause bool, why string) error {
 	a.mu.Lock()
 	a.pauseWanted = pause
+	a.recordPause()
 	a.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

@@ -134,6 +134,7 @@ func (a *app) editPreferences(tab string) (restart bool) {
 		a.sup.Logf("preferences saved")
 		a.mu.Lock()
 		a.prefs = p
+		a.recordPause() // kept on disk, or not, as the Tweaks tab now says
 		a.mu.Unlock()
 		// The logs move at once; the writers switch between lines.
 		if err := a.logs.apply(p); err != nil {
@@ -310,13 +311,14 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 			Connect:        strconv.Itoa(prefs.DefaultConnect),
 			KeepAlive:      strconv.Itoa(prefs.DefaultKeepAlive),
 		},
-		LauncherLog:         p.LauncherLog,
-		LlamaSwapLog:        p.LogMode(),
-		LlamaSwapLogFile:    p.LlamaSwapLogFile,
-		ClipboardSeconds:    p.ClipboardSeconds(),
-		KeepPausedOnRestart: p.KeepsPause(),
-		KeyPrefix:           prefs.KeyPrefix,
-		Tab:                 "general",
+		LauncherLog:            p.LauncherLog,
+		LlamaSwapLog:           p.LogMode(),
+		LlamaSwapLogFile:       p.LlamaSwapLogFile,
+		ClipboardSeconds:       p.ClipboardSeconds(),
+		KeepPausedOnRestart:    p.KeepsPause(),
+		KeepPausedOnAppRestart: p.KeepPausedOnAppRestart,
+		KeyPrefix:              prefs.KeyPrefix,
+		Tab:                    "general",
 	}
 }
 
@@ -476,6 +478,8 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 		LauncherLog:               strings.TrimSpace(f.LauncherLog),
 		LlamaSwapLog:              f.LlamaSwapLog,
 		LlamaSwapLogFile:          strings.TrimSpace(f.LlamaSwapLogFile),
+		// Kept as ticked while it's greyed out, with the box above off.
+		KeepPausedOnAppRestart: f.KeepPausedOnAppRestart,
 	}
 	// The default isn't written, so an older app can still read the file.
 	if s := f.ClipboardSeconds; s != prefs.DefaultClipboardSeconds {

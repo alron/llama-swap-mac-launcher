@@ -37,10 +37,11 @@ func TestFormRoundTrip(t *testing.T) {
 			{Name: "open", URL: "https://example.com/api", Models: []string{"x"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: seconds(600), KeepAlive: seconds(0)}},
 			{Name: "away", URL: "http://192.168.1.30:8080", Models: []string{"y"}, Disabled: true},
 		},
-		LauncherLog:           "/tmp/launcher.log",
-		LlamaSwapLog:          prefs.LogToFile,
-		LlamaSwapLogFile:      "/tmp/llama-swap.log",
-		ClipboardClearSeconds: seconds(30),
+		LauncherLog:            "/tmp/launcher.log",
+		LlamaSwapLog:           prefs.LogToFile,
+		LlamaSwapLogFile:       "/tmp/llama-swap.log",
+		ClipboardClearSeconds:  seconds(30),
+		KeepPausedOnAppRestart: true,
 	}
 	wantSecrets := map[string]string{"LLSL_ADMIN": "sk-one", "LLSL_CLAUDE": "sk-two", "GITHUB_TOKEN": "gh x y"}
 	got, secrets, err := prefsFrom(formFrom(want, wantSecrets))
@@ -78,12 +79,25 @@ func TestClipboardSecondsFromForm(t *testing.T) {
 	}
 }
 
-// Keep inference paused is on by default, and written only when it's off.
+// Keep inference paused is on by default, and written only when it's off;
+// across the app's restarts is off by default, and kept ticked, but not in
+// effect, while the first is off.
 func TestKeepPausedFromForm(t *testing.T) {
 	f := formFrom(prefs.Defaults(), nil)
-	if !f.KeepPausedOnRestart {
-		t.Error("shown unticked by default")
+	if !f.KeepPausedOnRestart || f.KeepPausedOnAppRestart {
+		t.Errorf("shown %v and %v by default", f.KeepPausedOnRestart, f.KeepPausedOnAppRestart)
 	}
+	for _, first := range []bool{true, false} {
+		f.KeepPausedOnRestart, f.KeepPausedOnAppRestart = first, true
+		p, _, err := prefsFrom(f)
+		if err != nil || !p.KeepPausedOnAppRestart || p.KeepsPauseOnAppRestart() != first {
+			t.Errorf("first box %v: stored %v, in effect %v, %v", first, p.KeepPausedOnAppRestart, p.KeepsPauseOnAppRestart(), err)
+		}
+		if !formFrom(p, nil).KeepPausedOnAppRestart {
+			t.Errorf("first box %v: shown unticked again", first)
+		}
+	}
+	f.KeepPausedOnAppRestart = false
 	for _, on := range []bool{true, false} {
 		f.KeepPausedOnRestart = on
 		p, _, err := prefsFrom(f)

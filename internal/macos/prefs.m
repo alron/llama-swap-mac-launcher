@@ -445,6 +445,9 @@ static NSString *newKey(void) {
 @property(strong) NSButton *manageKeys;
 @property(strong) NSTextField *manageKeysHint;
 @property(copy) NSString *keysExample;
+// The Tweaks tab's two pause boxes: the second needs the first.
+@property(strong) NSButton *keepPaused;
+@property(strong) NSButton *keepPausedApp;
 @end
 
 @implementation LSLPrefsController
@@ -529,6 +532,13 @@ static NSString *newKey(void) {
 		  @"config count too; a switch or cache time set differently there stops llama-swap from loading."
 		: @"Needs Config folder: Managed by the app, on the General tab. Until then, any page may use llama-swap, "
 		  @"unless its own config says otherwise.";
+}
+
+// keepPausedChanged greys out keeping a pause across the app's restarts
+// unless it's kept across llama-swap's: quitting and reopening the app
+// restarts llama-swap too (TODO item 59). The second box keeps its tick.
+- (void)keepPausedChanged:(id)sender {
+	self.keepPausedApp.enabled = self.keepPaused.state == NSControlStateValueOn;
 }
 
 // ownDirValue is the user's own folder, whichever folder the field shows.
@@ -785,6 +795,24 @@ static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *val
 	[t updateButtons]; // greyed out until a row is selected
 	NSStackView *v = column(@[ scroll, row(buttons) ]);
 	stretched(v, @[ scroll ]);
+	return v;
+}
+
+// underTitle puts box, a checkbox that depends on the one above it, under
+// that one's title, as macOS indents a setting that needs another.
+static NSView *underTitle(NSButton *box, NSButton *above) {
+	NSSize size = above.intrinsicContentSize;
+	NSRect title = [above.cell titleRectForBounds:NSMakeRect(0, 0, size.width, size.height)];
+	NSView *v = [[NSView alloc] init];
+	box.translatesAutoresizingMaskIntoConstraints = NO;
+	[v addSubview:box];
+	[NSLayoutConstraint activateConstraints:@[
+		// Both placed by their alignment rects, as in a stack.
+		[box.leadingAnchor constraintEqualToAnchor:v.leadingAnchor constant:NSMinX(title) - above.alignmentRectInsets.left],
+		[box.trailingAnchor constraintEqualToAnchor:v.trailingAnchor],
+		[box.topAnchor constraintEqualToAnchor:v.topAnchor],
+		[box.bottomAnchor constraintEqualToAnchor:v.bottomAnchor],
+	]];
 	return v;
 }
 
@@ -1565,9 +1593,21 @@ char *lsl_preferences(const char *json, int *result) {
 		NSButton *keepPaused = checkbox(@"Keep inference paused when llama-swap restarts", in[@"keepPausedOnRestart"]);
 		explain(@"After Pause All, the app pauses llama-swap again whenever it starts it (Restart, a restart from Settings, "
 		        @"after a crash), until Resume All. Unticked, a restart resumes, as llama-swap itself does. Quitting the app "
-		        @"forgets the pause.",
+		        @"forgets the pause, unless the box below is ticked.",
 		        @[ keepPaused ]);
-		NSStackView *tweaks = column(@[ grid(@[ @[ clearLabel, clearAfter ] ]), keepPaused ]);
+		// The second needs the first: an app restart restarts llama-swap.
+		NSButton *keepPausedApp = checkbox(@"Keep inference paused when Llama Swap Launcher restarts", in[@"keepPausedOnAppRestart"]);
+		explain(@"With the box above, a pause also outlasts quitting and reopening the app: an upgrade, a restart of the Mac "
+		        @"with Launch at Login. When it opens, the app pauses llama-swap again as it starts it, until Resume All. "
+		        @"Unticked, the app starts with inference running.",
+		        @[ keepPausedApp ]);
+		c.keepPaused = keepPaused;
+		c.keepPausedApp = keepPausedApp;
+		keepPaused.target = c;
+		keepPaused.action = @selector(keepPausedChanged:);
+		[c keepPausedChanged:nil];
+		NSView *keepPausedAppRow = underTitle(keepPausedApp, keepPaused);
+		NSStackView *tweaks = column(@[ grid(@[ @[ clearLabel, clearAfter ] ]), keepPaused, keepPausedAppRow ]);
 
 		// Secrets: the API keys, then the secret environment variables.
 		c.keys = [[LSLSecretTable alloc] initWithRows:in[@"apiKeys"]];
@@ -1772,6 +1812,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@"llamaSwapLogFile" : c.ownLog.stringValue,
 			@"clipboardSeconds" : @(clearAfter.selectedTag),
 			@"keepPausedOnRestart" : keepPaused.state == NSControlStateValueOn ? @YES : @NO,
+			@"keepPausedOnAppRestart" : keepPausedApp.state == NSControlStateValueOn ? @YES : @NO,
 			@"tab" : tabs.selectedTabViewItem.identifier ?: @"general",
 		};
 		NSData *encoded = [NSJSONSerialization dataWithJSONObject:fields options:0 error:nil];
