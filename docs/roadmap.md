@@ -2,11 +2,11 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 64. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 65. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
-0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58, 59 and 61 to 63, all done (table text centred in its row, a pause kept across the app's own restarts, Tab and Return in Settings' tables, paths shown with `~`, and the windows asked for from the menu taking the focus; now in done.md), and items 51 and 60, below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
+0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58, 59 and 61 to 63, all done (table text centred in its row, a pause kept across the app's own restarts, Tab and Return in Settings' tables, paths shown with `~`, and the windows asked for from the menu taking the focus; now in done.md), and items 51, 60 and 64, below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
 
 51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; decided the same day, below; for 0.3.3, the last major feature of the 0.3 series). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
@@ -80,6 +80,27 @@ Items keep their numbers; a new one takes the next, from 64. When one is done, i
       - The shim is checked hands-on: a test program would need a signed bundle to post at all, and would put notifications on the maintainer's screen.
     - **Also:** the README (what notifies, and what to allow in System Settings) and Collect Diagnostics (whether notifications and time-sensitive ones are allowed, from `getNotificationSettingsWithCompletionHandler:`).
     - **Later, reaching a phone** (not decided): a command, chosen by the user, that the app runs for each notification with its title and text. The user's own script sends it on, through ntfy, Pushover, Home Assistant or a message. It would run as the app's child, with the app's Local Network permission. A command keeps any third-party service out of the app itself.
+
+<!-- Markdown numbers a list from its first item: this one starts its own, so it shows its number. -->
+
+64. **Check for updates** (the maintainer, 2026-11-04; not started; for 0.3.3, after item 60, whose notifications it uses; the maintainer isn't particular about the release). Once a day the app asks GitHub for the latest release, and when it's newer than the running app, tells the user, with a link to its page.
+    - **A Tweaks checkbox, off by default** (the maintainer), worded something like **Check for updates daily**: `checkForUpdates` in `prefs.json`, written only when it's on, so an older app can still read a file saved with the default. Its tooltip says what a check sends: a request to GitHub naming the app and its version, from the Mac's address.
+    - **The check:** `GET https://api.github.com/repos/alron/llama-swap-mac-launcher/releases/latest`, the newest release that isn't a draft or a pre-release, whose `tag_name` is `v` and the version (release titles and tags are the same, `v0.3.3`).
+      - GitHub's API wants a User-Agent: the app's own, `llama-swap-launcher/<version>`, as for its other requests (item 55), with nothing personal in it.
+      - Without a token GitHub allows 60 requests an hour from an address; one a day is nowhere near it.
+      - The other way, to weigh when building: `https://github.com/alron/llama-swap-mac-launcher/releases/latest` redirects to the newest release's page, and the redirect alone names the tag, with no API and no JSON.
+      - It's a connection to the internet, not the LAN, so Local Network privacy doesn't apply; a firewall such as Little Snitch asks about it once, naming the app.
+    - **When:** a minute or so after launch, so the network is up after a login, then every 24 hours while the app runs. The time of the last check is kept beside `prefs.json` (state, like item 59's `paused`), so quitting and reopening doesn't check again within the day. A failed check (offline, GitHub down, the rate limit) is a line in the launcher log, never an alert; when to try again (in an hour, or the next day) is to decide.
+    - **Newer:** the tag, without its `v`, compared with the app's version as three numbers. A tag that isn't `major.minor.patch` is ignored, as no release.
+    - **Telling the user:**
+      - **A notification** (item 60's), at the ordinary level, not time-sensitive, once for each new version: "Llama Swap Launcher 0.3.4 is available". Clicking it opens the release's page in the browser. With item 60's box unticked, only the menu says so: an update isn't worth an alert the user didn't ask for.
+      - **A menu item** near About, something like **Version 0.3.4 Is Available…**, which opens the same page. It stays until the app is that version or newer.
+      - **The link is the app's own:** `https://github.com/alron/llama-swap-mac-launcher/releases/tag/v<version>`, built from a version that checked out as three numbers, not taken from the response (its `html_url`), so a tampered response can't send the user elsewhere. It opens as **Open llama-swap UI** does.
+    - **A link, nothing more:** the app doesn't download or install the update. That would be Sparkle (CLAUDE.md, "Later / optional").
+    - **Homebrew installs** (milestone 7) update with `brew upgrade`, which quits and reopens the app. Whether the notice should say that for an app Homebrew installed, and how to tell (the Caskroom's record of it), is to check. The cask needs no `auto_updates true`, which is for apps that update themselves.
+    - **To decide when building:** a **Check for Updates…** menu item that checks at once and says "up to date" too; an `update` field in `llsl status -json`, for agents.
+    - **Tests:** in Go, the comparison and the link from good and bad tags; the request against a stand-in server with GitHub's JSON; the daily timing, with the last check kept, on a fake clock.
+    - **Also:** the README (the setting, and what a check sends) and Collect Diagnostics (the last check and what it found).
 
 ### Milestone 7
 
