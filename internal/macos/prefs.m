@@ -63,12 +63,97 @@ static void editCell(NSTableView *t, NSInteger column, NSInteger row) {
 	[t.window makeFirstResponder:fieldOf([t viewAtColumn:column row:row makeIfNecessary:YES])];
 }
 
+// editableField is the field in a cell of t, if it's there and editable.
+static NSTextField *editableField(NSTableView *t, NSInteger column, NSInteger row) {
+	NSTextField *f = fieldOf([t viewAtColumn:column row:row makeIfNecessary:YES]);
+	return f.editable ? f : nil;
+}
+
+// tabAcross moves editing on to the next cell of t with an editable field,
+// as a spreadsheet does (TODO item 61): Tab to the next in the row (a name
+// to its value), then the next row's first; Shift-Tab back. Otherwise Tab
+// would end the edit and select the table. It reports whether it moved:
+// past the first or last cell it doesn't, and Tab leaves the table as before.
+// For a cell field's delegate, from control:textView:doCommandBySelector:.
+static BOOL tabAcross(NSTableView *t, NSControl *control, SEL command) {
+	NSInteger step = command == @selector(insertTab:) ? 1 : command == @selector(insertBacktab:) ? -1 : 0;
+	NSInteger row = [t rowForView:control], column = [t columnForView:control], columns = t.numberOfColumns;
+	if (step == 0 || row < 0 || column < 0) {
+		return NO;
+	}
+	// The cells in reading order, row by row.
+	for (NSInteger i = row * columns + column + step; i >= 0 && i < t.numberOfRows * columns; i += step) {
+		NSInteger r = i / columns, c = i % columns;
+		NSTextField *f = editableField(t, c, r);
+		if (f == nil) {
+			continue; // a checkbox, or a field that's off
+		}
+		if (r != row) {
+			// Finish this edit before the selection moves, as a click on
+			// another row would, then find the field again: a new
+			// selection can redraw its cells (Show's, say).
+			[t.window makeFirstResponder:nil];
+			[t selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)r] byExtendingSelection:NO];
+			[t scrollRowToVisible:r];
+			f = fieldOf([t viewAtColumn:c row:r makeIfNecessary:YES]);
+		}
+		[t.window makeFirstResponder:f];
+		return YES;
+	}
+	return NO;
+}
+
+// returnEdits is for a monitor of the dialog's key presses: Return on a
+// table's selected row, while the table has the focus, starts editing the
+// row's first field, as Return renames in Finder, rather than pressing Save
+// (TODO item 61). It has to be a monitor: the Save button takes Return
+// before the table would see it. Anywhere else, Return is still Save.
+static NSEvent *returnEdits(NSEvent *e) {
+	NSTableView *t = (NSTableView *)e.window.firstResponder;
+	NSEventModifierFlags held = e.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagOption |
+	                                               NSEventModifierFlagControl | NSEventModifierFlagShift);
+	NSString *key = e.charactersIgnoringModifiers;
+	if (![t isKindOfClass:[NSTableView class]] || t.selectedRow < 0 || held != 0 ||
+	    !([key isEqual:@"\r"] || [key isEqual:@"\x03"])) { // Return, or Enter on a keypad
+		return e;
+	}
+	for (NSInteger c = 0; c < t.numberOfColumns; c++) {
+		NSTextField *f = editableField(t, c, t.selectedRow);
+		if (f != nil) {
+			[t.window makeFirstResponder:f];
+			return nil; // used up
+		}
+	}
+	return e; // nothing to edit here (the models list, say): Save
+}
+
+// LSLTableView is a table that selects its first row when Tab brings the
+// focus to it with none selected (TODO item 61). A table shows the focus
+// only through its selected row, so otherwise it arrived unseen, and Tab
+// seemed to skip the table until a row had been chosen.
+@interface LSLTableView : NSTableView
+@end
+
+@implementation LSLTableView
+- (BOOL)becomeFirstResponder {
+	if (![super becomeFirstResponder]) {
+		return NO;
+	}
+	// Only for a key (Tab, Shift-Tab): a click picks its own row, and one
+	// below the rows leaves none selected.
+	if (NSApp.currentEvent.type == NSEventTypeKeyDown && self.numberOfSelectedRows == 0 && self.numberOfRows > 0) {
+		[self selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+	}
+	return YES;
+}
+@end
+
 // LSLSecretTable runs one table of named values and its buttons: the API
 // keys and the secret environment variables, whose values are secret, or
 // Environment, whose values aren't (plain). AppKit asks an object for a
 // table's rows and cells, and reports edits and clicks to it, so each table
 // has one.
-@interface LSLSecretTable : NSObject <NSTableViewDataSource, NSTableViewDelegate>
+@interface LSLSecretTable : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate>
 // The rows: each a dictionary with "name" and "value".
 @property(strong) NSMutableArray<NSMutableDictionary *> *rows;
 @property(strong) NSString *prefix; // shown before each name: LLSL_ for keys, none for variables
@@ -141,9 +226,15 @@ static void editCell(NSTableView *t, NSInteger column, NSInteger row) {
 	f.editable = YES;
 	f.target = self;
 	f.action = action;
+	f.delegate = self; // for Tab (control:textView:doCommandBySelector:)
 	f.cell.sendsActionOnEndEditing = YES;
 	f.cell.scrollable = YES;
 	return f;
+}
+
+// Tab and Shift-Tab move between the table's cells.
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
+	return tabAcross(self.table, control, command);
 }
 
 - (void)nameEdited:(NSTextField *)sender {
@@ -659,7 +750,7 @@ static const CGFloat tableHeight = 28 + 4 * 24 + 2;
 // and −, Generate (for keys), and Show and Copy (unless it's plain) under
 // it.
 static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *valueTitle, CGFloat width) {
-	NSTableView *table = [[NSTableView alloc] init];
+	NSTableView *table = [[LSLTableView alloc] init];
 	NSTableColumn *name = [[NSTableColumn alloc] initWithIdentifier:@"name"];
 	name.title = nameTitle;
 	name.width = round(width * 0.35);
@@ -795,6 +886,7 @@ static NSString *sentenceCase(NSString *s) {
 		f.selectable = self.managed;
 		f.target = self;
 		f.action = name ? @selector(nameEdited:) : @selector(urlEdited:);
+		f.delegate = self; // for Tab (control:textView:doCommandBySelector:)
 		f.cell.sendsActionOnEndEditing = YES;
 		f.cell.scrollable = YES;
 		return tableCell(f, nil);
@@ -1034,6 +1126,9 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 
 // Return in the filter or the add field would otherwise press Save.
 - (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
+	if ([control isDescendantOf:self.table]) {
+		return tabAcross(self.table, control, command); // a peer's name or URL
+	}
 	if (command != @selector(insertNewline:)) {
 		return NO;
 	}
@@ -1164,7 +1259,7 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 
 // peersTab lays out the Peers tab for p.
 static NSView *peersTab(LSLPeers *p) {
-	NSTableView *table = [[NSTableView alloc] init];
+	NSTableView *table = [[LSLTableView alloc] init];
 	// Whether each peer is on: a checkbox without a heading, like the
 	// models checklist's.
 	NSTableColumn *peerOn = [[NSTableColumn alloc] initWithIdentifier:@"on"];
@@ -1221,7 +1316,7 @@ static NSView *peersTab(LSLPeers *p) {
 	p.status.cell.truncatesLastVisibleLine = YES;
 	p.status.preferredMaxLayoutWidth = 540;
 
-	NSTableView *list = [[NSTableView alloc] init];
+	NSTableView *list = [[LSLTableView alloc] init];
 	NSTableColumn *on = [[NSTableColumn alloc] initWithIdentifier:@"on"];
 	on.title = @"";
 	on.width = 22;
@@ -1637,7 +1732,12 @@ char *lsl_preferences(const char *json, int *result) {
 		                                     : [shown isEqual:@"tweaks"] ? (NSView *)clearAfter
 		                                                                 : (NSView *)c.binary;
 		[NSApp activate];
+		// Only this app's key presses, and only while the dialog is open.
+		id returnMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *e) {
+			return returnEdits(e);
+		}];
 		NSModalResponse r = lsl_run_modal(alert);
+		[NSEvent removeMonitor:returnMonitor];
 		res = r == NSAlertFirstButtonReturn ? 1 : 0; // Cancel, or closed by lsl_close_dialogs
 		// Finish an edit still in progress in a table cell, so it counts.
 		[alert.window makeFirstResponder:nil];

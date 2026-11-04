@@ -9,6 +9,11 @@ not published; they're listed for people who had them.
   it sat at the row's top.
 - Settings → Secrets: **+** under the API keys starts editing the new key's
   name, as it does under the other tables, where it needed a click.
+- In Settings' tables, **Tab** moves from a name to its value, and on to
+  the next row, as in a spreadsheet; **Shift-Tab** goes back. It used to
+  end the edit. **Return** on a selected row starts editing it, as in the
+  Finder, rather than saving, and Tab into a table with nothing selected
+  selects its first row, so you can see where you are.
 - A long API key name no longer makes the Settings window wider: **The app
   uses:** shortens it with "…".
 

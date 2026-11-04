@@ -6,7 +6,7 @@ Items keep their numbers; a new one takes the next, from 62. When one is done, i
 
 ## Next release
 
-0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, has item 58, done (table text centred in its row; now in done.md), and:
+0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, has items 58 and 61, done (table text centred in its row, and Tab and Return in Settings' tables; now in done.md), and:
 
 59. **Keep a pause across the app's own restarts, as a choice** (the maintainer, 2026-11-01: "I see both sides of the pause as legitimate"; not started; for 0.3.3, with milestone 7's `llsl quit`). Item 57 keeps a pause across restarts of llama-swap that the app makes, but only in memory, so quitting the app forgets it: an upgrade through `brew` (milestone 7), a Quit and reopen, a reboot with Launch at Login.
     - **A second Tweaks checkbox**, worded something like **Keep inference paused when Llama Swap Launcher restarts**. It's off by default, so a fresh start is unpaused, as today, unless the user chooses otherwise.
@@ -17,8 +17,6 @@ Items keep their numbers; a new one takes the next, from 62. When one is done, i
       - **A pause made in llama-swap's web UI counts the same** as one made in the app or with `llsl`: with the boxes ticked, it outlasts a restart of llama-swap or of the app. Item 57 already adopts such a pause, so the file follows it too.
       - **A pause never expires.** The only times inference is resumed without being asked are a restart of llama-swap, or of the app, whose checkbox isn't ticked. A long pause is the user's choice, and a useful one: a llama-swap that stays paused still serves its peers' models and its web UI, without its local models using the Mac's memory.
     - **Also:** the README's Pause All paragraph and settings table, and `llsl status -json` if it should say a pause was carried over.
-
-61. **Tab from a name to its value, in Settings' tables** (the maintainer, 2026-11-03, while checking item 58: "a UI/UX element that is fairly baked into my brain, likely from dealing with spreadsheets"; not started; for 0.3.3). Tab while editing a cell ends the edit and selects the table, in 0.3.2 too. It should move to the next cell in the row, as in a spreadsheet: a name to its value, a peer's name to its URL; Shift-Tab back.
 
 ## 0.3.x
 

@@ -587,7 +587,7 @@ For the release after 0.3.1. Item 53, browser login through a form, is open: see
 
 **Found while taking 0.3.2's screenshots** (2026-11-01): the Peers tab's note beside Key was cut off at the dialog's edge ("sent to this pee"), since item 48 narrowed the dialog in 0.3.1. A long item widens the Key menu, and both it and the note resisted squeezing equally, so AppKit cut either one: here, a secret variable named `LLAMA_SWAP_SESSION_SECRET`. The note is now the warning alone ("sent to this peer with every request"), with the explanation in a tooltip on Key (item 48's rule), and the menu gives way first, shortening its title with "…" (`NSLayoutPriorityDefaultLow`). The dialog test program checks the note is whole and inside the tab with each of two peers selected, one with a 50-character key name and one whose variable is gone.
 
-## Items 58 and 59
+## Items 58, 59 and 61
 
 For 0.3.3, with milestone 7 (see the [roadmap](roadmap.md)).
 
@@ -605,6 +605,21 @@ For 0.3.3, with milestone 7 (see the [roadmap](roadmap.md)).
       - every table drawn to a PNG at 2× (the app's own views, drawn in the test program), before and after, and looked over.
     - **Unchanged:** Tab from a name ends editing and selects the table, rather than moving to the value, as in 0.3.2 (item 61).
     - **Verified hands-on** by the maintainer: the text centred in all five tables and in line with the headings, **+** editing the new row's name under every table, a click on a selected row's text editing it and one in the margin selecting the row, and a peer greyed and ungreyed. In a selected row of a focused table the text turns white on the blue, but `LLSL_` stays grey, a little brighter: "It doesn't look bad", and it stays.
+
+61. **Tab from a name to its value, in Settings' tables** (the maintainer, 2026-11-03, while checking item 58: "a UI/UX element that is fairly baked into my brain, likely from dealing with spreadsheets"; **built and verified hands-on 2026-11-03**; **done**). Tab while editing a cell ended the edit and selected the table, in 0.3.2 too. It should move to the next cell, as in a spreadsheet.
+    - **Built:** `tabAcross` in `prefs.m`, from the cell fields' delegate (`control:textView:doCommandBySelector:`, in `LSLSecretTable` and `LSLPeers`): Tab moves editing to the next cell with an editable field, a name to its value, a peer's name to its URL, and from a row's last to the next row's first, selecting it (as Numbers does; the maintainer: "Wrapping to the next row is fine"); Shift-Tab goes back. The peers' checkboxes, and fields that are off, are skipped. Past the table's last cell, or before its first, Tab leaves the table as before. The edit being left is kept, as a click elsewhere keeps it.
+    - **Then, from the maintainer's first look,** with a row selected but not being edited (decided 2026-11-03):
+      - **Return starts editing** the row's first field, as Return renames in the Finder, rather than pressing Save. The Save button takes Return before the table sees it, so a local key monitor (`returnEdits`), only while the dialog is open and only for this app's events, catches it when the focus is on a table with a selected row that has a field to edit. Anywhere else, the models list included, Return is still Save.
+      - **Typing keeps type-select,** jumping to a matching row: typing over a name, as a spreadsheet would, could overwrite one with a stray key.
+      - **Tab keeps leaving the table,** so getting past one takes one press.
+    - **"Tab skips a table until something in it has been selected"** (the maintainer): it didn't. Every table is in the dialog's Tab order from the start (walked in the test program), but these tables draw no focus ring and show the focus only through a selected row, so with none selected it arrived unseen. `LSLTableView` now selects the first row when a key (Tab, Shift-Tab) brings the focus to a table with none selected; a click picks its own row, and one below the rows still selects none.
+    - **Tested** with the dialog test program, six runs, 59 checks, nothing in AppKit's log. Tab is sent as the key sends it (`doCommandBySelector:`), since calling `insertTab:` on the field editor skips the delegate; Return, Enter and Tab are posted as key events through the run loop, which reaches the dialog although the test program's window isn't key:
+      - Tab and Shift-Tab across Environment, both Secrets tables and the peers: name to value and back, the wrap to the next row's name with that row selected, back across it, and out of the table past either end; the name typed before Tab kept, through to Save's reply;
+      - Return on a selected secret variable and Enter on a selected peer edit its name, with Settings still open;
+      - Tab from the listen address into Environment, with nothing selected, selects its first row, and Return then edits it; a click below the rows leaves none selected.
+      
+      Run against item 58's commit, every one of these fails.
+    - **Verified hands-on** by the maintainer: Tab across cells to the table's end and out, Shift-Tab back, the values as dots while edited, Tab into a table showing its first row, Return editing a selected row, Return still saving outside the tables (and from the models list), and clicks as before.
 
 ## Milestone 0 results (2026-09-28)
 
