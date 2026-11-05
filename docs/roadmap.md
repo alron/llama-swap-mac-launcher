@@ -44,8 +44,8 @@ Items keep their numbers; a new one takes the next, from 66. When one is done, i
     - **High priority is the time-sensitive level** (`UNNotificationInterruptionLevelTimeSensitive`), which gets through a Focus. It needs the entitlement `com.apple.developer.usernotifications.time-sensitive`. Without it, macOS posts at the ordinary level instead.
       - **On macOS that takes a provisioning profile:** an App ID for each bundle ID (release and `.dev`) in the developer account, with the Time Sensitive Notifications capability (which the account holder turns on, with no request to Apple), and a Developer ID provisioning profile for each, embedded as `Contents/embedded.provisionprofile`. Signing then needs an entitlements file (`codesign --entitlements`), the project's first.
       - **Ad-hoc builds sign without it.** An app that claims the entitlement without a matching profile won't launch, so CI's builds and those of contributors without the certificate leave it out, and post at the ordinary level.
-      - **Evidence so far** (2026-11-02): one public project's Developer ID profile carries the entitlement. Apple's capabilities table for macOS lists it, but its Developer ID column didn't come through when fetched. The spike settles it.
-      - **Profiles:** turning a capability on for an App ID invalidates that App ID's existing profiles, which matters only once there are some. A profile isn't secret (it holds no private key), but it's tied to the developer account. Whether it's committed or kept with the certificate is to decide. It expires, so note when.
+      - **Granted** (the spike, 2026-11-05): the maintainer made explicit App IDs for both bundle IDs with the Time Sensitive Notifications capability, and a Developer ID profile for each, valid until 2044. Both profiles grant `com.apple.developer.usernotifications.time-sensitive`, beside the App ID and team, and name the maintainer's Developer ID certificate.
+      - **Profiles:** turning a capability on for an App ID invalidates that App ID's existing profiles, so adding one later means downloading them again. A profile holds no private key, but it's tied to the developer account and useless without its certificate, so they're kept out of git, in `packaging/profiles/<bundle id>.provisionprofile` (git-ignored). `packaging/entitlements.sh` writes the entitlements from the profile (App ID, team, time-sensitive; not the team's `keychain-access-groups`, which the app doesn't use) after checking it's for this bundle ID, names the signing certificate and hasn't expired; `bundle` in the Makefile embeds it as `Contents/embedded.provisionprofile` and signs with them. Without a profile (ad-hoc builds, CI) it signs as before and says notifications won't be time-sensitive.
       - **Not critical alerts,** the level above: Apple grants those to health and safety apps.
     - **What notifies** (proposed, to decide):
       - **Time-sensitive:**
@@ -68,13 +68,14 @@ Items keep their numbers; a new one takes the next, from 66. When one is done, i
     - **Decided by the maintainer** (2026-11-02):
       - **Notifications replace those two alerts while the box is ticked.** Unticked, the alerts come back as today. Clicking a failure's notification still opens its alert, with llama-swap's last lines.
       - **No Send Test Notification button,** unless notifications turn out to be troublesome and users need a way to check them.
-    - **To check:**
-      - **The default style:** banners go away on their own; alerts stay until dismissed. `NSUserNotificationAlertStyle` = `alert` in Info.plist asked for alerts with the old API. Whether `UNUserNotificationCenter` honours it is to check.
-    - **First, a spike** (validate before building): post from the dev build, with and without the entitlement and its profile. Check that:
-      - the permission prompt names the app;
-      - a time-sensitive notification gets through a Focus;
-      - the delegate gets an action button's click;
-      - notarization accepts a release build carrying its profile.
+    - **The spike** (2026-11-05), with `notify.m` and a temporary menu item in the dev build, then a release build:
+      - **The app still launches** with the profile and entitlements, and its secrets in the keychain stay readable with no prompt: the signature's designated requirement (bundle ID and team) is unchanged.
+      - **The permission prompt** names the app. When the first time-sensitive notification arrived, macOS also asked whether to keep allowing time-sensitive ones; the app's settings then show a **Time sensitive notifications** switch, which appears only with the entitlement.
+      - **Time-sensitive works:** marked *Time Sensitive* in Notification Centre. **Through a Focus, only if the Focus allows it:** on macOS 27, a Do Not Disturb with no allowed apps silenced it too. Once the app was allowed in it (or with Intelligent Breakthrough & Silencing on), it came through with its sound. The README must say so.
+      - **Clicks reach the app:** **Unload** came back as action `unload`, a click on a notification as `default`.
+      - **One per kind:** posting with the same identifier replaced the earlier one.
+      - **The style is the user's:** every app starts on **Temporary** (banners, which go to Notification Centre after a few seconds). `NSUserNotificationAlertStyle = alert` in Info.plist isn't honoured by `UNUserNotificationCenter` (the settings came back `banner`), so it's not used; **Persistent** (alerts, which stay until dismissed) is the user's choice in System Settings, which the README should suggest for problems.
+      - **Notarization accepts it:** a release build carrying its profile and entitlements was accepted with no issues, stapled, and passed `spctl` and `check-zip.sh`.
     - **Tests:**
       - Which status changes notify, and which clear a notification, is decided in Go and tested on its own, like `lookFor`.
       - The shim is checked hands-on: a test program would need a signed bundle to post at all, and would put notifications on the maintainer's screen.

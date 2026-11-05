@@ -2,3 +2,6 @@
 .DS_Store
 # Personal context for Claude Code sessions; see CLAUDE.md
 CLAUDE.local.md
+# Developer ID provisioning profiles (TODO item 60): tied to the
+# maintainer's account, so kept out of git; see packaging/entitlements.sh.
+/packaging/profiles/

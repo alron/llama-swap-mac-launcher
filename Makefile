@@ -14,6 +14,8 @@ DEV_APP := build/$(APP_NAME) Dev.app
 DEV_ID  := $(BUNDLE_ID).dev
 REL_APP := build/release/$(APP_NAME).app
 REL_ZIP := build/release/Llama-Swap-Launcher-$(VERSION).zip
+# Developer ID provisioning profiles, named <bundle id>.provisionprofile.
+PROFILES ?= packaging/profiles
 
 export GOOS        := darwin
 export GOARCH      := arm64
@@ -117,9 +119,23 @@ define bundle
 		-e 's/@VERSION@/$(VERSION)/' -e 's/@MIN_MACOS@/$(MIN_MACOS)/' \
 		packaging/Info.plist.in > "$(1)/Contents/Info.plist"
 	plutil -lint -s "$(1)/Contents/Info.plist"
+	@# With its Developer ID provisioning profile (git-ignored; TODO item 60),
+	@# the app is signed with the entitlements the profile grants, which
+	@# time-sensitive notifications need. Without one (ad-hoc builds, CI),
+	@# it's signed without, and they post at the ordinary level.
+	@rm -f "build/$(2).entitlements"
+	@if [ "$(SIGN_IDENTITY)" != "-" ] && [ -f "$(PROFILES)/$(2).provisionprofile" ]; then \
+		echo "embedding $(PROFILES)/$(2).provisionprofile"; \
+		install -m 644 "$(PROFILES)/$(2).provisionprofile" "$(1)/Contents/embedded.provisionprofile" && \
+		packaging/entitlements.sh "$(PROFILES)/$(2).provisionprofile" $(2) "$(SIGN_IDENTITY)" "build/$(2).entitlements"; \
+	else \
+		echo "note: no provisioning profile for $(2), so notifications won't be time-sensitive"; \
+	fi
 	codesign --force --options runtime $(4) --identifier $(2).llsl \
 		--sign "$(SIGN_IDENTITY)" "$(1)/Contents/Helpers/llsl"
-	codesign --force --options runtime $(4) --sign "$(SIGN_IDENTITY)" "$(1)"
+	codesign --force --options runtime $(4) \
+		$$([ -f "build/$(2).entitlements" ] && echo --entitlements "build/$(2).entitlements") \
+		--sign "$(SIGN_IDENTITY)" "$(1)"
 	codesign --verify --strict "$(1)"
 	packaging/check-build.sh "$(1)" $(MIN_MACOS)
 	@echo "built $(1)"
