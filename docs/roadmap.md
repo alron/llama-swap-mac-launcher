@@ -2,11 +2,11 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 65. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 66. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
-0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58, 59 and 61 to 63, all done (table text centred in its row, a pause kept across the app's own restarts, Tab and Return in Settings' tables, paths shown with `~`, and the windows asked for from the menu taking the focus; now in done.md), and items 51, 60 and 64, below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
+0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58, 59 and 61 to 63, all done (table text centred in its row, a pause kept across the app's own restarts, Tab and Return in Settings' tables, paths shown with `~`, and the windows asked for from the menu taking the focus; now in done.md), and items 51, 60, 64 and 65, below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
 
 51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; decided the same day, below; for 0.3.3, the last major feature of the 0.3 series). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
@@ -104,25 +104,47 @@ Items keep their numbers; a new one takes the next, from 65. When one is done, i
     - **Tests:** in Go, the comparison and the link from good and bad tags; the request against a stand-in server with GitHub's JSON; the daily timing, with the last check kept, on a fake clock.
     - **Also:** the README (the setting, and what a check sends) and Collect Diagnostics (the last check and what it found).
 
+<!-- Markdown numbers a list from its first item: this one starts its own, so it shows its number. -->
+
+65. **The app restarts into a new version installed over it** (the maintainer, 2026-11-04, for milestone 7; not started; for 0.3.3). Homebrew 7 can't reopen the app after `brew upgrade` without Automation access (milestone 7, below), so the app does it: when a newer version lands where it's running from, it restarts into it.
+    - **Replacing a running app:** the Finder refuses ("in use"), so a zip install dragged in by the Finder still needs a Quit first. Homebrew moves the running app's bundle aside and installs the new one without complaint (seen with the stand-in, milestone 7), as `ditto` or `unzip` in Terminal would. Nothing in the app stops either; the maintainer's "file in use" error was the Finder's.
+    - **Noticing:** the app watches its own bundle's path, for a different version in its `Info.plist` (a periodic check, or a watch on the folder), and ignores a copy that's older or the same.
+    - **Restarting:** a Quit as usual (llama-swap stopped first), then the new copy opened by its path through Launch Services, as at login, once the old one has exited: its control socket is the single-instance lock, so a new copy started earlier would exit at once. A small detached helper (a shell command) can wait for the old process and then `open` the app.
+    - **To decide:** whether to wait while requests are in flight (as `llsl restart` refuses), or to ask first; whether a pause is kept across this restart even with item 59's box unticked, since the user didn't choose to restart; what the log and menu say.
+    - **Gatekeeper:** Homebrew quarantines the new copy and passes on the old copy's approval (`inherit_user_approval!`), so no prompt is expected when it's opened; to check.
+    - **From 0.3.3 the cask drops `on_upgrade: :signal`,** keeping the signal for uninstalling. The 0.3.2 → 0.3.3 upgrade still quits 0.3.2 (its cask decides) and needs one manual open.
+    - **Tests:** the decision (a newer version at the path, not the same or older) in Go; hands-on with the dev app replaced by a newer dev build, by `ditto` and through a local tap.
+
 ### Milestone 7
 
-The Homebrew cask, from our own tap, with a `.dmg` beside the zip: the plans are in CLAUDE.md, "Signing, notarization, distribution". It waited until the repository had been public a while without major problems (the maintainer, 2026-10-04). **Now planned alongside 0.3.3, and done before its release** (the maintainer, 2026-11-01 and 2026-11-03), so the release itself tests `make publish` updating the cask in the tap, which must be public by then: from our own tap only, with no submission to Homebrew's own repository, so installs and upgrades are managed by `brew`. Two things to check: whether Homebrew unpacks a cask's zip as `unzip` does (item 23), and whether the cask needs an `uninstall launchctl:` entry once item 51's helper exists.
+The Homebrew cask, from our own tap: the plans are in CLAUDE.md, "Signing, notarization, distribution". From our own tap only, with no submission to Homebrew's own repository, so installs and upgrades are managed by `brew`. **Done before 0.3.3's release** (the maintainer, 2026-11-01 and 2026-11-03), so that release tests `make publish` updating the cask in the tap, which must be public by then.
 
-**Upgrading while the app runs** (the maintainer, 2026-11-01: no "quit the app before `brew upgrade`"). Replacing the running app by hand fails because its files are in use, and the app has to stop and start anyway: llama-swap is its child.
-- **Homebrew's own way** (read in Homebrew 7.0.11's `cask/artifact/abstract_uninstall.rb` and `cask/upgrade.rb`): `uninstall quit: "<bundle id>"` quits the app before an upgrade and reopens it afterwards (`lsregister -f`, then `open -b`). But it quits through `osascript` (`Application(id).quit()`), an Apple Event, which needs Automation access for Terminal ("Terminal → System Events"). The maintainer never grants that, and nor will many people, so it would time out after 10 seconds and carry on with the app running.
-- **The plan: the cask quits and reopens the app through `llsl`,** the control socket, which needs no permission.
-  - **During an upgrade** (read in `cask/installer.rb`): the old cask's `uninstall_preflight` block runs before the old app is removed (`start_upgrade` → `uninstall_artifacts`, flight blocks before the `Uninstall` directives), and the new cask's `postflight` runs once the new one is in place.
-  - **`uninstall_preflight`:** runs the installed app's `Contents/Helpers/llsl quit`, and notes for `postflight` that the app was running.
-  - **`postflight`:** reopens the app with `open -b` if it was running.
-  - **Needs a new `llsl quit`:** stops llama-swap as Quit does, then quits the app. Proposed: it refuses while requests are in flight (exit 7), like `stop`, so `brew upgrade` stops with that message rather than cutting someone off; `-force` overrides.
-  - **A pause:** item 57 keeps it in memory only, so an upgrade resumes inference, unless the user has ticked item 59's checkbox (decided by the maintainer, 2026-11-01).
-- **To validate first, with a local tap and a `file://` URL:**
-  - `system_command` in both blocks during `brew upgrade --cask`;
-  - `appdir` in `uninstall_preflight`;
-  - how a block's failure (exit 7) stops the upgrade;
-  - whether replacing the running bundle ever succeeds without quitting, leaving the old app running.
-- **Zip installs** still need the app quit first. The app could notice its own bundle being replaced and restart itself, which would serve both; noted, not planned.
-
+- **The cask uses the zip** (the maintainer, 2026-11-04). The DMG comes later, as an optional download beside the zip, and the cask stays on the zip if it works well (it does, below).
+- **0.3.2's cask is in the tap** (2026-11-04), written by hand: `Casks/llama-swap-launcher.rb` in `alron/homebrew-llama-swap-mac-launcher`, still private, with a README. Token `llama-swap-launcher`, so `brew install --cask alron/llama-swap-mac-launcher/llama-swap-launcher`. It has `depends_on arch: :arm64` and `macos: :sequoia`, `livecheck` from GitHub's latest release, `binary` for `llsl`, `zap` for the support folder, logs and preferences file, and caveats that llama-swap isn't included and that an upgrade quits the app. `brew style` is clean, and so is `brew audit --cask --online --strict` once the maintainer trusted it.
+- **Found in Homebrew 7.0.12** (read in its source, 2026-11-04):
+  - **Zips are unpacked with `unzip`**, as `check-zip.sh` does (item 23), unless they hold `__MACOSX` or `._` entries, when `ditto` is used; ours have none.
+  - **The old cask in an upgrade is the copy Homebrew kept at install,** so each version's cask decides how the upgrade after it quits the app.
+  - **Flight blocks are deprecated** (`preflight do … end`, with a warning now) for declarative `*_steps` (`run`, `terminate_process`, `touch`, path guards), which **run in a sandbox**: Unix sockets are always denied (`(deny network-outbound (to unix-socket))`, network access or not), and so are opening apps (`lsopen`) and Apple Events; the home folder can't be read and `HOME` is a temporary folder. So a cask can't run `llsl` (it finds the control socket through `HOME`, and couldn't connect anyway) and can't reopen the app. Signals are allowed.
+  - **`uninstall quit:`** quits through Apple Events, which needs Automation access for the terminal, and is the only way Homebrew reopens an app after an upgrade.
+  - **`uninstall signal:`** runs in `brew` itself, outside the sandbox: it finds the app's process by bundle ID in `launchctl list` (the dev build's longer ID doesn't match), signals it, waits 3 seconds and carries on. It's skipped in an upgrade unless the cask says `on_upgrade: :signal`. The app takes SIGTERM as Quit, stopping llama-swap first ([main.go](../cmd/llama-swap-launcher/main.go)), which can take up to 20 seconds.
+  - **`--adopt`** keeps an app already in place, unmoved and unquarantined, when its Info.plist's two versions match the cask's: how a zip install of the same version moves to Homebrew without a restart.
+  - **Every download is quarantined,** `file://` included, with no way to skip it. Running anything inside an app that isn't notarized then trips Gatekeeper, as the stand-in below did once, with a dialog. The release is notarized, so a cask install gets macOS's one-time "downloaded from the Internet" check.
+  - **A tap that isn't Homebrew's needs `brew trust`** before Homebrew loads its casks; the tap's README says so.
+- **Tested with a stand-in** (2026-11-04): an app with its own bundle ID whose SIGTERM handler takes 8 seconds, two versions zipped as a release is, and a test cask made from the real one by substitution (token, version, checksum, `file://` URL, app name, bundle ID, and the `llsl` link renamed), through a temporary local tap, into a scratch Applications folder:
+  - install: unpacked, the app moved, `llsl` linked and run;
+  - upgrade while running: SIGTERM, Homebrew carried on after 3 seconds, the new version installed and the old bundle purged while the old copy was still quitting; it exited 5 seconds later;
+  - uninstall while running: SIGTERM, then everything removed;
+  - afterwards the test tap untapped and nothing left in the Caskroom; the maintainer's running release app untouched throughout.
+- **Decided by the maintainer** (2026-11-04):
+  - **The cask quits the app with `uninstall signal:`,** SIGTERM by bundle ID, so uninstalling never leaves it running without its files; 0.3.2's cask also does it on upgrade (`on_upgrade: :signal`), so the 0.3.2 → 0.3.3 upgrade quits it, and it's opened again by hand, once.
+  - **The app restarts itself after an upgrade** (item 65), rather than the cask reopening it. From 0.3.3, the cask drops `on_upgrade: :signal`: the upgrade replaces the running app's bundle, and the app restarts into the new version.
+  - **`llsl quit` is set aside:** a cask can't run it, which was its reason.
+- **Still to do:**
+  - **`make publish` updates the tap:** the cask's version and SHA-256, committed as the noreply address and pushed, after the same personal-details check, with `DRY_RUN=1` showing the change. The release's tag must be on GitHub first, since the cask's URL names it.
+  - **The tap made public** before 0.3.3's release, and the README's "Installing" gains Homebrew, with `brew trust`.
+  - **Item 64's Homebrew note:** how to tell the app was installed by Homebrew (the Caskroom's record of `llama-swap-launcher`, at Homebrew's prefix).
+  - **Item 51's helper:** whether the cask needs `uninstall launchctl:` for its daemon.
+  - **The real test:** the maintainer's own 0.3.2 is now the cask's (2026-11-04: `brew trust --cask`, then `brew install --cask --adopt`, which kept the running app in place, untouched, and linked `llsl`; an install never quits the app, only an uninstall or an upgrade does). It's upgraded to 0.3.3 by `brew upgrade` once that's published.
 
 ## Blocked
 
