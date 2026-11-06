@@ -3,7 +3,7 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
-## Unreleased
+## 0.3.4 (2026-11-06)
 
 - **Raise the GPU's memory limit** couldn't be turned on in 0.3.3: on a
   Mac where it had never been used, Settings said "The app's helper is
