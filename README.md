@@ -55,6 +55,11 @@ in `/Applications` and links `llsl` into Homebrew's `bin`, so it's on your
 brew install mostlygeek/llama-swap/llama-swap
 ```
 
+The first time a new install opens, macOS asks once whether to open an
+app downloaded from the internet, saying Apple checked it for malicious
+software: click **Open**. Upgrades don't ask, since Homebrew passes the
+approval on.
+
 `brew upgrade` replaces the app while it runs, and the app restarts itself
 into the new version once llama-swap has no requests in flight (see
 [Updates](#updates)). Upgrading from 0.3.2, the app quits instead, and you
@@ -70,6 +75,11 @@ If you installed the zip before, Homebrew can take over that copy in
 ```sh
 brew install --cask --adopt alron/llama-swap-mac-launcher/llama-swap-launcher
 ```
+
+If it's an older version, Homebrew won't replace it: quit it, move it to
+the Trash, then install as above. Your settings, logs, keychain items and
+the Local Network permission carry over, as they belong to the app's
+bundle ID and its developer, not to the copy.
 
 Then follow steps 2 and 3 below.
 
