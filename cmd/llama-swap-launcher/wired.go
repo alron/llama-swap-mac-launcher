@@ -141,6 +141,13 @@ func (a *app) wiredState() wiredState {
 	limit, lerr := unix.SysctlUint32("iogpu.wired_limit_mb")
 	s.totalMB, s.limitMB = int64(total>>20), int64(limit)
 	s.storedMB, s.storedErr = wired.Stored(bundleID)
+	if s.storedErr == nil && s.storedMB != 0 && terr == nil {
+		// Root's file, checked again by the helper before it's applied;
+		// here, so the diagnostics flag one out of bounds.
+		if err := wired.Check(s.storedMB, int64(total>>20)); err != nil {
+			s.storedErr = fmt.Errorf("the stored limit is out of bounds: %w", err)
+		}
+	}
 	switch {
 	case terr != nil || lerr != nil:
 		s.unusable = "This Mac has no GPU memory limit to change (iogpu.wired_limit_mb)."
@@ -401,8 +408,22 @@ func (a *app) setWired(mb int64, s wiredState, repair bool) {
 		}
 	}
 	if err := a.sendWired(mb); err != nil {
-		a.problem("Couldn't set the GPU's memory limit", err)
+		a.wiredProblem(err)
 	}
+}
+
+// notKept is a limit the helper applied but couldn't keep for the next
+// startup: in effect until the Mac restarts.
+type notKept struct{ error }
+
+// wiredProblem reports a limit that couldn't be set, or was set but not
+// kept.
+func (a *app) wiredProblem(err error) {
+	if errors.As(err, new(notKept)) {
+		a.problem("The GPU's memory limit lasts only until the Mac restarts", err)
+		return
+	}
+	a.problem("Couldn't set the GPU's memory limit", err)
 }
 
 // registerHelper registers the helper, for launchd to start it, and waits
@@ -506,7 +527,7 @@ func (a *app) waitForHelper(mb int64) {
 			case macos.LoginItemEnabled:
 				a.sup.Logf("GPU memory limit: the app's helper was allowed")
 				if err := a.sendWired(mb); err != nil {
-					a.problem("Couldn't set the GPU's memory limit", err)
+					a.wiredProblem(err)
 					return
 				}
 				a.tellWired("The GPU's memory limit is set",
@@ -547,14 +568,19 @@ func (a *app) sendWired(mb int64) error {
 			continue // not reached: try again
 		}
 		switch {
-		case !r.OK:
-			return errors.New(sentence(r.Error))
 		case r.UID != 0:
 			return fmt.Errorf("the app's helper is running as user %d, not as root", r.UID)
+		case !r.OK && r.Limit == mb && mb != 0:
+			return notKept{errors.New(sentence(r.Error))}
+		case !r.OK:
+			return errors.New(sentence(r.Error))
 		case r.Limit != mb:
 			return fmt.Errorf("the app's helper set %s, but macOS reports %s", gbText(mb), gbText(r.Limit))
+		case mb == 0:
+			a.sup.Logf("GPU memory limit: back to macOS's default")
+		default:
+			a.sup.Logf("GPU memory limit: set to %d MB (%s), and kept by the app's helper for every startup", mb, gbText(mb))
 		}
-		a.sup.Logf("GPU memory limit: set to %d MB (%s), and kept by the app's helper for every startup", mb, gbText(mb))
 		return nil
 	}
 	return fmt.Errorf("the app's helper couldn't be reached: %w", err)
@@ -577,20 +603,10 @@ func (a *app) askHelper(op string, mb int64) (macos.HelperReply, error) {
 // then unregisters it. Unregistered, it can't set one at the next startup,
 // so even if the first step fails, macOS's default returns then.
 func (a *app) turnOffWired() {
-	r, err := a.askHelper("set", 0)
-	// Checked as sendWired checks: from root, with macOS's default now.
-	switch {
-	case err != nil:
-	case !r.OK:
-		err = errors.New(sentence(r.Error))
-	case r.UID != 0:
-		err = fmt.Errorf("the app's helper is running as user %d, not as root", r.UID)
-	case r.Limit != 0:
-		err = fmt.Errorf("macOS still reports %s", gbText(r.Limit))
-	}
-	if err == nil {
-		a.sup.Logf("GPU memory limit: back to macOS's default")
-	}
+	// As a limit is set: retried while launchd may be slow to start the
+	// helper, and checked (from root, with macOS's default now), so a
+	// timeout doesn't leave the old limit stored for the next start.
+	err := a.sendWired(0)
 	uerr := macos.RegisterHelper(wired.Plist(bundleID), false)
 	if uerr == nil {
 		a.sup.Logf("GPU memory limit: removed the app's helper")

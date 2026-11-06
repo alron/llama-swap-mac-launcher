@@ -50,6 +50,11 @@ func main() {
 		os.Exit(1)
 	}
 	label := wired.Label(client)
+	// launchd's plist makes it root; anywhere else, it does nothing.
+	if os.Geteuid() != 0 {
+		logf("not running as root (uid %d); not starting", os.Geteuid())
+		os.Exit(1)
+	}
 	logf("started as uid %d", os.Getuid())
 	stored, err := readStored()
 	if err != nil {
@@ -96,7 +101,11 @@ func answer(h unsafe.Pointer, op string, mb int64, hasMB bool) {
 			err = errors.New("a set request without a limit")
 		} else if err = check(mb); err == nil {
 			if err = apply(mb); err == nil {
-				err = store(mb)
+				// Applied, but not kept: in effect until the Mac restarts,
+				// which the reply's limit shows and the error says.
+				if serr := store(mb); serr != nil {
+					err = fmt.Errorf("set to %d MB for now, but couldn't keep it for the next startup: %w", mb, serr)
+				}
 			}
 		}
 		if err != nil {
