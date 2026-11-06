@@ -121,6 +121,33 @@ type Status struct {
 	LastGPUFault *Fault `json:"lastGpuFault,omitempty"`
 	// Update is set when the app knows of a newer release (TODO item 64).
 	Update *Update `json:"update,omitempty"`
+	// GPUMemory is the GPU's wired memory limit (TODO item 51).
+	GPUMemory *GPUMemory `json:"gpuMemory,omitempty"`
+}
+
+// GPUMemory is the GPU's wired memory limit, iogpu.wired_limit_mb, which
+// the app's helper sets (TODO item 51). Only Settings changes it.
+type GPUMemory struct {
+	// TotalMB is the Mac's memory, and LimitMB the limit now: 0 is
+	// macOS's default, which DefaultMB is, as Metal reports it, when known.
+	TotalMB   int64 `json:"totalMB"`
+	LimitMB   int64 `json:"limitMB"`
+	DefaultMB int64 `json:"defaultMB,omitempty"`
+	// StoredMB is the limit the app's helper sets at every startup, and
+	// Helper its status: "not registered", "enabled", "requires approval"
+	// (waiting to be allowed in System Settings) or "not found".
+	StoredMB int64  `json:"storedMB,omitempty"`
+	Helper   string `json:"helper"`
+	// Running says the helper answers the app, as root: macOS can report
+	// it enabled while launchd isn't running it.
+	Running bool `json:"running"`
+	// PendingMB is a limit confirmed in Settings and waiting for the
+	// helper to be allowed.
+	PendingMB int64 `json:"pendingMB,omitempty"`
+	// SetByApp says the limit now is the one the app's helper set.
+	SetByApp bool `json:"setByApp"`
+	// Unavailable says why the limit can't be changed here, if it can't.
+	Unavailable string `json:"unavailable,omitempty"`
 }
 
 // Fault records a model whose GPU backend failed.

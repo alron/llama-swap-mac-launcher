@@ -235,3 +235,26 @@ func TestCheckUpdate(t *testing.T) {
 		t.Errorf("an argument: exit %d", code)
 	}
 }
+
+// status's line for the GPU's memory limit (TODO item 51).
+func TestGPUMemoryLine(t *testing.T) {
+	const gb = 1024
+	for _, tt := range []struct {
+		g    control.GPUMemory
+		want string
+	}{
+		{control.GPUMemory{TotalMB: 96 * gb, DefaultMB: 79626, Helper: "not registered"}, "macOS's default, about 78 GB of 96 GB"},
+		{control.GPUMemory{TotalMB: 96 * gb, LimitMB: 84 * gb, StoredMB: 84 * gb, Helper: "enabled", Running: true, SetByApp: true}, "84 GB of 96 GB, set by the app"},
+		{control.GPUMemory{TotalMB: 96 * gb, LimitMB: 80 * gb, StoredMB: 80 * gb, Helper: "enabled", SetByApp: true},
+			"80 GB of 96 GB, set by the app; the app's helper is allowed but not running (Save in Settings starts it again)"},
+		{control.GPUMemory{TotalMB: 256 * gb, LimitMB: 224 * gb, Helper: "not registered"}, "224 GB of 256 GB, not set by the app"},
+		{control.GPUMemory{TotalMB: 96 * gb, DefaultMB: 79626, Helper: "requires approval", PendingMB: 84 * gb},
+			"macOS's default, about 78 GB of 96 GB; 84 GB once the app's helper is allowed in System Settings (if it's allowed and nothing happens, Save in Settings again)"},
+		{control.GPUMemory{TotalMB: 96 * gb, LimitMB: 70 * gb, StoredMB: 84 * gb, Helper: "enabled", Running: true},
+			"70 GB of 96 GB, not set by the app; the app sets 84 GB at the next startup"},
+	} {
+		if got := gpuMemory(&tt.g); got != tt.want {
+			t.Errorf("%+v:\n got %q\nwant %q", tt.g, got, tt.want)
+		}
+	}
+}

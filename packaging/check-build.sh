@@ -2,7 +2,7 @@
 # check-build.sh APP MIN_MACOS
 #
 # Checks the build settings that only show once the app runs somewhere
-# else. Both binaries target MIN_MACOS or older (without the Makefile's
+# else. Every binary (the app, llsl, the wired limit's helper) targets MIN_MACOS or older (without the Makefile's
 # flags, cgo targets the build machine's macOS, and the app won't launch on
 # anything older), each has a Mach-O UUID (Local Network privacy misbehaves
 # without one), and neither contains a path from the build machine
@@ -12,7 +12,7 @@ app=$1
 min=$2
 root=$(cd "$(dirname "$0")/.." && pwd)
 fail=0
-for bin in "$app"/Contents/MacOS/* "$app/Contents/Helpers/llsl"; do
+for bin in "$app"/Contents/MacOS/* "$app"/Contents/Helpers/*; do
 	name=$(basename "$bin")
 	minos=$(otool -l "$bin" | awk '$1 == "minos" { print $2; exit }')
 	# Compares major.minor: the binary's must not be newer than MIN_MACOS.

@@ -58,6 +58,9 @@ type app struct {
 	// install is a newer version installed over the running app; see
 	// restart.go.
 	install installed
+	// wired is a GPU memory limit waiting for the helper's approval; see
+	// wired.go.
+	wired wiredFlow
 
 	status              *systray.MenuItem
 	details             []*systray.MenuItem // the status's explanation, wrapped over several lines

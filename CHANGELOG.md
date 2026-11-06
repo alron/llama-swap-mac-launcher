@@ -5,6 +5,17 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **Raise the GPU's memory limit** (Settings → Tweaks, off by default), so
+  bigger models fit: the app sets `iogpu.wired_limit_mb`, in whole GB, and
+  sets it again at every startup, through a small helper that macOS runs as
+  root once you allow it in System Settings → General → Login Items &
+  Extensions. Every change asks for Touch ID, an Apple Watch or your
+  password. It always leaves macOS at least 8 GB, suggests leaving more by
+  the Mac's size, and isn't offered on Macs with 32 GB or less. Unticking
+  returns macOS's default and removes the helper; untick it before
+  uninstalling. `llsl status` shows the limit, and only Settings changes
+  it. See
+  [GPU memory](https://github.com/alron/llama-swap-mac-launcher#gpu-memory).
 - **Restart on update** (Settings → Tweaks, on by default): when Homebrew
   installs a newer version over the running app, the app restarts into it
   by itself, once llama-swap has no requests in flight, keeping a pause. It

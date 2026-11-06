@@ -80,7 +80,9 @@ func Confirm(message, detail, ok, cancel string) bool {
 // cancelled, so the code waiting on it carries on, and any dialog shown
 // after it returns at once as cancelled, so that code can't open another.
 // It waits up to timeout for them to close, and reports whether they did.
+// A confirmation in progress (ConfirmOwner) ends as cancelled.
 func CloseDialogs(timeout time.Duration) bool {
+	cancelConfirmOwner()
 	return C.lsl_close_dialogs(C.double(timeout.Seconds())) != 0
 }
 

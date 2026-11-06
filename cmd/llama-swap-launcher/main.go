@@ -22,6 +22,10 @@ var (
 	bundleID  = "com.my-wang.llama-swap-launcher.dev"
 	version   = "dev"
 	buildDate = "" // YYYY-MM-DD, UTC
+	// teamID is the team that signs the app, empty for an ad-hoc build;
+	// the wired limit's helper and the app require each other's signature
+	// to be its (TODO item 51).
+	teamID = ""
 )
 
 // homepage is the project's page, linked from the About panel.
@@ -48,6 +52,7 @@ func main() {
 	defer lg.close()
 
 	a := newApp(p, lg)
+	a.wired.noteDefault() // before anything in the app uses the GPU (TODO item 51)
 	if logErr != nil {
 		a.logErr = fmt.Errorf("%w. Logging to the default places until that's fixed in Settings… → Logs", logErr)
 	}

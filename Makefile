@@ -7,6 +7,10 @@ VERSION        ?= 0.3.2
 MIN_MACOS      := 15.0
 SIGN_IDENTITY  ?= Developer ID Application: Dean Bailey (P56KW9H72P)
 NOTARY_PROFILE ?= my-wang
+# The team that signs the app, from SIGN_IDENTITY ("… (TEAMID)"); empty for
+# an ad-hoc build. The wired limit's helper and the app require each other
+# to be signed by it (TODO item 51).
+TEAM = $(shell echo '$(SIGN_IDENTITY)' | sed -n 's/.*(\([A-Z0-9]*\))$$/\1/p')
 # Shown in the About panel. UTC, so it doesn't depend on where it's built.
 BUILD_DATE     := $(shell date -u +%Y-%m-%d)
 
@@ -125,10 +129,17 @@ define bundle
 	rm -rf "$(1)"
 	mkdir -p "$(1)/Contents/MacOS" "$(1)/Contents/Helpers" "$(1)/Contents/Resources"
 	cp build/AppIcon.icns "$(1)/Contents/Resources/AppIcon.icns"
-	go build -trimpath -ldflags "-X main.bundleID=$(2) -X main.version=$(VERSION) -X main.buildDate=$(BUILD_DATE) $(EXTRA_LDFLAGS)" \
+	go build -trimpath -ldflags "-X main.bundleID=$(2) -X main.version=$(VERSION) -X main.buildDate=$(BUILD_DATE) -X main.teamID=$(TEAM) $(EXTRA_LDFLAGS)" \
 		-o "$(1)/Contents/MacOS/$(EXE)" ./cmd/llama-swap-launcher
 	CGO_ENABLED=0 go build -trimpath -ldflags "-X main.bundleID=$(2) -X main.version=$(VERSION)" \
 		-o "$(1)/Contents/Helpers/llsl" ./cmd/llsl
+	@# The GPU wired memory limit's helper, run as root by launchd once the
+	@# user approves it (TODO item 51), and its LaunchDaemon plist.
+	go build -trimpath -ldflags "-X main.client=$(2) -X main.team=$(TEAM)" \
+		-o "$(1)/Contents/Helpers/wired-limit" ./cmd/wired-limit
+	mkdir -p "$(1)/Contents/Library/LaunchDaemons"
+	sed -e 's/@BUNDLE_ID@/$(2)/g' packaging/wired-limit.plist.in > "$(1)/Contents/Library/LaunchDaemons/$(2).wired-limit.plist"
+	plutil -lint -s "$(1)/Contents/Library/LaunchDaemons/$(2).wired-limit.plist"
 	sed -e 's/@BUNDLE_ID@/$(2)/' -e 's/@APP_NAME@/$(3)/' -e 's/@EXE@/$(EXE)/' \
 		-e 's/@VERSION@/$(VERSION)/' -e 's/@MIN_MACOS@/$(MIN_MACOS)/' \
 		packaging/Info.plist.in > "$(1)/Contents/Info.plist"
@@ -147,6 +158,8 @@ define bundle
 	fi
 	codesign --force --options runtime $(4) --identifier $(2).llsl \
 		--sign "$(SIGN_IDENTITY)" "$(1)/Contents/Helpers/llsl"
+	codesign --force --options runtime $(4) --identifier $(2).wired-limit \
+		--sign "$(SIGN_IDENTITY)" "$(1)/Contents/Helpers/wired-limit"
 	codesign --force --options runtime $(4) \
 		$$([ -f "build/$(2).entitlements" ] && echo --entitlements "build/$(2).entitlements") \
 		--sign "$(SIGN_IDENTITY)" "$(1)"

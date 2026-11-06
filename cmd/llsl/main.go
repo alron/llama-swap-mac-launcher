@@ -439,6 +439,11 @@ func cleaned(s *control.Status) *control.Status {
 		u.Current, u.Latest, u.URL = clean(u.Current), clean(u.Latest), clean(u.URL)
 		c.Update = &u
 	}
+	if s.GPUMemory != nil {
+		g := *s.GPUMemory
+		g.Helper, g.Unavailable = clean(g.Helper), clean(g.Unavailable)
+		c.GPUMemory = &g
+	}
 	return &c
 }
 
@@ -508,6 +513,9 @@ func printStatus(w io.Writer, s *control.Status) {
 		}
 		fmt.Fprintf(w, "last fault: %s's GPU backend, %s%s\n", f.Model, f.At.Local().Format("2006-01-02 15:04:05"), auto)
 	}
+	if s.GPUMemory != nil {
+		fmt.Fprintln(w, "gpu memory: "+gpuMemory(s.GPUMemory))
+	}
 	switch {
 	case s.LogFile == "":
 		fmt.Fprintln(w, "log:        llama-swap's output isn't saved (llsl logs shows its last lines)")
@@ -520,6 +528,42 @@ func printStatus(w io.Writer, s *control.Status) {
 	if s.Update != nil {
 		printUpdate(w, s.Update)
 	}
+}
+
+// gpuMemory says what the GPU's memory limit is, and whether the app set
+// it (TODO item 51). Only Settings changes it.
+func gpuMemory(g *control.GPUMemory) string {
+	of := " of " + gb(g.TotalMB)
+	var line string
+	switch {
+	case g.LimitMB == 0 && g.DefaultMB > 0:
+		line = fmt.Sprintf("macOS's default, about %.0f GB%s", float64(g.DefaultMB)/1024, of)
+	case g.LimitMB == 0:
+		line = "macOS's default" + of
+	case g.SetByApp:
+		line = gb(g.LimitMB) + of + ", set by the app"
+	default:
+		line = gb(g.LimitMB) + of + ", not set by the app"
+	}
+	switch {
+	case g.PendingMB != 0:
+		line += "; " + gb(g.PendingMB) + " once the app's helper is allowed in System Settings (if it's allowed and nothing happens, Save in Settings again)"
+	case g.Helper == "requires approval":
+		line += "; the app's helper waits to be allowed in System Settings"
+	case g.Helper == "enabled" && !g.Running:
+		line += "; the app's helper is allowed but not running (Save in Settings starts it again)"
+	case g.Helper == "enabled" && g.StoredMB != 0 && g.StoredMB != g.LimitMB:
+		line += "; the app sets " + gb(g.StoredMB) + " at the next startup"
+	}
+	return line
+}
+
+// gb is a size in MB, in GB: whole, or to a tenth.
+func gb(mb int64) string {
+	if mb%1024 == 0 {
+		return fmt.Sprintf("%d GB", mb>>10)
+	}
+	return fmt.Sprintf("%.1f GB", float64(mb)/1024)
 }
 
 func modelState(m control.Model) string {

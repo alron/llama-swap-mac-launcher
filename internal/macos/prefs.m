@@ -413,7 +413,7 @@ static NSString *newKey(void) {
 // LSLPrefsController runs the rest of the dialog that calls back: the
 // Choose… buttons, Tab in the multi-line fields, and the popup choosing the
 // key the app uses.
-@interface LSLPrefsController : NSObject <NSTextViewDelegate>
+@interface LSLPrefsController : NSObject <NSTextViewDelegate, NSTextFieldDelegate>
 @property(strong) NSTextField *binary;
 @property(strong) NSTextField *config;
 @property(strong) NSTextField *launcherLog;
@@ -458,6 +458,14 @@ static NSString *newKey(void) {
 @property(strong) NSButton *notifyOnRestart;
 @property BOOL homebrewManaged;
 @property(copy) NSString *homebrewHelp;
+// The GPU's memory limit (TODO item 51): the box, the field in GB, and the
+// warning under it, which follows what's typed; usable is NO where the
+// limit can't be changed. The bounds are Go's, checked again on Save.
+@property(strong) NSButton *wiredBox;
+@property(strong) NSTextField *wiredField;
+@property(strong) NSTextField *wiredWarning;
+@property BOOL wiredUsable;
+@property NSInteger wiredTotal, wiredSuggested, wiredMin, wiredMax;
 @end
 
 @implementation LSLPrefsController
@@ -565,6 +573,37 @@ static NSString *newKey(void) {
 	self.restartOnUpdate.enabled = self.homebrewManaged;
 	self.notifyOnRestart.enabled = self.homebrewManaged && self.restartOnUpdate.state == NSControlStateValueOn &&
 	                               self.notifications.state == NSControlStateValueOn;
+}
+
+// wiredChanged greys out the limit's field unless the box is ticked, and
+// shows the warning that fits what's typed: outside the bounds (which Save
+// refuses), or leaving macOS less than the suggestion does.
+- (void)wiredChanged:(id)sender {
+	BOOL on = self.wiredUsable && self.wiredBox.state == NSControlStateValueOn;
+	self.wiredBox.enabled = self.wiredUsable;
+	self.wiredField.enabled = on;
+	NSString *text = [self.wiredField.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+	NSInteger gb = text.integerValue;
+	BOOL number = text.length > 0 && [text rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet].location == NSNotFound;
+	NSString *warning = @"";
+	if (on && number && (gb < self.wiredMin || gb > self.wiredMax)) {
+		warning = [NSString stringWithFormat:@"From %ld to %ld GB on this Mac: macOS always keeps at least %ld GB.",
+		                                     (long)self.wiredMin, (long)self.wiredMax, (long)(self.wiredTotal - self.wiredMax)];
+	} else if (on && number && gb > self.wiredSuggested) {
+		warning = [NSString stringWithFormat:@"That leaves macOS %ld GB, less than the %ld GB suggested for a %ld GB Mac: "
+		                                     @"with a big model loaded, the Mac may swap or stall.",
+		                                     (long)(self.wiredTotal - gb), (long)(self.wiredTotal - self.wiredSuggested), (long)self.wiredTotal];
+	} else if (on && !number) {
+		warning = @"A whole number of GB.";
+	}
+	self.wiredWarning.stringValue = warning;
+	self.wiredWarning.hidden = warning.length == 0;
+}
+// controlTextDidChange follows typing in the limit's field.
+- (void)controlTextDidChange:(NSNotification *)n {
+	if (n.object == self.wiredField) {
+		[self wiredChanged:nil];
+	}
 }
 
 // openHomebrewHelp opens the README's Homebrew instructions.
@@ -835,7 +874,7 @@ static NSView *secretTable(LSLSecretTable *t, NSString *nameTitle, NSString *val
 
 // underTitle puts box, a checkbox that depends on the one above it, under
 // that one's title, as macOS indents a setting that needs another.
-static NSView *underTitle(NSButton *box, NSButton *above) {
+static NSView *underTitle(NSView *box, NSButton *above) {
 	NSSize size = above.intrinsicContentSize;
 	NSRect title = [above.cell titleRectForBounds:NSMakeRect(0, 0, size.width, size.height)];
 	NSView *v = [[NSView alloc] init];
@@ -1699,11 +1738,49 @@ char *lsl_preferences(const char *json, int *result) {
 		        @[ c.notifyOnRestart ]);
 		NSView *notifyRow = underTitle(c.notifyOnRestart, c.restartOnUpdate);
 		[c restartChanged:nil];
+		// The GPU's memory limit (TODO item 51), last: the one setting here
+		// that reaches beyond the app. The line under it says what's in
+		// effect (from Go); the warning follows the field.
+		c.wiredUsable = [in[@"wiredUsable"] boolValue];
+		c.wiredTotal = [in[@"wiredTotalGB"] integerValue];
+		c.wiredSuggested = [in[@"wiredSuggestedGB"] integerValue];
+		c.wiredMin = [in[@"wiredMinGB"] integerValue];
+		c.wiredMax = [in[@"wiredMaxGB"] integerValue];
+		c.wiredBox = checkbox(@"Raise the GPU's memory limit", in[@"wiredLimit"]);
+		explain(@"Lets the GPU use more of the Mac's memory than macOS's default allows, so bigger models fit. The app's "
+		        @"helper, which you allow once in System Settings → General → Login Items & Extensions, sets "
+		        @"iogpu.wired_limit_mb as root, and again at every startup. Each change asks for Touch ID, an Apple Watch "
+		        @"or your password. Unticking returns the GPU to macOS's default at once, and removes the helper.",
+		        @[ c.wiredBox ]);
+		c.wiredBox.target = c;
+		c.wiredBox.action = @selector(wiredChanged:);
+		c.wiredField = field(string(in, @"wiredLimitGB"), [NSString stringWithFormat:@"%ld", (long)c.wiredSuggested], 52);
+		c.wiredField.delegate = c;
+		NSTextField *wiredLabel = label(@"Up to:");
+		NSTextField *wiredOf = label([NSString stringWithFormat:@"GB of %ld GB", (long)c.wiredTotal]);
+		explain([NSString stringWithFormat:@"In whole GB. The suggestion, %ld GB, leaves macOS %ld GB; macOS always keeps "
+		                                   @"at least %ld. More for the GPU leaves less for apps and macOS itself, which "
+		                                   @"can make the Mac swap or stall while a big model is loaded.",
+		                                   (long)c.wiredSuggested, (long)(c.wiredTotal - c.wiredSuggested), (long)(c.wiredTotal - c.wiredMax)],
+		        @[ wiredLabel, c.wiredField, wiredOf ]);
+		NSTextField *wiredState = hint(string(in, @"wiredState"));
+		// The longer of its texts, for sizing the tab; wiredChanged sets the
+		// real one, or hides it.
+		c.wiredWarning = hint([NSString stringWithFormat:@"That leaves macOS %ld GB, less than the %ld GB suggested for a %ld GB Mac: "
+		                                                 @"with a big model loaded, the Mac may swap or stall.",
+		                                                 (long)(c.wiredTotal - c.wiredMax), (long)(c.wiredTotal - c.wiredSuggested), (long)c.wiredTotal]);
+		NSStackView *wiredDetail = column(@[ row(@[ wiredLabel, c.wiredField, wiredOf ]), wiredState, c.wiredWarning ]);
+		wiredDetail.spacing = 4;
+		NSView *wiredRow = underTitle(wiredDetail, c.wiredBox);
+		[c wiredChanged:nil];
+
 		NSStackView *tweaks = column(@[ notificationsGroup, checkUpdates, restartRow, notifyRow, grid(@[ @[ clearLabel, clearAfter ] ]),
-		                                keepPaused, keepPausedAppRow ]);
+		                                keepPaused, keepPausedAppRow, c.wiredBox, wiredRow ]);
 		[tweaks setCustomSpacing:16 afterView:notificationsGroup];
 		[tweaks setCustomSpacing:16 afterView:checkUpdates];
 		[tweaks setCustomSpacing:16 afterView:notifyRow];
+		[tweaks setCustomSpacing:16 afterView:keepPausedAppRow];
+		[tweaks setCustomSpacing:4 afterView:c.wiredBox];
 
 		// Secrets: the API keys, then the secret environment variables.
 		c.keys = [[LSLSecretTable alloc] initWithRows:in[@"apiKeys"]];
@@ -1916,6 +1993,8 @@ char *lsl_preferences(const char *json, int *result) {
 			@"checkForUpdates" : checkUpdates.state == NSControlStateValueOn ? @YES : @NO,
 			@"restartOnUpdate" : c.restartOnUpdate.state == NSControlStateValueOn ? @YES : @NO,
 			@"notifyOnUpdateRestart" : c.notifyOnRestart.state == NSControlStateValueOn ? @YES : @NO,
+			@"wiredLimit" : c.wiredBox.state == NSControlStateValueOn ? @YES : @NO,
+			@"wiredLimitGB" : c.wiredField.stringValue,
 			@"tab" : tabs.selectedTabViewItem.identifier ?: @"general",
 		};
 		NSData *encoded = [NSJSONSerialization dataWithJSONObject:fields options:0 error:nil];

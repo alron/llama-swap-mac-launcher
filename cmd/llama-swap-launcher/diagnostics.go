@@ -24,6 +24,7 @@ import (
 	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
 	"github.com/alron/llama-swap-mac-launcher/internal/supervisor"
 	"github.com/alron/llama-swap-mac-launcher/internal/update"
+	"github.com/alron/llama-swap-mac-launcher/internal/wired"
 )
 
 // collectDiagnostics asks where to save the zip, writes it, and shows it
@@ -141,6 +142,12 @@ func (a *app) diagnosticFiles() ([]diagnostics.File, error) {
 		}
 	}
 	add("llama-swap output (in memory).txt", []byte(strings.Join(a.sup.RecentOutput(100), "\n")+"\n"))
+	// The wired limit helper's own log, root's but readable: its last
+	// lines, from its starts and the app's requests (TODO item 51).
+	if b, err := os.ReadFile(wired.LogPath(bundleID)); err == nil { // #nosec G304 -- the helper's log, from the bundle ID
+		lines := strings.SplitAfter(string(b), "\n")
+		add("logs/"+filepath.Base(wired.LogPath(bundleID)), []byte(strings.Join(lines[max(0, len(lines)-200):], "")))
+	}
 	return files, nil
 }
 
@@ -206,6 +213,31 @@ func (a *app) diagnosticSummary(p prefs.Prefs, secrets map[string]string) string
 		checks += "; Homebrew manages this copy"
 	}
 	line("Updates", "%s", checks)
+	// The GPU's memory limit (TODO item 51): now, the helper's, and macOS's.
+	g := a.wiredState()
+	gpu := fmt.Sprintf("iogpu.wired_limit_mb %d of %d MB; stored by the helper %d; helper %s", g.limitMB, g.totalMB, g.storedMB, helperStatusName(g.helper))
+	if g.defaultMB != 0 {
+		gpu += fmt.Sprintf("; macOS's default %d (Metal)", g.defaultMB)
+	}
+	if g.pendingMB != 0 {
+		gpu += fmt.Sprintf("; %d waiting for the helper's approval", g.pendingMB)
+	}
+	if g.storedErr != nil {
+		gpu += "; the stored limit can't be read: " + g.storedErr.Error()
+	}
+	if g.unusable != "" {
+		gpu += "; " + g.unusable
+	}
+	if g.helper == macos.LoginItemEnabled {
+		// Whether it's running and answering, as root, over XPC.
+		switch r, err := a.askHelper("info", 0); {
+		case err != nil:
+			gpu += "; the helper doesn't answer: " + err.Error()
+		default:
+			gpu += fmt.Sprintf("; the helper answers as uid %d, limit %d, stored %d", r.UID, r.Limit, r.Stored)
+		}
+	}
+	line("GPU memory", "%s", gpu)
 	if since, err := os.ReadFile(a.paths.PauseFile()); err == nil { // #nosec G304 -- the app's own state file
 		line("Pause kept", "since %s, for the app's next launch (Settings → Tweaks)", strings.TrimSpace(string(since)))
 	}

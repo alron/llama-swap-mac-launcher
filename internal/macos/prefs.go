@@ -67,6 +67,10 @@ type PreferencesForm struct {
 	// RestartOnUpdate and NotifyOnUpdateRestart are item 65's boxes.
 	RestartOnUpdate       bool `json:"restartOnUpdate"`
 	NotifyOnUpdateRestart bool `json:"notifyOnUpdateRestart"`
+	// WiredLimit is the GPU memory limit's box (TODO item 51), and
+	// WiredLimitGB its field, in whole GB, as typed.
+	WiredLimit   bool   `json:"wiredLimit"`
+	WiredLimitGB string `json:"wiredLimitGB"`
 	// Tab is the tab to show first, "general", "secrets", "peers",
 	// "security", "logs" or "tweaks", and comes back as the one showing when
 	// the dialog closed.
@@ -81,9 +85,19 @@ type PreferencesForm struct {
 	// to HomebrewHelp, the README's Homebrew instructions.
 	HomebrewManaged bool   `json:"homebrewManaged"`
 	HomebrewHelp    string `json:"homebrewHelp"`
-	File            string `json:"file"`      // the preferences file
-	Error           string `json:"error"`     // why the last Save didn't work
-	KeyPrefix       string `json:"keyPrefix"` // shown before each key's name
+	// The GPU memory limit's: whether it can be changed here (if not,
+	// WiredState says why, and the box is greyed out); the line under it,
+	// what's in effect; the Mac's memory; the suggested limit, warned
+	// above; and the bounds, which Go checks again on Save.
+	WiredUsable      bool   `json:"wiredUsable"`
+	WiredState       string `json:"wiredState"`
+	WiredTotalGB     int64  `json:"wiredTotalGB"`
+	WiredSuggestedGB int64  `json:"wiredSuggestedGB"`
+	WiredMinGB       int64  `json:"wiredMinGB"`
+	WiredMaxGB       int64  `json:"wiredMaxGB"`
+	File             string `json:"file"`      // the preferences file
+	Error            string `json:"error"`     // why the last Save didn't work
+	KeyPrefix        string `json:"keyPrefix"` // shown before each key's name
 	// The app's own config folder, shown greyed out with "Managed by the
 	// app".
 	ManagedConfigDir string `json:"managedConfigDir"`

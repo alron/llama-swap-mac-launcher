@@ -6,31 +6,9 @@ Items keep their numbers; a new one takes the next, from 66. When one is done, i
 
 ## Next release
 
-0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58 to 65, all done (table text centred in its row, a pause kept across the app's own restarts, macOS notifications for problems, Tab and Return in Settings' tables, paths shown with `~`, the windows asked for from the menu taking the focus, checking for updates, and restarting into an update; now in done.md), and item 51, below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
+0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58 to 65, all done (table text centred in its row, a pause kept across the app's own restarts, macOS notifications for problems, Tab and Return in Settings' tables, paths shown with `~`, the windows asked for from the menu taking the focus, checking for updates, and restarting into an update; now in done.md), and item 51, done too, with its security review below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
 
-51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; decided the same day, below; for 0.3.3, the last major feature of the 0.3 series). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
-    - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
-      - A daemon plist in the bundle's `Contents/Library/LaunchDaemons/`, registered with `[SMAppService daemonServiceWithPlistName:]`. Its `BundleProgram` names an executable inside the bundle, and `AssociatedBundleIdentifiers` makes System Settings show the app's name.
-      - The user approves it once, in System Settings → General → Login Items & Extensions (`SMAppService.openSystemSettingsLoginItems`); the status goes from `requiresApproval` to `enabled`.
-      - A helper executable: a static plist can't carry a value that changes, so a small, single-purpose program in the bundle, signed with the rest, runs as root.
-      - Dev and release builds get separate daemons (the label from the bundle ID, generated like `Info.plist`). Both enabled on one Mac would fight at boot.
-    - **How the value reaches root** (decided: A, "more secure, more Apple style"):
-      - **A:** the helper offers an XPC Mach service (`MachServices`) and accepts only the signed app, via `xpc_connection_set_peer_code_signing_requirement` (Team ID `P56KW9H72P` and the bundle ID). It keeps the value in a root-owned file, applies it on request, and again at every boot (`RunAtLoad`). The helper is Go, with a short C shim for XPC's blocks.
-      - **B:** the helper reads a value the app writes in a file the user owns. Simpler, but any program running as the user could change the limit, within the bounds below.
-    - **Safety** (decided by the maintainer): bounds checked in the app and again in the helper.
-      - Always at least 8 GB left for macOS: the helper refuses less, whatever it's sent.
-      - Refused outright on Macs with 32 GB or less.
-      - The default reserve, which Settings suggests (total minus reserve) and warns below: 8 GB for 36, 48 and 64 GB; 12 GB for 96; 16 for 128; 20 for 192; 24 for 256; 32 for 512. A size between takes the row below it (384 GB: 24).
-      - 0 means macOS's default. The helper retries for a few seconds when the setting doesn't exist yet early in boot, rather than the manual daemon's `sleep 10`.
-    - **Reading needs no root:** `iogpu.wired_limit_mb` and `hw.memsize` with `unix.Sysctl…`, as item 5 does. Whether Metal's `recommendedMaxWorkingSetSize` follows the setting, and so could show what 0 means on this Mac, is to check.
-    - **Turning it off** unregisters the daemon and sets 0 at once. Deleting the app leaves nothing in effect after the next reboot. Milestone 7's cask may need an `uninstall launchctl:` entry; check then.
-    - **The maintainer's own LaunchDaemon** and the app's would both apply at boot, in no set order: remove it once the app's works. The app could note a value it didn't set.
-    - **Also:** `llsl status` shows the limit, and only Settings changes it (with A, that's what keeps the change behind the signed app). Collect Diagnostics includes the current and stored values. The non-goal "Running as a launchd daemon or agent" is about the launcher itself; reword it so the helper doesn't read as a contradiction.
-    - **The first root code in the project:** a security review before it ships, as before 0.2.1 and 0.3.0.
-    - **Later:** with item 47's managed models, the app knows each model's files, and could warn when one won't fit under the limit.
-    - **First, a spike** (validate before building): register a minimal daemon from the dev build, with the maintainer approving it in System Settings. Check that it runs as root, whether the app must be in `/Applications`, that the XPC signature check accepts the dev app and refuses another program, and, after a reboot, whether the setting exists when the daemon starts.
-    - **Where:** a new **Tweaks** tab (the maintainer), for settings that are risky or fit no other tab; General has no room.
-    - **When:** a 0.3.x release, before item 47's 0.4 work, is fine. Before it ships, the maintainer has Claude Fable (at Max effort) and some local models with million-token context review it hard.
+Item 51, the GPU's wired memory limit, is built and verified (2026-11-05; now in [done.md](done.md)). **Before 0.3.3's release:** its security review, as before 0.2.1 and 0.3.0: the first root code in the project, so the maintainer has Claude Fable (at Max effort) and some local models with million-token context review it hard. Findings go here.
 
 ### Milestone 7
 
@@ -61,9 +39,9 @@ The Homebrew cask, from our own tap: the plans are in CLAUDE.md, "Signing, notar
   - **The tap's 0.3.3 change, committed in the tap but not pushed:** the cask no longer quits the app on upgrade (item 65 restarts it), only on uninstall, and its caveats and README say how upgrades go, from 0.3.2 too. It must reach GitHub with the 0.3.3 bump, which `make publish` pushes with it, not before: installs of 0.3.2 need the cask that quits it.
   - **The README's With Homebrew section**, under Installing, with `brew trust` (and item 65's Settings link to it).
   - **Telling a copy Homebrew manages** (items 64 and 65): `update.HomebrewManaged`, a link in `Caskroom/llama-swap-launcher/<version>/` that resolves to the app's own bundle; true for the maintainer's adopted copy.
+  - **Item 51's helper** (2026-11-05): no `uninstall launchctl:` or `uninstall delete:`, which also run on upgrade (only `signal:` is skipped there), so they'd unload the helper or erase its limit at every `brew upgrade`. Its root files are under `zap delete:`, and the caveats say to untick the limit before uninstalling; committed in the tap's clone, to be pushed with 0.3.3's bump.
 - **Still to do:**
   - **The tap made public** just before 0.3.3's release, by the maintainer.
-  - **Item 51's helper:** whether the cask needs `uninstall launchctl:` for its daemon.
   - **The real test:** the maintainer's own 0.3.2 is the cask's (2026-11-04: `brew trust --cask`, then `brew install --cask --adopt`, which kept the running app in place, untouched, and linked `llsl`; an install never quits the app, only an uninstall or an upgrade does). It's upgraded to 0.3.3 by `brew upgrade` once that's published: 0.3.2's cask quits it, and it's opened by hand once. The upgrade after, from 0.3.3, is the first where the app restarts itself, and the first check of Gatekeeper's inherited approval.
 
 ## Blocked

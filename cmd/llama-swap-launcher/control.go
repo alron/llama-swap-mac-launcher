@@ -402,6 +402,7 @@ func (a *app) controlStatus() *control.Status {
 	if u := a.updateInfo(); u.Available || u.Installed != "" {
 		s.Update = &u
 	}
+	s.GPUMemory = a.wiredState().control()
 	if st.State == supervisor.Running {
 		for _, m := range snap.Models {
 			if m.Loaded() {

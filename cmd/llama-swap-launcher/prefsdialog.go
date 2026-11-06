@@ -64,6 +64,8 @@ func (a *app) editPreferences(tab string) (restart bool) {
 	form.File = a.paths.Prefs()
 	form.NotificationsBlocked = macos.NotificationSettings().Blocked()
 	form.HomebrewManaged, form.HomebrewHelp = a.updates.homebrew, homebrewHelp
+	wiredNow := a.wiredState()
+	fillWiredForm(&form, wiredNow)
 
 	for {
 		edited, result, err := macos.Preferences(form)
@@ -78,6 +80,10 @@ func (a *app) editPreferences(tab string) (restart bool) {
 		if err == nil {
 			err = checkPaths(p, a.paths.ManagedConfigDir())
 		}
+		var wiredWanted wiredWant
+		if err == nil {
+			wiredWanted, err = wiredFrom(edited, wiredNow)
+		}
 		if err != nil {
 			form = edited
 			form.Error = sentence(err.Error())
@@ -91,6 +97,8 @@ func (a *app) editPreferences(tab string) (restart bool) {
 				form.Tab = "peers"
 			case errors.As(err, new(corsError)):
 				form.Tab = "security"
+			case errors.As(err, new(tweakError)):
+				form.Tab = "tweaks"
 			}
 			macos.Alert("These preferences can't be saved", form.Error)
 			continue
@@ -147,6 +155,9 @@ func (a *app) editPreferences(tab string) (restart bool) {
 			a.problem("A log couldn't be opened", err)
 		}
 		a.render() // the Logs submenu
+		// The GPU's memory limit last, once the rest is saved: it asks the
+		// person to confirm a change, and declining keeps the rest.
+		a.applyWired(wiredWanted)
 		return a.applyPrefs(old, p, !maps.Equal(oldSecrets, secrets))
 	}
 }

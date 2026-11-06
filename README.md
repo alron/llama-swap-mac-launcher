@@ -59,7 +59,8 @@ brew install mostlygeek/llama-swap/llama-swap
 into the new version once llama-swap has no requests in flight (see
 [Updates](#updates)). Upgrading from 0.3.2, the app quits instead, and you
 open it again once. `brew uninstall --zap` also removes its settings and
-logs.
+logs, and, with your password, the GPU memory limit's files. If you raised
+that limit, untick it before uninstalling (see [GPU memory](#gpu-memory)).
 
 If you installed the zip before, Homebrew can take over that copy in
 `/Applications`, when it's the same version as the cask:
@@ -202,8 +203,9 @@ Flags can be written with one dash or two.
 ### What each command does
 
 - **`status`** prints the app, llama-swap's state, pid, listen address and
-  version, the config and binary, the loaded models, its peers, and the log
-  file. A model whose GPU backend has failed shows as `GPU BACKEND FAILED`.
+  version, the config and binary, the loaded models, its peers, the log
+  file, and the GPU's memory limit (see [GPU memory](#gpu-memory)). A model
+  whose GPU backend has failed shows as `GPU BACKEND FAILED`.
   Each peer (another llama-swap in the config's `peers:`) is checked through
   llama-swap, the way requests reach it, and shows as `ok` or why not, such
   as `connection refused`. "No route to host" usually means macOS is
@@ -293,7 +295,8 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
     "peers": [
       { "id": "studio", "ok": true },
       { "id": "laptop", "ok": false, "error": "HTTP 502: peer proxy error: dial tcp 192.168.1.20:8080: connect: connection refused" }
-    ]
+    ],
+    "gpuMemory": { "totalMB": 98304, "limitMB": 86016, "storedMB": 86016, "helper": "enabled", "running": true, "setByApp": true }
   }
 }
 ```
@@ -341,6 +344,16 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
   restarted into yet; `update` is there for that too. `llsl check-update
   -json` answers with the same, whatever it found, under `update` rather
   than in `status`.
+- `gpuMemory` is the GPU's memory limit (see [GPU memory](#gpu-memory)):
+  `totalMB`, the Mac's memory; `limitMB`, the limit now, where `0` is
+  macOS's default, which `defaultMB` is when the app could read it (only
+  while the limit was 0 when the app opened); `storedMB`, the limit the
+  app's helper sets at every startup; `helper`, the helper's status (`not
+  registered`, `enabled`, `requires approval` or `not found`), and
+  `running`, whether it answers; `pendingMB`, a limit waiting for the
+  helper to be allowed; `setByApp`, whether the limit now is the helper's;
+  and `unavailable`, why the app can't change it here, on a Mac with 32 GB
+  or less, say. Only Settings changes it.
 - On failure, `ok` is `false`, and `code` and `error` say why. `code` is one
   of `usage`, `invalid_config`, `start_failed`, `load_failed`, `timeout`,
   `busy`, `paused` or `error`, or `not_running` from `status` when the app
@@ -391,8 +404,9 @@ problems come as macOS notifications (see [Notifications](#notifications)),
 whether the app checks daily for a newer release, and restarts into one
 Homebrew installs (see [Updates](#updates)),
 how long a copied secret stays on the clipboard (see [API keys](#api-keys)),
-and whether a pause outlasts a restart of llama-swap, or of the app (see
-[The menu](#the-menu)).
+whether a pause outlasts a restart of llama-swap, or of the app (see
+[The menu](#the-menu)), and the GPU's memory limit (see
+[GPU memory](#gpu-memory)).
 Rest the pointer on a setting, or its label, for what it's for;
 warnings stay on screen. Save checks
 them first: if something's wrong, an alert says what, and the dialog comes back
@@ -766,6 +780,51 @@ Terminal, say), the old version keeps running until you restart it: the
 menu offers **Restart into Version *x.y.z***, and a notification, clicked,
 does the same.
 
+### GPU memory
+
+On Apple Silicon the GPU shares the Mac's memory, and macOS lets it use
+only part of it; Settings shows how much on your Mac. A bigger model fits
+if the GPU may use more. `sudo sysctl iogpu.wired_limit_mb=…` raises the
+limit until the Mac restarts; **Raise the GPU's memory limit** (Settings… →
+Tweaks) does it for you, and again at every startup. Set it in whole GB.
+
+- **A helper that runs as root.** The setting needs root, so the app
+  carries a small helper that macOS runs as root once you allow it. The
+  first time you tick the box and Save, macOS asks: System Settings opens
+  at General → Login Items & Extensions, where you turn on the app under
+  **Allow in the Background**, with an administrator's password. The app
+  waits up to 5 minutes, and sets the limit once it's allowed. The helper
+  only ever sets this one limit, answers only the app (signed by the same
+  developer, which the app checks of the helper in turn), and sets the
+  limit again at every startup. It keeps the limit in `/Library/Application
+  Support/com.my-wang.llama-swap-launcher.wired-limit/` and logs to
+  `/Library/Logs/com.my-wang.llama-swap-launcher.wired-limit.log`.
+- **Every change is confirmed** with Touch ID, an Apple Watch or your
+  password, turning it off included. Declined, the limit stays as it was,
+  and the rest of what you saved is kept. The limit isn't in the
+  preferences file, and `llsl` only shows it, so nothing running as you
+  can change it without that confirmation.
+- **Bounds:** at least 8 GB, always leaving macOS 8 GB or more, and only on
+  Macs with more than 32 GB. Settings suggests leaving more, and warns
+  below that: 8 GB on Macs up to 64 GB, 12 on 96 GB, 16 on 128, 20 on 192,
+  24 on 256, 32 on 512. With a big model loaded, a Mac left too little
+  memory swaps or stalls.
+- **Turning it off** (untick, Save, confirm) returns the GPU to macOS's
+  default at once and removes the helper. macOS still lists the app under
+  Allow in the Background, switched on: that's your permission,
+  remembered, so turning the limit on again doesn't ask. Untick it before
+  you delete the app, so the helper goes with it; `brew uninstall --zap`
+  deletes its files.
+- **Another LaunchDaemon setting the limit,** one of your own say: Settings
+  notes a limit the app didn't set. Remove the other before ticking the
+  box, so they don't both set it at startup.
+- **Don't switch it off in System Settings.** macOS quits an app whose
+  background item you turn off there, so the app quits, and llama-swap
+  with it; untick the box in Settings instead. Switched back on, macOS
+  often doesn't start the helper. If Settings still says it's waiting a few
+  seconds later, Save again: the app registers the helper again, which
+  starts it. System Settings' list flickers meanwhile.
+
 ## Files
 
 | What | Where |
@@ -773,6 +832,7 @@ does the same.
 | The launcher log | `~/Library/Logs/com.my-wang.llama-swap-launcher/launcher.log` by default; see [Logs](#logs). |
 | llama-swap's own log | `~/Library/Logs/com.my-wang.llama-swap-launcher/llama-swap.log` by default, when its output has a file of its own. |
 | Preferences, control socket, pidfile, the last update check | `~/Library/Application Support/com.my-wang.llama-swap-launcher/` |
+| The GPU memory limit's helper | Its limit in `/Library/Application Support/com.my-wang.llama-swap-launcher.wired-limit/`, its log in `/Library/Logs/com.my-wang.llama-swap-launcher.wired-limit.log`; root's (see [GPU memory](#gpu-memory)). |
 | API keys and secret variables | Your login keychain, as "Llama Swap Launcher: llama-swap API key LLSL_…" and "Llama Swap Launcher: secret environment variable …" (Keychain Access can show and delete them). |
 
 ## Good to know
@@ -822,10 +882,11 @@ does the same.
 is suggested), with what's needed to look into a problem:
 
 - a summary: the app's and llama-swap's versions, macOS, the Mac's model,
-  chip and memory, the state, and how the app is set up;
+  chip and memory, the state, how the app is set up, and the GPU's memory
+  limit, with whether its helper answers;
 - the status, as `llsl status -json` gives it;
 - the preferences, llama-swap's config, and the logs (each current file and
-  the one before it);
+  the one before it, and the GPU memory helper's last 200 lines);
 - llama-swap's last 100 lines of output, from the app's memory.
 
 Secrets are redacted first, in every file: the values of your API keys and
@@ -858,6 +919,13 @@ What the app trusts, and what it doesn't protect against:
   sandbox the agent runs in. Give an agent that only if you'd let it run
   commands. `llsl`'s output also carries text from elsewhere (request
   paths in log lines, a peer's error), which an agent reads as input.
+- **The GPU memory helper runs as root,** once you've allowed it (see
+  [GPU memory](#gpu-memory)). It does one thing: set
+  `iogpu.wired_limit_mb`, within the bounds, which it checks again
+  whatever it's sent, and again at startup. It answers only code signed as
+  the app by the same developer, and the app accepts answers only from the
+  helper signed so. Each change asks for Touch ID, an Apple Watch or your
+  password, so it takes a person at the Mac.
 - **The keychain protects keys at rest:** in files, backups and diagnostics
   they're never in plain text. While llama-swap runs, they're in its
   environment, where your own programs can read them.
