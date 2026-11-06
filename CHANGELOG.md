@@ -3,6 +3,15 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
+## Unreleased
+
+- **Raise the GPU's memory limit** couldn't be turned on in 0.3.3: on a
+  Mac where it had never been used, Settings said "The app's helper is
+  missing from it: install the app again" and greyed the box out, though
+  the helper was there. macOS reports a helper that has never been set up
+  as not found, which the app took for missing. Now it sets the helper up
+  the first time you tick the box and Save.
+
 ## 0.3.3 (2026-11-06)
 
 - **Raise the GPU's memory limit** (Settings → Tweaks, off by default), so

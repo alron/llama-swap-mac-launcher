@@ -170,3 +170,23 @@ func stalledState() wiredState {
 	s.running = false
 	return s
 }
+
+// A helper never registered is reported as not found (no record of it
+// yet): that's not registered, unless its plist really is missing.
+func TestNeverRegistered(t *testing.T) {
+	for _, tt := range []struct {
+		st       macos.LoginItemStatus
+		inBundle bool
+		want     macos.LoginItemStatus
+	}{
+		{macos.LoginItemNotFound, true, macos.LoginItemNotRegistered},
+		{macos.LoginItemNotFound, false, macos.LoginItemNotFound},
+		{macos.LoginItemEnabled, true, macos.LoginItemEnabled},
+		{macos.LoginItemRequiresApproval, true, macos.LoginItemRequiresApproval},
+		{macos.LoginItemNotRegistered, false, macos.LoginItemNotRegistered},
+	} {
+		if got := neverRegistered(tt.st, tt.inBundle); got != tt.want {
+			t.Errorf("%d, in the bundle %v: %d, want %d", tt.st, tt.inBundle, got, tt.want)
+		}
+	}
+}

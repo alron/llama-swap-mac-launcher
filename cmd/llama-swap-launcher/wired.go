@@ -17,6 +17,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,13 +125,34 @@ func (w *wiredFlow) defaultMB() int64 {
 // Asking costs one local XPC round trip, and fails at once when launchd
 // has no such job.
 func (a *app) helperState() (macos.LoginItemStatus, bool) {
-	st := macos.HelperStatus(wired.Plist(bundleID))
+	st := neverRegistered(macos.HelperStatus(wired.Plist(bundleID)), helperInBundle())
 	if (st == macos.LoginItemEnabled || st == macos.LoginItemRequiresApproval) && teamID != "" {
 		if r, err := a.askHelper("info", 0); err == nil && r.UID == 0 {
 			return macos.LoginItemEnabled, true
 		}
 	}
 	return st, false
+}
+
+// neverRegistered corrects the status of a helper that has never been
+// registered: macOS reports it as not found, since Background Task
+// Management has no record of it yet ("record not found": 0.3.3, freshly
+// installed, 2026-11-06), not as not registered. Read as missing, that
+// greyed the setting out on every new install, so it could never be
+// turned on. Only a plist missing from the bundle (inBundle false) makes
+// the helper really missing.
+func neverRegistered(st macos.LoginItemStatus, inBundle bool) macos.LoginItemStatus {
+	if st == macos.LoginItemNotFound && inBundle {
+		return macos.LoginItemNotRegistered
+	}
+	return st
+}
+
+// helperInBundle says whether the helper's plist is in the app's bundle,
+// where SMAppService looks for it.
+func helperInBundle() bool {
+	fi, err := os.Stat(filepath.Join(bundlePath(), "Contents", "Library", "LaunchDaemons", wired.Plist(bundleID)))
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // wiredState reads the limit, the helper's, and what the app is waiting
