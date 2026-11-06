@@ -16,6 +16,8 @@ REL_APP := build/release/$(APP_NAME).app
 REL_ZIP := build/release/Llama-Swap-Launcher-$(VERSION).zip
 # Developer ID provisioning profiles, named <bundle id>.provisionprofile.
 PROFILES ?= packaging/profiles
+# The Homebrew tap's clone, which make publish updates (milestone 7).
+TAP ?= ../homebrew-llama-swap-mac-launcher
 # EXTRA_LDFLAGS adds to the app's link flags, for test builds only: say,
 # -X github.com/alron/llama-swap-mac-launcher/internal/update.Caskroom=<dir>
 # to try a restart on update (TODO item 65) without Homebrew.
@@ -29,7 +31,7 @@ export CGO_ENABLED := 1
 export CGO_CFLAGS  := -O2 -g -mmacosx-version-min=$(MIN_MACOS)
 export CGO_LDFLAGS := -mmacosx-version-min=$(MIN_MACOS)
 
-.PHONY: dev run release publish icons test vet lint sec vuln clean
+.PHONY: dev run release publish tap icons test vet lint sec vuln clean
 
 # dev builds "Llama Swap Launcher Dev.app": the .dev bundle ID, signed with
 # the Developer ID certificate, not notarized. The .app path contains
@@ -80,11 +82,19 @@ release: build/AppIcon.icns
 	shasum -a 256 "$(REL_ZIP)"
 
 # publish puts the release built above on GitHub, with CHANGELOG.md's notes
-# for this version. packaging/publish.sh says what it checks first; with
-# DRY_RUN=1 it stops after the checks and shows the notes. The signing keys
-# never leave this Mac, so releases are built here, not in GitHub Actions.
+# for this version, then points the Homebrew cask in the tap at it (tap).
+# packaging/publish.sh and tap.sh say what they check first; with DRY_RUN=1
+# they stop after the checks and show the notes and the cask's change. The
+# signing keys never leave this Mac, so releases are built here, not in
+# GitHub Actions.
 publish:
 	DRY_RUN="$(DRY_RUN)" packaging/publish.sh "$(VERSION)" "$(REL_ZIP)" "$(APP_NAME)" "$(EXE)"
+	DRY_RUN="$(DRY_RUN)" packaging/tap.sh "$(VERSION)" "$(REL_ZIP)" "$(TAP)"
+
+# tap points the cask at this version's release, which must be on GitHub:
+# what publish does last, again, if that step failed (milestone 7).
+tap:
+	DRY_RUN="$(DRY_RUN)" packaging/tap.sh "$(VERSION)" "$(REL_ZIP)" "$(TAP)"
 
 test:
 	go test ./...

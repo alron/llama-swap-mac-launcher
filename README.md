@@ -49,15 +49,24 @@ The app comes from the project's own tap
 Homebrew loads a cask from a tap other than its own only once you've
 trusted it, and the first line trusts this cask alone. It installs the app
 in `/Applications` and links `llsl` into Homebrew's `bin`, so it's on your
-`PATH`. llama-swap isn't included: `brew install
-mostlygeek/llama-swap/llama-swap`, for instance.
+`PATH`. llama-swap isn't included; install it separately, for instance:
+
+```sh
+brew install mostlygeek/llama-swap/llama-swap
+```
 
 `brew upgrade` replaces the app while it runs, and the app restarts itself
 into the new version once llama-swap has no requests in flight (see
 [Updates](#updates)). Upgrading from 0.3.2, the app quits instead, and you
 open it again once. `brew uninstall --zap` also removes its settings and
-logs. If you installed the zip before, `brew install --cask --adopt …` takes
-over that copy, when it's the same version as the cask.
+logs.
+
+If you installed the zip before, Homebrew can take over that copy in
+`/Applications`, when it's the same version as the cask:
+
+```sh
+brew install --cask --adopt alron/llama-swap-mac-launcher/llama-swap-launcher
+```
 
 Then follow steps 2 and 3 below.
 
