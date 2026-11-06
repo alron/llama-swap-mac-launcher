@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,5 +177,61 @@ func TestPrintStatusEscapes(t *testing.T) {
 	}
 	if !strings.Contains(got, `\x1b[2J`) || !strings.Contains(got, `fine\x0allama-swap`) {
 		t.Errorf("not shown escaped:\n%q", got)
+	}
+}
+
+// check-update asks the app and exits 9 when a newer release is out, 0 when
+// not, 1 when the check failed, and 3 with no app (TODO item 64).
+func TestCheckUpdate(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "lsl") // t.TempDir() can be too long for a socket path
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	p := paths.Paths{SupportDir: dir}
+	run := func(args ...string) (int, string, string) {
+		var out, errOut bytes.Buffer
+		code := (&cli{id: "test", paths: p, stdout: &out, stderr: &errOut}).checkUpdate(args)
+		return code, out.String(), errOut.String()
+	}
+	if code, _, _ := run(); code != exitNoApp {
+		t.Errorf("no app: exit %d", code)
+	}
+
+	l, err := control.Listen(p.Socket())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	var answer control.Response
+	go control.Serve(l, func(ctx context.Context, req control.Request) control.Response {
+		if req.Cmd != "check-update" {
+			return control.Failure(control.CodeUsage, errors.New("not check-update"))
+		}
+		return answer
+	})
+
+	answer = control.Response{OK: true, Update: &control.Update{Current: "0.3.3", Latest: "0.3.4", Available: true,
+		URL: "https://github.com/alron/llama-swap-mac-launcher/releases/tag/v0.3.4", Homebrew: true}}
+	code, out, _ := run()
+	if code != exitUpdate || !strings.Contains(out, "0.3.4 is available (this is 0.3.3)") || !strings.Contains(out, "brew upgrade") {
+		t.Errorf("newer: exit %d, %q", code, out)
+	}
+	code, out, _ = run("-json")
+	if code != exitUpdate || !strings.Contains(out, `"available": true`) {
+		t.Errorf("newer, JSON: exit %d, %q", code, out)
+	}
+
+	answer = control.Response{OK: true, Update: &control.Update{Current: "0.3.4", Latest: "0.3.4"}}
+	if code, out, _ := run(); code != exitOK || !strings.Contains(out, "0.3.4 is the newest release") || strings.Contains(out, "brew") {
+		t.Errorf("up to date: exit %d, %q", code, out)
+	}
+
+	answer = control.Failure(control.CodeError, errors.New("couldn't check for updates: GitHub answered HTTP 403"))
+	if code, _, errOut := run(); code != exitFailed || !strings.Contains(errOut, "403") {
+		t.Errorf("failed: exit %d, %q", code, errOut)
+	}
+	if code, _, _ := run("extra"); code != exitUsage {
+		t.Errorf("an argument: exit %d", code)
 	}
 }

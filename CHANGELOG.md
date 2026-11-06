@@ -5,6 +5,14 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **Check for Updates…** in the menu, and `llsl check-update` (exit 9 when
+  a newer release is out), ask GitHub whether a newer release of the app is
+  out; **Check for updates daily** (Settings → Tweaks, off by default) asks
+  once a day, with one notification per release. A newer release shows in
+  the menu and in `llsl status`, with a link to its page; the app never
+  downloads or installs anything. If Homebrew installed the app, it says to
+  update with `brew upgrade`. See
+  [Updates](https://github.com/alron/llama-swap-mac-launcher#updates).
 - **macOS notifications for problems** (Settings → Tweaks, **Native
   notifications**, on by default). llama-swap stopping with a problem or not
   responding, and a model's GPU backend failing, are time-sensitive, so they

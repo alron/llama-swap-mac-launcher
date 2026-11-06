@@ -60,8 +60,10 @@ type PreferencesForm struct {
 	ClipboardSeconds       int  `json:"clipboardSeconds"`
 	KeepPausedOnRestart    bool `json:"keepPausedOnRestart"`
 	KeepPausedOnAppRestart bool `json:"keepPausedOnAppRestart"`
-	// Notifications is the Native notifications box (TODO item 60).
-	Notifications bool `json:"notifications"`
+	// Notifications is the Native notifications box (TODO item 60), and
+	// CheckForUpdates the daily update check's (item 64).
+	Notifications   bool `json:"notifications"`
+	CheckForUpdates bool `json:"checkForUpdates"`
 	// Tab is the tab to show first, "general", "secrets", "peers",
 	// "security", "logs" or "tweaks", and comes back as the one showing when
 	// the dialog closed.

@@ -47,6 +47,8 @@ commands:
   logs    [-n N] [-f] [-launcher]
                            print the end of llama-swap's log, or follow it;
                            with -launcher, the launcher log
+  check-update             ask GitHub, through the app, whether a newer
+                           release of Llama Swap Launcher is out
 
 flags:
   -wait      return once llama-swap is ready, or has failed
@@ -67,6 +69,7 @@ exit status:
   7  busy: llama-swap is serving requests, so nothing was done; see -force
   8  paused: for status, inference is paused; for -load, it couldn't load
      because of that
+  9  for check-update, a newer release is out
 `
 
 const (
@@ -79,6 +82,7 @@ const (
 	exitTimeout
 	exitBusy
 	exitPaused
+	exitUpdate
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -112,6 +116,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return c.unload(args)
 	case "logs":
 		return c.logs(args)
+	case "check-update":
+		return c.checkUpdate(args)
 	}
 	fmt.Fprintf(stderr, "llsl: unknown command %q\n\n%s", cmd, usage)
 	return exitUsage
@@ -160,6 +166,57 @@ func (c *cli) simple(cmd string, args []string) int {
 		return exitNoApp
 	}
 	return c.report(resp, err, *asJSON, cmd == "status")
+}
+
+// checkUpdate asks the app to check GitHub for a newer release now, as
+// the menu's Check for Updates… does (TODO item 64). It never launches the
+// app: the app makes the request, with its own User-Agent, and keeps what
+// it found.
+func (c *cli) checkUpdate(args []string) int {
+	fs := c.flags("check-update")
+	asJSON := fs.Bool("json", false, "")
+	if fs.Parse(args) != nil || fs.NArg() > 0 {
+		return exitUsage
+	}
+	resp, err := c.call(control.Request{Cmd: "check-update"}, 45*time.Second)
+	if err != nil {
+		fmt.Fprintln(c.stderr, "llsl:", err)
+		if errors.Is(err, control.ErrNotRunning) || errors.Is(err, errOldApp) {
+			return exitNoApp
+		}
+		return exitFailed
+	}
+	if *asJSON {
+		c.printJSON(resp)
+	}
+	if !resp.OK {
+		fmt.Fprintln(c.stderr, "llsl:", clean(resp.Error))
+		return exitFailed
+	}
+	if resp.Update == nil {
+		fmt.Fprintln(c.stderr, "llsl: the app didn't say what it found; it may be older than llsl")
+		return exitFailed
+	}
+	if !*asJSON {
+		printUpdate(c.stdout, resp.Update)
+	}
+	if resp.Update.Available {
+		return exitUpdate
+	}
+	return exitOK
+}
+
+// printUpdate says what a check found, as status's update line does.
+func printUpdate(w io.Writer, u *control.Update) {
+	latest, current := clean(u.Latest), clean(u.Current)
+	if !u.Available {
+		fmt.Fprintf(w, "update:     none; %s is the newest release (this is %s)\n", latest, current)
+		return
+	}
+	fmt.Fprintf(w, "update:     %s is available (this is %s): %s\n", latest, current, clean(u.URL))
+	if u.Homebrew {
+		fmt.Fprintln(w, "            update with: brew upgrade --cask llama-swap-launcher")
+	}
 }
 
 func (c *cli) start(cmd string, args []string) int {
@@ -373,6 +430,11 @@ func cleaned(s *control.Status) *control.Status {
 		f.Model = clean(f.Model)
 		c.LastGPUFault = &f
 	}
+	if s.Update != nil {
+		u := *s.Update
+		u.Current, u.Latest, u.URL = clean(u.Current), clean(u.Latest), clean(u.URL)
+		c.Update = &u
+	}
 	return &c
 }
 
@@ -450,6 +512,9 @@ func printStatus(w io.Writer, s *control.Status) {
 	}
 	if s.LauncherLog != "" {
 		fmt.Fprintln(w, "launcher:   "+s.LauncherLog)
+	}
+	if s.Update != nil {
+		printUpdate(w, s.Update)
 	}
 }
 

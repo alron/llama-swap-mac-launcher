@@ -140,6 +140,7 @@ func (a *app) editPreferences(tab string) (restart bool) {
 		a.recordPause() // kept on disk, or not, as the Tweaks tab now says
 		a.mu.Unlock()
 		a.notificationsSaved(old.Notifies(), p.Notifies())
+		a.updatesChanged() // a daily check just turned on is due at once
 		// The logs move at once; the writers switch between lines.
 		if err := a.logs.apply(p); err != nil {
 			a.problem("A log couldn't be opened", err)
@@ -326,6 +327,7 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		KeepPausedOnRestart:    p.KeepsPause(),
 		KeepPausedOnAppRestart: p.KeepPausedOnAppRestart,
 		Notifications:          p.Notifies(),
+		CheckForUpdates:        p.CheckForUpdates,
 		KeyPrefix:              prefs.KeyPrefix,
 		Tab:                    "general",
 	}
@@ -489,6 +491,7 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 		LlamaSwapLogFile:          strings.TrimSpace(f.LlamaSwapLogFile),
 		// Kept as ticked while it's greyed out, with the box above off.
 		KeepPausedOnAppRestart: f.KeepPausedOnAppRestart,
+		CheckForUpdates:        f.CheckForUpdates,
 	}
 	// The default isn't written, so an older app can still read the file.
 	if s := f.ClipboardSeconds; s != prefs.DefaultClipboardSeconds {

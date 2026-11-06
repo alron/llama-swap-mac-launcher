@@ -1639,8 +1639,17 @@ char *lsl_preferences(const char *json, int *result) {
 		// The box and its hint together, so a hidden hint leaves no gap.
 		NSStackView *notificationsGroup = column(@[ c.notifications, c.notificationsHint ]);
 		notificationsGroup.spacing = 4;
-		NSStackView *tweaks = column(@[ notificationsGroup, grid(@[ @[ clearLabel, clearAfter ] ]), keepPaused, keepPausedAppRow ]);
+		// The daily update check (TODO item 64), off by default.
+		NSButton *checkUpdates = checkbox(@"Check for updates daily", in[@"checkForUpdates"]);
+		explain(@"Once a day, the app asks GitHub whether a newer release of Llama Swap Launcher is out, and if one is, "
+		        @"says so in the menu and with a notification, linking to its release page. It never downloads or "
+		        @"installs anything. A check is one request to GitHub's API, naming the app and its version, from your "
+		        @"Mac's address. Check for Updates… in the menu checks at once, ticked or not.",
+		        @[ checkUpdates ]);
+		NSStackView *tweaks = column(@[ notificationsGroup, checkUpdates, grid(@[ @[ clearLabel, clearAfter ] ]), keepPaused,
+		                                keepPausedAppRow ]);
 		[tweaks setCustomSpacing:16 afterView:notificationsGroup];
+		[tweaks setCustomSpacing:16 afterView:checkUpdates];
 
 		// Secrets: the API keys, then the secret environment variables.
 		c.keys = [[LSLSecretTable alloc] initWithRows:in[@"apiKeys"]];
@@ -1850,6 +1859,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@"keepPausedOnRestart" : keepPaused.state == NSControlStateValueOn ? @YES : @NO,
 			@"keepPausedOnAppRestart" : keepPausedApp.state == NSControlStateValueOn ? @YES : @NO,
 			@"notifications" : c.notifications.state == NSControlStateValueOn ? @YES : @NO,
+			@"checkForUpdates" : checkUpdates.state == NSControlStateValueOn ? @YES : @NO,
 			@"tab" : tabs.selectedTabViewItem.identifier ?: @"general",
 		};
 		NSData *encoded = [NSJSONSerialization dataWithJSONObject:fields options:0 error:nil];

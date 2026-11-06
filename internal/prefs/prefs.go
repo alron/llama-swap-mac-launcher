@@ -121,6 +121,10 @@ type Prefs struct {
 	// means on, which isn't written, so an older app can still read the
 	// file.
 	Notifications *bool `json:"notifications,omitempty"`
+	// CheckForUpdates has the app ask GitHub once a day for a newer
+	// release (TODO item 64). Off, the default, isn't written, so an older
+	// app can still read the file.
+	CheckForUpdates bool `json:"checkForUpdates,omitempty"`
 }
 
 // Notifies is Notifications, on unless it's set off.

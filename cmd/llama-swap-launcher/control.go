@@ -60,6 +60,15 @@ func (a *app) handle(ctx context.Context, req control.Request) control.Response 
 	case "output":
 		// For llsl logs when llama-swap's output isn't saved.
 		return control.Response{OK: true, Output: a.recentOutput(min(max(req.Lines, 1), 100))}
+	case "check-update":
+		// llsl check-update: at once, as the menu's Check for Updates… does.
+		u, err := a.checkForUpdate(true)
+		if err != nil {
+			resp := control.Failure(control.CodeError, fmt.Errorf("couldn't check for updates: %w", err))
+			resp.Update = &u
+			return resp
+		}
+		return control.Response{OK: true, Update: &u}
 	default:
 		err = codeError{control.CodeUsage, fmt.Errorf("unknown command %q", req.Cmd)}
 	}
@@ -390,6 +399,9 @@ func (a *app) controlStatus() *control.Status {
 	s.LastGPUFault = a.lastFault
 	a.mu.Unlock()
 	s.Warning = openWarning(p, st, snap)
+	if u := a.updateInfo(); u.Available {
+		s.Update = &u
+	}
 	if st.State == supervisor.Running {
 		for _, m := range snap.Models {
 			if m.Loaded() {

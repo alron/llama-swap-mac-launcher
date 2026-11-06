@@ -6,7 +6,7 @@ Items keep their numbers; a new one takes the next, from 66. When one is done, i
 
 ## Next release
 
-0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58 to 63, all done (table text centred in its row, a pause kept across the app's own restarts, macOS notifications for problems, Tab and Return in Settings' tables, paths shown with `~`, and the windows asked for from the menu taking the focus; now in done.md), and items 51, 64 and 65, below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
+0.3.2 was published on 2026-11-01 with items 52 and 54 to 57 (now in [done.md](done.md)). The next, 0.3.3, is the rest of the 0.3 series, in one release (the maintainer, 2026-11-03): items 58 to 64, all done (table text centred in its row, a pause kept across the app's own restarts, macOS notifications for problems, Tab and Return in Settings' tables, paths shown with `~`, the windows asked for from the menu taking the focus, and checking for updates; now in done.md), and items 51 and 65, below. Milestone 7 ([below](#milestone-7)) comes first, so the release tests updating the tap.
 
 51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; not started; decided the same day, below; for 0.3.3, the last major feature of the 0.3 series). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
@@ -31,29 +31,6 @@ Items keep their numbers; a new one takes the next, from 66. When one is done, i
     - **First, a spike** (validate before building): register a minimal daemon from the dev build, with the maintainer approving it in System Settings. Check that it runs as root, whether the app must be in `/Applications`, that the XPC signature check accepts the dev app and refuses another program, and, after a reboot, whether the setting exists when the daemon starts.
     - **Where:** a new **Tweaks** tab (the maintainer), for settings that are risky or fit no other tab; General has no room.
     - **When:** a 0.3.x release, before item 47's 0.4 work, is fine. Before it ships, the maintainer has Claude Fable (at Max effort) and some local models with million-token context review it hard.
-
-<!-- Markdown numbers a list from its first item: this one starts its own, so it shows its number. -->
-
-64. **Check for updates** (the maintainer, 2026-11-04; not started; for 0.3.3, after item 60, whose notifications it uses; the maintainer isn't particular about the release). Once a day the app asks GitHub for the latest release, and when it's newer than the running app, tells the user, with a link to its page.
-    - **A Tweaks checkbox, off by default** (the maintainer), worded something like **Check for updates daily**: `checkForUpdates` in `prefs.json`, written only when it's on, so an older app can still read a file saved with the default. Its tooltip says what a check sends: a request to GitHub naming the app and its version, from the Mac's address.
-    - **The check:** `GET https://api.github.com/repos/alron/llama-swap-mac-launcher/releases/latest`, the newest release that isn't a draft or a pre-release, whose `tag_name` is `v` and the version (release titles and tags are the same, `v0.3.3`).
-      - GitHub's API wants a User-Agent: the app's own, `llama-swap-launcher/<version>`, as for its other requests (item 55), with nothing personal in it.
-      - Without a token GitHub allows 60 requests an hour from an address; one a day is nowhere near it.
-      - The other way, to weigh when building: `https://github.com/alron/llama-swap-mac-launcher/releases/latest` redirects to the newest release's page, and the redirect alone names the tag, with no API and no JSON.
-      - It's a connection to the internet, not the LAN, so Local Network privacy doesn't apply; a firewall such as Little Snitch asks about it once, naming the app.
-    - **When:** a minute or so after launch, so the network is up after a login, then every 24 hours while the app runs. The time of the last check is kept beside `prefs.json` (state, like item 59's `paused`), so quitting and reopening doesn't check again within the day. A failed check (offline, GitHub down, the rate limit) is a line in the launcher log, never an alert; when to try again (in an hour, or the next day) is to decide.
-    - **Newer:** the tag, without its `v`, compared with the app's version as three numbers. A tag that isn't `major.minor.patch` is ignored, as no release.
-    - **Telling the user:**
-      - **A notification** (item 60's), at the ordinary level, not time-sensitive, once for each new version: "Llama Swap Launcher 0.3.4 is available". Clicking it opens the release's page in the browser. With item 60's box unticked, only the menu says so: an update isn't worth an alert the user didn't ask for.
-      - **A menu item** near About, something like **Version 0.3.4 Is Available…**, which opens the same page. It stays until the app is that version or newer.
-      - **The link is the app's own:** `https://github.com/alron/llama-swap-mac-launcher/releases/tag/v<version>`, built from a version that checked out as three numbers, not taken from the response (its `html_url`), so a tampered response can't send the user elsewhere. It opens as **Open llama-swap UI** does.
-    - **A link, nothing more** (the maintainer: "Definitely more secure that way, less chances of compromises feeding malware in an automatic update"): the app doesn't download or install the update. That would be Sparkle (CLAUDE.md, "Later / optional").
-    - **Decided by the maintainer** (2026-11-04):
-      - **Homebrew installs get their own note,** if the app can tell Homebrew installed it: they update with `brew upgrade` (which quits and reopens the app, milestone 7), so the notice and the menu item say that, beside the link. It's told as item 65 tells it: a link in the Caskroom that resolves to the app's own bundle. The cask needs no `auto_updates true`, which is for apps that update themselves.
-      - **A Check for Updates… menu item,** which checks at once and says what it found, "up to date" included, in a dialog: the user asked, so it takes the focus (item 63). As an explicit request, it works with the daily box unticked too.
-      - **`llsl` keeps parity,** if it isn't a heavy lift: `status` shows a newer version the app knows of (an `update` field in its JSON, and a line in its text), and a command checks at once, as the menu item does (name and exit status to decide; README too). The app makes the request, through the control socket, so there's one check, with one User-Agent and one record of the last check.
-    - **Tests:** in Go, the comparison and the link from good and bad tags; the request against a stand-in server with GitHub's JSON; the daily timing, with the last check kept, on a fake clock.
-    - **Also:** the README (the setting, and what a check sends) and Collect Diagnostics (the last check and what it found).
 
 <!-- Markdown numbers a list from its first item: this one starts its own, so it shows its number. -->
 
@@ -98,7 +75,7 @@ The Homebrew cask, from our own tap: the plans are in CLAUDE.md, "Signing, notar
 - **Still to do:**
   - **`make publish` updates the tap:** the cask's version and SHA-256, committed as the noreply address and pushed, after the same personal-details check, with `DRY_RUN=1` showing the change. The release's tag must be on GitHub first, since the cask's URL names it.
   - **The tap made public** before 0.3.3's release, and the README's "Installing" gains Homebrew, with `brew trust`.
-  - **Telling a copy Homebrew manages** (items 64 and 65): a link in `Caskroom/llama-swap-launcher/<version>/` that resolves to the app's own bundle.
+  - **Telling a copy Homebrew manages** (items 64 and 65): built with item 64, `update.HomebrewManaged`: a link in `Caskroom/llama-swap-launcher/<version>/` that resolves to the app's own bundle; true for the maintainer's adopted copy.
   - **Item 51's helper:** whether the cask needs `uninstall launchctl:` for its daemon.
   - **The real test:** the maintainer's own 0.3.2 is now the cask's (2026-11-04: `brew trust --cask`, then `brew install --cask --adopt`, which kept the running app in place, untouched, and linked `llsl`; an install never quits the app, only an uninstall or an upgrade does). It's upgraded to 0.3.3 by `brew upgrade` once that's published.
 

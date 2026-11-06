@@ -238,6 +238,8 @@ func (a *app) watchNoticeClicks() {
 	for {
 		r := macos.NextNotificationResponse()
 		switch {
+		case r.ID == noticeUpdate:
+			go a.openUpdate()
 		case r.ID == noticeFailed:
 			if st := a.sup.Status(); st.State == supervisor.Failed {
 				go macos.AlertWithOutput(failureTitle(st), st.Message, a.recentOutput(10))

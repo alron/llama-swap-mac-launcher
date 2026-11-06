@@ -97,8 +97,11 @@ The app doesn't include llama-swap; install that separately.
 - **About Llama Swap Launcher** (the app's version and build date, and
   while llama-swap runs, its version and build date: a release shows as
   `v269`, a build from source as git describes it, such as
-  `v269-2-g581d29`), **Settings…**, **Launch at Login**, **Quit** (which
-  stops llama-swap).
+  `v269-2-g581d29`), **Check for Updates…**, **Settings…**, **Launch at
+  Login**, **Quit** (which stops llama-swap).
+- **Version *x.y.z* Is Available…**, above About, once a check has found a
+  newer release: what to do about it, and its release page. See
+  [Updates](#updates).
 
 ![About Llama Swap Launcher: the app's version, llama-swap's, and the build date](docs/images/about.png)
 
@@ -132,6 +135,7 @@ llsl unload  MODEL | -all [-force]           unload one model, or all of them
 llsl pause   [-force]                        pause inference: unload every local model, refuse requests
 llsl resume                                  let requests through again
 llsl logs    [-n N] [-f] [-launcher]         the end of llama-swap's log, or follow it
+llsl check-update [-json]                    ask GitHub, through the app, for a newer release
 ```
 
 `llsl` never starts llama-swap itself. It asks the app to. If the app isn't
@@ -220,6 +224,7 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
 | 6 | Timed out. |
 | 7 | Busy: llama-swap is serving requests, so `restart`, `stop`, `unload` or `pause` did nothing. See `-force`. |
 | 8 | Paused: for `status`, llama-swap's inference is paused; for `-load`, the model couldn't load because of that. See `llsl resume`. |
+| 9 | For `check-update`: a newer release of the app is out. |
 
 ### JSON output
 
@@ -288,6 +293,12 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
   started: `model`, `at`, and `autoUnloaded` if the `unloadOnGpuFault`
   preference unloaded it. It stays after the model is unloaded, when
   `faulted` has cleared, so a script can see that a fault happened.
+- `update`, once a check has found a newer release of the app: `current`
+  (this app's version), `latest`, `available` (`true`), `url` (its release
+  page), `checked` (when) and `homebrew` if Homebrew manages this copy, so
+  it updates with `brew upgrade --cask llama-swap-launcher`. `llsl
+  check-update -json` answers with the same, whatever it found, under
+  `update` rather than in `status`.
 - On failure, `ok` is `false`, and `code` and `error` say why. `code` is one
   of `usage`, `invalid_config`, `start_failed`, `load_failed`, `timeout`,
   `busy`, `paused` or `error`, or `not_running` from `status` when the app
@@ -335,6 +346,7 @@ environment variables, the **Peers** tab the peers the app manages (see
 (see [Web pages](#web-pages)), the **Logs** tab where the logs go (see
 below), and the **Tweaks** tab settings that fit no other tab: whether
 problems come as macOS notifications (see [Notifications](#notifications)),
+whether the app checks daily for a newer release (see [Updates](#updates)),
 how long a copied secret stays on the clipboard (see [API keys](#api-keys)),
 and whether a pause outlasts a restart of llama-swap, or of the app (see
 [The menu](#the-menu)).
@@ -384,6 +396,7 @@ misspelling, is reported as an error rather than ignored.
 | `appApiKey` | `""` | Which of them the app uses for its own requests. Empty: the first. |
 | `secretEnv` | `[]` | The names of secret environment variables. Their values are in the keychain; see below. |
 | `keepPausedOnRestart` | `true` | After **Pause All** or `llsl pause`, pause llama-swap again whenever the app restarts it, until it's resumed. Not written while it's the default. |
+| `checkForUpdates` | `false` | Ask GitHub once a day for a newer release of the app; see [Updates](#updates). Not written while it's the default. |
 | `notifications` | `true` | Post problems that need you as macOS notifications, in place of the alerts for them; see [Notifications](#notifications). Not written while it's the default. |
 | `keepPausedOnAppRestart` | `false` | With `keepPausedOnRestart`, a pause also outlasts quitting and reopening the app: it's kept in a file named `paused` beside `prefs.json` until it's resumed. Not written while it's the default. |
 | `clipboardClearSeconds` | `90` | How long a key or secret variable copied in Settings stays on the clipboard: `10`, `30`, `60`, `90`, `120` or `300`, or `0` to leave it there (Never). Not written while it's the default. |
@@ -662,13 +675,37 @@ problem is never missed; the Tweaks tab says so under the box. Untick it
 to have the alerts back: that also clears the app's notifications from
 Notification Centre.
 
+### Updates
+
+The app can tell you when a newer release is out; it never downloads or
+installs one itself. **Check for Updates…** in the menu, or `llsl
+check-update`, asks at once. With **Check for updates daily** (Settings… →
+Tweaks; off by default), it asks once a day, a minute after it opens and
+then every 24 hours while it runs, or an hour after a check that failed (no
+network, say: that's only a line in the launcher log).
+
+A check is one request to GitHub's API
+(`api.github.com/repos/alron/llama-swap-mac-launcher/releases/latest`),
+naming the app and its version in its User-Agent, from your Mac's address;
+a firewall such as Little Snitch asks about it once. A newer release shows
+as **Version *x.y.z* Is Available…** in the menu, in `llsl status`, and,
+from the daily check, as one notification per release (see
+[Notifications](#notifications)). Each links to the release's page on
+GitHub, a link the app makes from the version number rather than taking
+one from GitHub's answer.
+
+If Homebrew installed the app, it says so, as that copy updates with
+`brew upgrade --cask llama-swap-launcher`. Otherwise, download the new zip,
+quit the app, and replace it in Applications. When the last check was,
+and what it found, is kept in `update.json` beside the preferences.
+
 ## Files
 
 | What | Where |
 |---|---|
 | The launcher log | `~/Library/Logs/com.my-wang.llama-swap-launcher/launcher.log` by default; see [Logs](#logs). |
 | llama-swap's own log | `~/Library/Logs/com.my-wang.llama-swap-launcher/llama-swap.log` by default, when its output has a file of its own. |
-| Preferences, control socket, pidfile | `~/Library/Application Support/com.my-wang.llama-swap-launcher/` |
+| Preferences, control socket, pidfile, the last update check | `~/Library/Application Support/com.my-wang.llama-swap-launcher/` |
 | API keys and secret variables | Your login keychain, as "Llama Swap Launcher: llama-swap API key LLSL_…" and "Llama Swap Launcher: secret environment variable …" (Keychain Access can show and delete them). |
 
 ## Good to know
@@ -763,6 +800,10 @@ What the app trusts, and what it doesn't protect against:
   untrusted network, keep llama-swap on `127.0.0.1`.
 - **Keys matter even locally:** see [API keys](#api-keys) for what a
   llama-swap without them allows, on `127.0.0.1` too.
+- **The internet:** the app itself connects to it only to check GitHub for
+  a newer release, when you ask or with the daily check on (see
+  [Updates](#updates)), and to a peer you've given an internet address,
+  for Fetch Models. It never downloads or runs an update.
 
 ## Building from source
 

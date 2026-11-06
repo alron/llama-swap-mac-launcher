@@ -355,3 +355,26 @@ func TestAbbreviateHome(t *testing.T) {
 		}
 	}
 }
+
+// The daily update check is off by default and written only when it's on,
+// so a file saved with the default stays readable by older versions.
+func TestCheckForUpdatesWritten(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prefs.json")
+	p := Defaults()
+	if p.CheckForUpdates {
+		t.Error("on by default")
+	}
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); strings.Contains(string(b), "checkForUpdates") {
+		t.Errorf("the default was written:\n%s", b)
+	}
+	p.CheckForUpdates = true
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Load(path); err != nil || !got.CheckForUpdates {
+		t.Errorf("Load: %v, %v", got.CheckForUpdates, err)
+	}
+}

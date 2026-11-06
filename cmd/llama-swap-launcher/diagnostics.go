@@ -23,6 +23,7 @@ import (
 	"github.com/alron/llama-swap-mac-launcher/internal/macos"
 	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
 	"github.com/alron/llama-swap-mac-launcher/internal/supervisor"
+	"github.com/alron/llama-swap-mac-launcher/internal/update"
 )
 
 // collectDiagnostics asks where to save the zip, writes it, and shows it
@@ -187,6 +188,24 @@ func (a *app) diagnosticSummary(p prefs.Prefs, secrets map[string]string) string
 	}
 	line("Notifications", "%s in Settings; macOS: %s, alerts %s (%s), time-sensitive %s, sound %s", setting,
 		orUnknown(n.Authorization), orUnknown(n.Alerts), orUnknown(n.Style), orUnknown(n.TimeSensitive), orUnknown(n.Sound))
+	// The update check (TODO item 64): whether it's on, and what it last found.
+	u, us := a.updateInfo(), update.Load(a.paths.UpdateFile())
+	checks := "daily check off"
+	if p.CheckForUpdates {
+		checks = "daily check on"
+	}
+	switch {
+	case us.Checked.IsZero():
+		checks += "; never checked"
+	case us.Failed != "":
+		checks += fmt.Sprintf("; last check %s failed: %s", us.Checked.Format("2006-01-02 15:04"), us.Failed)
+	default:
+		checks += fmt.Sprintf("; last check %s: newest %s", us.Checked.Format("2006-01-02 15:04"), orUnknown(us.Latest))
+	}
+	if u.Homebrew {
+		checks += "; Homebrew manages this copy"
+	}
+	line("Updates", "%s", checks)
 	if since, err := os.ReadFile(a.paths.PauseFile()); err == nil { // #nosec G304 -- the app's own state file
 		line("Pause kept", "since %s, for the app's next launch (Settings → Tweaks)", strings.TrimSpace(string(since)))
 	}

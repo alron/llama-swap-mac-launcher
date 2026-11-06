@@ -48,6 +48,10 @@ func (p Paths) PidFile() string { return filepath.Join(p.SupportDir, "llama-swap
 // preference, so it isn't in prefs.json, which the dialog and hand edits own.
 func (p Paths) PauseFile() string { return filepath.Join(p.SupportDir, "paused") }
 
+// UpdateFile is what the last check for a newer release found (TODO item
+// 64): state, like PauseFile.
+func (p Paths) UpdateFile() string { return filepath.Join(p.SupportDir, "update.json") }
+
 // ManagedConfigDir is the config folder the app manages for llama-swap
 // (-config-dir), with the settings it writes for it.
 func (p Paths) ManagedConfigDir() string { return filepath.Join(p.SupportDir, "llama-swap.d") }

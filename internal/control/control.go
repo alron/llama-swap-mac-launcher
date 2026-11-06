@@ -24,7 +24,7 @@ import (
 )
 
 type Request struct {
-	Cmd string `json:"cmd"` // status, start, stop, restart, unload, output
+	Cmd string `json:"cmd"` // status, start, stop, restart, unload, pause, resume, output, check-update
 	// Wait makes start and restart return only once llama-swap is ready,
 	// or has failed.
 	Wait bool `json:"wait,omitempty"`
@@ -63,6 +63,22 @@ type Response struct {
 	// Output is the end of llama-swap's output, from the app's memory: on
 	// a failure that llama-swap's own words may explain, and from output.
 	Output []string `json:"output,omitempty"`
+	// Update is what check-update found.
+	Update *Update `json:"update,omitempty"`
+}
+
+// Update is what the app knows of a newer release (TODO item 64).
+type Update struct {
+	Current string `json:"current"` // the running app's version
+	// Latest is the newest release on GitHub, as of Checked; Available
+	// says it's newer than Current, and URL is its page.
+	Latest    string    `json:"latest,omitempty"`
+	Available bool      `json:"available"`
+	URL       string    `json:"url,omitempty"`
+	Checked   time.Time `json:"checked"`
+	// Homebrew says Homebrew manages this copy of the app, so it updates
+	// with brew upgrade.
+	Homebrew bool `json:"homebrew,omitempty"`
 }
 
 type Status struct {
@@ -100,6 +116,8 @@ type Status struct {
 	// LastGPUFault is the most recent model whose GPU backend failed since
 	// the app started, kept after the model is unloaded and the fault gone.
 	LastGPUFault *Fault `json:"lastGpuFault,omitempty"`
+	// Update is set when the app knows of a newer release (TODO item 64).
+	Update *Update `json:"update,omitempty"`
 }
 
 // Fault records a model whose GPU backend failed.

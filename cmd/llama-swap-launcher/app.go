@@ -53,6 +53,8 @@ type app struct {
 	pauseRestored bool
 	// notices are the macOS notifications posted for problems; see notices.go.
 	notices notices
+	// updates is what the app knows of newer releases; see updates.go.
+	updates updates
 
 	status              *systray.MenuItem
 	details             []*systray.MenuItem // the status's explanation, wrapped over several lines
@@ -70,7 +72,10 @@ type app struct {
 	openOwnLog, showOwnLog           *systray.MenuItem
 	logSettings, collectItem         *systray.MenuItem
 	aboutItem, prefsItem             *systray.MenuItem
-	quitItem                         *systray.MenuItem
+	// updateItem is a newer release's line, shown once one is known;
+	// checkItem is Check for Updates… (TODO item 64).
+	updateItem, checkItem *systray.MenuItem
+	quitItem              *systray.MenuItem
 
 	loginItem *systray.MenuItem
 	shownLook *menuBarLook // the menu-bar look last shown, guarded by renderMu
@@ -139,7 +144,10 @@ func (a *app) onReady() {
 	a.collectItem = a.logsMenu.AddSubMenuItem("Collect Diagnostics…", "")
 	a.openUI = systray.AddMenuItem("Open llama-swap UI", "")
 	systray.AddSeparator()
+	a.updateItem = systray.AddMenuItem("", "")
+	a.updateItem.Hide()
 	a.aboutItem = systray.AddMenuItem("About Llama Swap Launcher", "")
+	a.checkItem = systray.AddMenuItem("Check for Updates…", "")
 	a.prefsItem = systray.AddMenuItem("Settings…", "")
 	a.loginItem = systray.AddMenuItemCheckbox("Launch at Login", "", false)
 	systray.AddSeparator()
@@ -156,6 +164,7 @@ func (a *app) onReady() {
 	err := a.reloadPrefs()
 	a.restorePause() // before llama-swap starts, below
 	a.startNotices()
+	a.startUpdates()
 	a.render()
 	go a.watchStatus()
 	go a.handleClicks()
@@ -260,6 +269,10 @@ func (a *app) handleClicks() {
 			a.open(uiURL(a.currentPrefs().ListenAddr()))
 		case <-a.aboutItem.ClickedCh:
 			go a.showAbout()
+		case <-a.updateItem.ClickedCh:
+			go a.showUpdate()
+		case <-a.checkItem.ClickedCh:
+			go a.checkForUpdatesNow()
 		case <-a.prefsItem.ClickedCh:
 			go a.openPreferences("general")
 		case <-a.loginItem.ClickedCh:
@@ -494,6 +507,14 @@ func (a *app) render() {
 	enable(a.openUI, idle && st.State == supervisor.Running && snap.Healthy)
 	enable(a.aboutItem, idle)
 	enable(a.prefsItem, idle)
+	enable(a.checkItem, idle)
+	if title := a.updateMenuTitle(); title != "" {
+		a.updateItem.SetTitle(title)
+		enable(a.updateItem, idle)
+		a.updateItem.Show()
+	} else {
+		a.updateItem.Hide()
+	}
 	a.noticesChanged() // the standing notices follow the same state
 }
 

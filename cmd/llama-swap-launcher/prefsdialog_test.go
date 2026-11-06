@@ -42,6 +42,7 @@ func TestFormRoundTrip(t *testing.T) {
 		LlamaSwapLogFile:       "/tmp/llama-swap.log",
 		ClipboardClearSeconds:  seconds(30),
 		KeepPausedOnAppRestart: true,
+		CheckForUpdates:        true,
 	}
 	wantSecrets := map[string]string{"LLSL_ADMIN": "sk-one", "LLSL_CLAUDE": "sk-two", "GITHUB_TOKEN": "gh x y"}
 	got, secrets, err := prefsFrom(formFrom(want, wantSecrets))
