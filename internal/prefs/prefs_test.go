@@ -378,3 +378,19 @@ func TestCheckForUpdatesWritten(t *testing.T) {
 		t.Errorf("Load: %v, %v", got.CheckForUpdates, err)
 	}
 }
+
+// Restart on update is written only when off, its notification only when
+// on, so a file saved with the defaults stays readable by older versions.
+func TestRestartOnUpdateWritten(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prefs.json")
+	p := Defaults()
+	if !p.RestartsOnUpdate() || p.NotifyOnUpdateRestart {
+		t.Error("wrong defaults")
+	}
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); strings.Contains(string(b), "estart") {
+		t.Errorf("the defaults were written:\n%s", b)
+	}
+}

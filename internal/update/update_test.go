@@ -185,3 +185,48 @@ func TestHomebrewManaged(t *testing.T) {
 		t.Error("another copy is managed")
 	}
 }
+
+// The installed version comes from the bundle's Info.plist as it is now;
+// one that isn't three numbers, or a missing bundle, isn't a version.
+func TestInstalledVersion(t *testing.T) {
+	app := filepath.Join(t.TempDir(), "Llama Swap Launcher.app")
+	os.MkdirAll(filepath.Join(app, "Contents"), 0o700)
+	write := func(v string) {
+		os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+	<key>CFBundleIdentifier</key><string>com.my-wang.llama-swap-launcher</string>
+	<key>CFBundleShortVersionString</key><string>`+v+`</string>
+	<key>CFBundleVersion</key><string>`+v+`</string>
+</dict></plist>`), 0o600)
+	}
+	write("0.3.4")
+	if v, err := InstalledVersion(app); err != nil || v.String() != "0.3.4" {
+		t.Errorf("got %v, %v", v, err)
+	}
+	write("0.0.0-test")
+	if _, err := InstalledVersion(app); err == nil {
+		t.Error("0.0.0-test taken as a version")
+	}
+	if _, err := InstalledVersion(filepath.Join(t.TempDir(), "gone.app")); err == nil {
+		t.Error("a missing bundle has a version")
+	}
+}
+
+// The update restart's marker counts for one launch.
+func TestRestartedMarker(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "restarted.json")
+	if _, ok := TakeRestarted(path); ok {
+		t.Error("a marker with none written")
+	}
+	want := Restarted{From: "0.3.3", To: "0.3.4", Paused: true}
+	if err := want.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := TakeRestarted(path); !ok || got != want {
+		t.Errorf("got %+v, %v", got, ok)
+	}
+	if _, ok := TakeRestarted(path); ok {
+		t.Error("read twice")
+	}
+}

@@ -63,6 +63,7 @@ func (a *app) editPreferences(tab string) (restart bool) {
 	form.ManagedConfigDir = a.paths.ManagedConfigDir()
 	form.File = a.paths.Prefs()
 	form.NotificationsBlocked = macos.NotificationSettings().Blocked()
+	form.HomebrewManaged, form.HomebrewHelp = a.updates.homebrew, homebrewHelp
 
 	for {
 		edited, result, err := macos.Preferences(form)
@@ -328,6 +329,8 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		KeepPausedOnAppRestart: p.KeepPausedOnAppRestart,
 		Notifications:          p.Notifies(),
 		CheckForUpdates:        p.CheckForUpdates,
+		RestartOnUpdate:        p.RestartsOnUpdate(),
+		NotifyOnUpdateRestart:  p.NotifyOnUpdateRestart,
 		KeyPrefix:              prefs.KeyPrefix,
 		Tab:                    "general",
 	}
@@ -492,6 +495,7 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 		// Kept as ticked while it's greyed out, with the box above off.
 		KeepPausedOnAppRestart: f.KeepPausedOnAppRestart,
 		CheckForUpdates:        f.CheckForUpdates,
+		NotifyOnUpdateRestart:  f.NotifyOnUpdateRestart,
 	}
 	// The default isn't written, so an older app can still read the file.
 	if s := f.ClipboardSeconds; s != prefs.DefaultClipboardSeconds {
@@ -502,6 +506,9 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 	}
 	if !f.Notifications {
 		p.Notifications = &f.Notifications
+	}
+	if !f.RestartOnUpdate {
+		p.RestartOnUpdate = &f.RestartOnUpdate
 	}
 	// Not in the dialog any more, but kept as the file has them, for flags
 	// newer than the app.

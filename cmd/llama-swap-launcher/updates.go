@@ -128,10 +128,11 @@ func (a *app) checkForUpdate(manual bool) (control.Update, error) {
 
 // updateInfo is what the app knows now, for llsl and the menu.
 func (a *app) updateInfo() control.Update {
+	installed := a.installedNewer() // before a.updates.mu, never under it
 	a.updates.mu.Lock()
 	defer a.updates.mu.Unlock()
 	u := control.Update{Current: version, Latest: a.updates.state.Latest, Checked: a.updates.state.Checked,
-		Homebrew: a.updates.homebrew}
+		Homebrew: a.updates.homebrew, Installed: installed}
 	if v, ok := a.updates.state.Available(version); ok {
 		u.Available, u.URL = true, update.ReleaseURL(v)
 	}
@@ -213,10 +214,26 @@ func (a *app) openUpdate() {
 	}
 }
 
-// updateMenuTitle is the menu's line for a newer release, or "" for none.
+// updateMenuTitle is the menu's line for a newer version: installed over
+// this copy (TODO item 65), or a release GitHub has; "" for none.
 func (a *app) updateMenuTitle() string {
+	if v := a.installedNewer(); v != "" {
+		return "Restart into Version " + v
+	}
 	if u := a.updateInfo(); u.Available {
 		return "Version " + u.Latest + " Is Available…"
 	}
 	return ""
+}
+
+// updateItemClicked is a click on that line: restart into the installed
+// version now, or say what the release check found.
+func (a *app) updateItemClicked() {
+	if s := a.installedNewer(); s != "" {
+		if v, ok := update.ParseVersion(s); ok {
+			a.restartInto(v, true)
+		}
+		return
+	}
+	a.showUpdate()
 }

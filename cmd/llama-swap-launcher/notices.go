@@ -18,6 +18,7 @@ import (
 	"github.com/alron/llama-swap-mac-launcher/internal/health"
 	"github.com/alron/llama-swap-mac-launcher/internal/macos"
 	"github.com/alron/llama-swap-mac-launcher/internal/supervisor"
+	"github.com/alron/llama-swap-mac-launcher/internal/update"
 )
 
 // A notice is one notification. Its id, the key it's kept under, makes a
@@ -240,6 +241,10 @@ func (a *app) watchNoticeClicks() {
 		switch {
 		case r.ID == noticeUpdate:
 			go a.openUpdate()
+		case r.ID == noticeInstalled:
+			if v, ok := update.ParseVersion(a.installedNewer()); ok {
+				go a.restartInto(v, true)
+			}
 		case r.ID == noticeFailed:
 			if st := a.sup.Status(); st.State == supervisor.Failed {
 				go macos.AlertWithOutput(failureTitle(st), st.Message, a.recentOutput(10))

@@ -125,6 +125,17 @@ type Prefs struct {
 	// release (TODO item 64). Off, the default, isn't written, so an older
 	// app can still read the file.
 	CheckForUpdates bool `json:"checkForUpdates,omitempty"`
+	// RestartOnUpdate has the app restart into a newer version Homebrew
+	// installs over it (TODO item 65). Unset means on, which isn't
+	// written. NotifyOnUpdateRestart posts a notification when it has,
+	// off by default, written only when on.
+	RestartOnUpdate       *bool `json:"restartOnUpdate,omitempty"`
+	NotifyOnUpdateRestart bool  `json:"notifyOnUpdateRestart,omitempty"`
+}
+
+// RestartsOnUpdate is RestartOnUpdate, on unless it's set off.
+func (p Prefs) RestartsOnUpdate() bool {
+	return p.RestartOnUpdate == nil || *p.RestartOnUpdate
 }
 
 // Notifies is Notifications, on unless it's set off.

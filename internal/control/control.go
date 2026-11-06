@@ -79,6 +79,9 @@ type Update struct {
 	// Homebrew says Homebrew manages this copy of the app, so it updates
 	// with brew upgrade.
 	Homebrew bool `json:"homebrew,omitempty"`
+	// Installed is a newer version installed over the running app, which
+	// it restarts into, or uses once restarted (TODO item 65).
+	Installed string `json:"installed,omitempty"`
 }
 
 type Status struct {

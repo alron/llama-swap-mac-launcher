@@ -399,7 +399,7 @@ func (a *app) controlStatus() *control.Status {
 	s.LastGPUFault = a.lastFault
 	a.mu.Unlock()
 	s.Warning = openWarning(p, st, snap)
-	if u := a.updateInfo(); u.Available {
+	if u := a.updateInfo(); u.Available || u.Installed != "" {
 		s.Update = &u
 	}
 	if st.State == supervisor.Running {

@@ -5,6 +5,15 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **Restart on update** (Settings → Tweaks, on by default): when Homebrew
+  installs a newer version over the running app, the app restarts into it
+  by itself, once llama-swap has no requests in flight, keeping a pause. It
+  checks the new copy's signature first. With it off, the menu's **Restart
+  into Version *x.y.z***, or a notification, does it when you choose.
+  **Notify after an update restart** says when it has (off by default).
+- **Homebrew:** `brew install --cask alron/llama-swap-mac-launcher/llama-swap-launcher`,
+  after `brew trust --cask` for it; see
+  [With Homebrew](https://github.com/alron/llama-swap-mac-launcher#with-homebrew).
 - **Check for Updates…** in the menu, and `llsl check-update` (exit 9 when
   a newer release is out), ask GitHub whether a newer release of the app is
   out; **Check for updates daily** (Settings → Tweaks, off by default) asks

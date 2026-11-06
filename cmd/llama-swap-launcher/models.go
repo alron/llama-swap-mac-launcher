@@ -344,7 +344,13 @@ func (a *app) restorePause() {
 	_, err := os.Stat(a.paths.PauseFile())
 	a.pauseWanted = err == nil && a.prefs.KeepsPauseOnAppRestart()
 	a.pauseRestored = true
-	if a.pauseWanted {
+	switch {
+	case a.pausedByUpdate():
+		// An update restart wasn't the user's choice, so a pause outlasts
+		// it whatever item 59's box says (TODO item 65).
+		a.pauseWanted = true
+		a.sup.Logf("inference was paused before the update restart; llama-swap is paused again when it starts")
+	case a.pauseWanted:
 		a.sup.Logf("inference was paused when the app last quit; llama-swap is paused again when it starts")
 	}
 	a.recordPause() // removes a file the preferences no longer keep

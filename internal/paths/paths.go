@@ -52,6 +52,10 @@ func (p Paths) PauseFile() string { return filepath.Join(p.SupportDir, "paused")
 // 64): state, like PauseFile.
 func (p Paths) UpdateFile() string { return filepath.Join(p.SupportDir, "update.json") }
 
+// RestartedFile is written by an app quitting to restart into a newer
+// version, and read (and removed) by that version at launch (TODO item 65).
+func (p Paths) RestartedFile() string { return filepath.Join(p.SupportDir, "restarted.json") }
+
 // ManagedConfigDir is the config folder the app manages for llama-swap
 // (-config-dir), with the settings it writes for it.
 func (p Paths) ManagedConfigDir() string { return filepath.Join(p.SupportDir, "llama-swap.d") }

@@ -32,10 +32,40 @@ The app doesn't include llama-swap; install that separately.
 
 ## Installing
 
+With Homebrew, or from the zip on the
+[Releases](https://github.com/alron/llama-swap-mac-launcher/releases) page
+(what changed is in [CHANGELOG.md](CHANGELOG.md)): the same signed and
+notarized app either way.
+
+### With Homebrew
+
+```sh
+brew trust --cask alron/llama-swap-mac-launcher/llama-swap-launcher
+brew install --cask alron/llama-swap-mac-launcher/llama-swap-launcher
+```
+
+The app comes from the project's own tap
+([alron/homebrew-llama-swap-mac-launcher](https://github.com/alron/homebrew-llama-swap-mac-launcher));
+Homebrew loads a cask from a tap other than its own only once you've
+trusted it, and the first line trusts this cask alone. It installs the app
+in `/Applications` and links `llsl` into Homebrew's `bin`, so it's on your
+`PATH`. llama-swap isn't included: `brew install
+mostlygeek/llama-swap/llama-swap`, for instance.
+
+`brew upgrade` replaces the app while it runs, and the app restarts itself
+into the new version once llama-swap has no requests in flight (see
+[Updates](#updates)). Upgrading from 0.3.2, the app quits instead, and you
+open it again once. `brew uninstall --zap` also removes its settings and
+logs. If you installed the zip before, `brew install --cask --adopt …` takes
+over that copy, when it's the same version as the cask.
+
+Then follow steps 2 and 3 below.
+
+### From the zip
+
 1. Download `Llama-Swap-Launcher-<version>.zip` from
-   [Releases](https://github.com/alron/llama-swap-mac-launcher/releases)
-   (what changed is in [CHANGELOG.md](CHANGELOG.md)), unzip it, and move
-   **Llama Swap Launcher** to `/Applications`. Open it.
+   [Releases](https://github.com/alron/llama-swap-mac-launcher/releases),
+   unzip it, and move **Llama Swap Launcher** to `/Applications`. Open it.
 2. The first time, it asks for your llama-swap config: open **Settings…**,
    choose the config file, and **Save**, then **Start**. It finds llama-swap
    itself in `/opt/homebrew/bin`, `/opt/homebrew/sbin`, `/usr/local/bin` or
@@ -100,8 +130,9 @@ The app doesn't include llama-swap; install that separately.
   `v269-2-g581d29`), **Check for Updates…**, **Settings…**, **Launch at
   Login**, **Quit** (which stops llama-swap).
 - **Version *x.y.z* Is Available…**, above About, once a check has found a
-  newer release: what to do about it, and its release page. See
-  [Updates](#updates).
+  newer release: what to do about it, and its release page; or **Restart
+  into Version *x.y.z***, once a newer version is installed over the
+  running app. See [Updates](#updates).
 
 ![About Llama Swap Launcher: the app's version, llama-swap's, and the build date](docs/images/about.png)
 
@@ -296,9 +327,11 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
 - `update`, once a check has found a newer release of the app: `current`
   (this app's version), `latest`, `available` (`true`), `url` (its release
   page), `checked` (when) and `homebrew` if Homebrew manages this copy, so
-  it updates with `brew upgrade --cask llama-swap-launcher`. `llsl
-  check-update -json` answers with the same, whatever it found, under
-  `update` rather than in `status`.
+  it updates with `brew upgrade --cask llama-swap-launcher`. `installed`
+  is a newer version installed over the running app, which it hasn't
+  restarted into yet; `update` is there for that too. `llsl check-update
+  -json` answers with the same, whatever it found, under `update` rather
+  than in `status`.
 - On failure, `ok` is `false`, and `code` and `error` say why. `code` is one
   of `usage`, `invalid_config`, `start_failed`, `load_failed`, `timeout`,
   `busy`, `paused` or `error`, or `not_running` from `status` when the app
@@ -346,7 +379,8 @@ environment variables, the **Peers** tab the peers the app manages (see
 (see [Web pages](#web-pages)), the **Logs** tab where the logs go (see
 below), and the **Tweaks** tab settings that fit no other tab: whether
 problems come as macOS notifications (see [Notifications](#notifications)),
-whether the app checks daily for a newer release (see [Updates](#updates)),
+whether the app checks daily for a newer release, and restarts into one
+Homebrew installs (see [Updates](#updates)),
 how long a copied secret stays on the clipboard (see [API keys](#api-keys)),
 and whether a pause outlasts a restart of llama-swap, or of the app (see
 [The menu](#the-menu)).
@@ -396,6 +430,8 @@ misspelling, is reported as an error rather than ignored.
 | `appApiKey` | `""` | Which of them the app uses for its own requests. Empty: the first. |
 | `secretEnv` | `[]` | The names of secret environment variables. Their values are in the keychain; see below. |
 | `keepPausedOnRestart` | `true` | After **Pause All** or `llsl pause`, pause llama-swap again whenever the app restarts it, until it's resumed. Not written while it's the default. |
+| `restartOnUpdate` | `true` | Restart into a newer version Homebrew installs over the running app, once llama-swap is idle; see [Updates](#updates). Not written while it's the default. |
+| `notifyOnUpdateRestart` | `false` | Post a notification after such a restart. Not written while it's the default. |
 | `checkForUpdates` | `false` | Ask GitHub once a day for a newer release of the app; see [Updates](#updates). Not written while it's the default. |
 | `notifications` | `true` | Post problems that need you as macOS notifications, in place of the alerts for them; see [Notifications](#notifications). Not written while it's the default. |
 | `keepPausedOnAppRestart` | `false` | With `keepPausedOnRestart`, a pause also outlasts quitting and reopening the app: it's kept in a file named `paused` beside `prefs.json` until it's resumed. Not written while it's the default. |
@@ -655,7 +691,11 @@ problems that need you come as macOS notifications:
 | ***model*'s GPU backend failed**, unloaded | The same, with `unloadOnGpuFault` on, so the app has already unloaded it. |
 | **Llama Swap Launcher can't follow llama-swap** | llama-swap refused the app, over its API key for instance. |
 
-These replace the alerts for the first and third. A notification goes
+Updates add three ordinary ones: a newer release found by the daily check,
+a newer version installed that the app won't restart into by itself, and,
+if you ask, the restart into one (see [Updates](#updates)).
+
+These replace the alerts for the first and third problems. A notification goes
 away when its problem does, and all of them when the app quits. Nothing
 notifies for what you did yourself in the menu or Settings, for `llsl`'s
 requests (its caller gets the answer), or for a pause.
@@ -698,6 +738,24 @@ If Homebrew installed the app, it says so, as that copy updates with
 `brew upgrade --cask llama-swap-launcher`. Otherwise, download the new zip,
 quit the app, and replace it in Applications. When the last check was,
 and what it found, is kept in `update.json` beside the preferences.
+
+**Restart on update** (Settings… → Tweaks; on by default): when Homebrew
+installs a newer version over the running app, the app restarts into it by
+itself, about half a minute later, once llama-swap has no requests in
+flight and no Settings window or other dialog is open. llama-swap is
+stopped and started again; a pause carries over, whatever **Keep inference
+paused when Llama Swap Launcher restarts** says, since you didn't choose
+the restart. The app first checks the new copy's signature against its
+own (its bundle ID and the team that signed it), and never opens a copy
+that's half-copied or signed by anyone else. **Notify after an update
+restart**, under it, posts a notification when it has.
+
+It's only for a copy Homebrew manages: the Finder won't replace a running
+app, so elsewhere the box is greyed out, with a link to these
+instructions. With it off, or a copy replaced some other way (by `ditto` in
+Terminal, say), the old version keeps running until you restart it: the
+menu offers **Restart into Version *x.y.z***, and a notification, clicked,
+does the same.
 
 ## Files
 

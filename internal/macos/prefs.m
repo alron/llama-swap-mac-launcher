@@ -452,6 +452,12 @@ static NSString *newKey(void) {
 @property(strong) NSButton *notifications;
 @property(strong) NSTextField *notificationsHint;
 @property BOOL notificationsBlocked;
+// Restart on update, only for a copy Homebrew manages, and the
+// notification after one, which needs it and Native notifications.
+@property(strong) NSButton *restartOnUpdate;
+@property(strong) NSButton *notifyOnRestart;
+@property BOOL homebrewManaged;
+@property(copy) NSString *homebrewHelp;
 @end
 
 @implementation LSLPrefsController
@@ -549,6 +555,24 @@ static NSString *newKey(void) {
 // and macOS blocking the app's notifications (TODO item 60).
 - (void)notificationsChanged:(id)sender {
 	self.notificationsHint.hidden = !(self.notificationsBlocked && self.notifications.state == NSControlStateValueOn);
+	[self restartChanged:nil];
+}
+
+// restartChanged greys out Restart on update where Homebrew doesn't manage
+// the app, and the notification after one unless it and Native
+// notifications are both on (TODO item 65). Greyed boxes keep their ticks.
+- (void)restartChanged:(id)sender {
+	self.restartOnUpdate.enabled = self.homebrewManaged;
+	self.notifyOnRestart.enabled = self.homebrewManaged && self.restartOnUpdate.state == NSControlStateValueOn &&
+	                               self.notifications.state == NSControlStateValueOn;
+}
+
+// openHomebrewHelp opens the README's Homebrew instructions.
+- (void)openHomebrewHelp:(id)sender {
+	NSURL *url = [NSURL URLWithString:self.homebrewHelp];
+	if (url != nil) {
+		[NSWorkspace.sharedWorkspace openURL:url];
+	}
 }
 
 // ownDirValue is the user's own folder, whichever folder the field shows.
@@ -1646,10 +1670,40 @@ char *lsl_preferences(const char *json, int *result) {
 		        @"installs anything. A check is one request to GitHub's API, naming the app and its version, from your "
 		        @"Mac's address. Check for Updates… in the menu checks at once, ticked or not.",
 		        @[ checkUpdates ]);
-		NSStackView *tweaks = column(@[ notificationsGroup, checkUpdates, grid(@[ @[ clearLabel, clearAfter ] ]), keepPaused,
-		                                keepPausedAppRow ]);
+		// Restart on update (TODO item 65): only where Homebrew manages the
+		// app, which a link beside it explains elsewhere; and under it, the
+		// notification after one.
+		c.homebrewManaged = [in[@"homebrewManaged"] boolValue];
+		c.homebrewHelp = string(in, @"homebrewHelp");
+		c.restartOnUpdate = checkbox(@"Restart on update", in[@"restartOnUpdate"]);
+		explain(@"When Homebrew installs a newer version over the running app (brew upgrade), the app restarts into it "
+		        @"once llama-swap has no requests in flight, keeping a pause. Only for a copy Homebrew manages: the Finder "
+		        @"won't replace a running app. Unticked, this version keeps running until you quit it; the menu offers "
+		        @"Restart into Version x.y.z.",
+		        @[ c.restartOnUpdate ]);
+		c.restartOnUpdate.target = c;
+		c.restartOnUpdate.action = @selector(restartChanged:);
+		NSButton *homebrewLink = [NSButton buttonWithTitle:@"" target:c action:@selector(openHomebrewHelp:)];
+		homebrewLink.bordered = NO;
+		homebrewLink.attributedTitle = [[NSAttributedString alloc] initWithString:@"Requires a Homebrew install" attributes:@{
+			NSForegroundColorAttributeName : NSColor.linkColor,
+			NSUnderlineStyleAttributeName : @(NSUnderlineStyleSingle),
+			NSFontAttributeName : [NSFont systemFontOfSize:NSFont.smallSystemFontSize],
+		}];
+		homebrewLink.toolTip = c.homebrewHelp;
+		homebrewLink.hidden = c.homebrewManaged; // shown only where it's needed
+		NSStackView *restartRow = row(@[ c.restartOnUpdate, homebrewLink ]);
+		c.notifyOnRestart = checkbox(@"Notify after an update restart", in[@"notifyOnUpdateRestart"]);
+		explain(@"After the app has restarted into a new version, post a notification saying so. Needs Native "
+		        @"notifications and Restart on update.",
+		        @[ c.notifyOnRestart ]);
+		NSView *notifyRow = underTitle(c.notifyOnRestart, c.restartOnUpdate);
+		[c restartChanged:nil];
+		NSStackView *tweaks = column(@[ notificationsGroup, checkUpdates, restartRow, notifyRow, grid(@[ @[ clearLabel, clearAfter ] ]),
+		                                keepPaused, keepPausedAppRow ]);
 		[tweaks setCustomSpacing:16 afterView:notificationsGroup];
 		[tweaks setCustomSpacing:16 afterView:checkUpdates];
+		[tweaks setCustomSpacing:16 afterView:notifyRow];
 
 		// Secrets: the API keys, then the secret environment variables.
 		c.keys = [[LSLSecretTable alloc] initWithRows:in[@"apiKeys"]];
@@ -1860,6 +1914,8 @@ char *lsl_preferences(const char *json, int *result) {
 			@"keepPausedOnAppRestart" : keepPausedApp.state == NSControlStateValueOn ? @YES : @NO,
 			@"notifications" : c.notifications.state == NSControlStateValueOn ? @YES : @NO,
 			@"checkForUpdates" : checkUpdates.state == NSControlStateValueOn ? @YES : @NO,
+			@"restartOnUpdate" : c.restartOnUpdate.state == NSControlStateValueOn ? @YES : @NO,
+			@"notifyOnUpdateRestart" : c.notifyOnRestart.state == NSControlStateValueOn ? @YES : @NO,
 			@"tab" : tabs.selectedTabViewItem.identifier ?: @"general",
 		};
 		NSData *encoded = [NSJSONSerialization dataWithJSONObject:fields options:0 error:nil];

@@ -64,6 +64,9 @@ type PreferencesForm struct {
 	// CheckForUpdates the daily update check's (item 64).
 	Notifications   bool `json:"notifications"`
 	CheckForUpdates bool `json:"checkForUpdates"`
+	// RestartOnUpdate and NotifyOnUpdateRestart are item 65's boxes.
+	RestartOnUpdate       bool `json:"restartOnUpdate"`
+	NotifyOnUpdateRestart bool `json:"notifyOnUpdateRestart"`
 	// Tab is the tab to show first, "general", "secrets", "peers",
 	// "security", "logs" or "tweaks", and comes back as the one showing when
 	// the dialog closed.
@@ -73,10 +76,14 @@ type PreferencesForm struct {
 	FoundBinary string `json:"foundBinary"` // greyed out in the empty binary field
 	// NotificationsBlocked means the user has turned the app's
 	// notifications off in System Settings: a hint under the box says so.
-	NotificationsBlocked bool   `json:"notificationsBlocked"`
-	File                 string `json:"file"`      // the preferences file
-	Error                string `json:"error"`     // why the last Save didn't work
-	KeyPrefix            string `json:"keyPrefix"` // shown before each key's name
+	NotificationsBlocked bool `json:"notificationsBlocked"`
+	// HomebrewManaged greys out Restart on update when false, with a link
+	// to HomebrewHelp, the README's Homebrew instructions.
+	HomebrewManaged bool   `json:"homebrewManaged"`
+	HomebrewHelp    string `json:"homebrewHelp"`
+	File            string `json:"file"`      // the preferences file
+	Error           string `json:"error"`     // why the last Save didn't work
+	KeyPrefix       string `json:"keyPrefix"` // shown before each key's name
 	// The app's own config folder, shown greyed out with "Managed by the
 	// app".
 	ManagedConfigDir string `json:"managedConfigDir"`

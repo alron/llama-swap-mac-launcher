@@ -16,6 +16,10 @@ REL_APP := build/release/$(APP_NAME).app
 REL_ZIP := build/release/Llama-Swap-Launcher-$(VERSION).zip
 # Developer ID provisioning profiles, named <bundle id>.provisionprofile.
 PROFILES ?= packaging/profiles
+# EXTRA_LDFLAGS adds to the app's link flags, for test builds only: say,
+# -X github.com/alron/llama-swap-mac-launcher/internal/update.Caskroom=<dir>
+# to try a restart on update (TODO item 65) without Homebrew.
+EXTRA_LDFLAGS ?=
 
 export GOOS        := darwin
 export GOARCH      := arm64
@@ -111,7 +115,7 @@ define bundle
 	rm -rf "$(1)"
 	mkdir -p "$(1)/Contents/MacOS" "$(1)/Contents/Helpers" "$(1)/Contents/Resources"
 	cp build/AppIcon.icns "$(1)/Contents/Resources/AppIcon.icns"
-	go build -trimpath -ldflags "-X main.bundleID=$(2) -X main.version=$(VERSION) -X main.buildDate=$(BUILD_DATE)" \
+	go build -trimpath -ldflags "-X main.bundleID=$(2) -X main.version=$(VERSION) -X main.buildDate=$(BUILD_DATE) $(EXTRA_LDFLAGS)" \
 		-o "$(1)/Contents/MacOS/$(EXE)" ./cmd/llama-swap-launcher
 	CGO_ENABLED=0 go build -trimpath -ldflags "-X main.bundleID=$(2) -X main.version=$(VERSION)" \
 		-o "$(1)/Contents/Helpers/llsl" ./cmd/llsl

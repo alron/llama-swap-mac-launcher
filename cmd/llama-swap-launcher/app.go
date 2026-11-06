@@ -55,6 +55,9 @@ type app struct {
 	notices notices
 	// updates is what the app knows of newer releases; see updates.go.
 	updates updates
+	// install is a newer version installed over the running app; see
+	// restart.go.
+	install installed
 
 	status              *systray.MenuItem
 	details             []*systray.MenuItem // the status's explanation, wrapped over several lines
@@ -162,9 +165,11 @@ func (a *app) onReady() {
 	}
 
 	err := a.reloadPrefs()
-	a.restorePause() // before llama-swap starts, below
+	a.takeRestarted() // whether this launch is an update restart
+	a.restorePause()  // before llama-swap starts, below
 	a.startNotices()
 	a.startUpdates()
+	a.startInstallWatch()
 	a.render()
 	go a.watchStatus()
 	go a.handleClicks()
@@ -270,7 +275,7 @@ func (a *app) handleClicks() {
 		case <-a.aboutItem.ClickedCh:
 			go a.showAbout()
 		case <-a.updateItem.ClickedCh:
-			go a.showUpdate()
+			go a.updateItemClicked()
 		case <-a.checkItem.ClickedCh:
 			go a.checkForUpdatesNow()
 		case <-a.prefsItem.ClickedCh:

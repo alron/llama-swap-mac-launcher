@@ -209,6 +209,10 @@ func (c *cli) checkUpdate(args []string) int {
 // printUpdate says what a check found, as status's update line does.
 func printUpdate(w io.Writer, u *control.Update) {
 	latest, current := clean(u.Latest), clean(u.Current)
+	if u.Installed != "" {
+		fmt.Fprintf(w, "update:     %s is installed over this copy, which is still %s until the app restarts\n", clean(u.Installed), current)
+		return
+	}
 	if !u.Available {
 		fmt.Fprintf(w, "update:     none; %s is the newest release (this is %s)\n", latest, current)
 		return

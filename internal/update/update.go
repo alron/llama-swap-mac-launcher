@@ -8,6 +8,7 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -167,8 +168,9 @@ const Cask = "llama-swap-launcher"
 
 // Caskroom is where Homebrew keeps what it installed, on Apple Silicon,
 // the only Macs the app runs on (Intel Homebrew's /usr/local can't install
-// the cask, and other prefixes are ones Homebrew doesn't support).
-const Caskroom = "/opt/homebrew/Caskroom"
+// the cask, and other prefixes are ones Homebrew doesn't support). A var
+// only so a test build can point it elsewhere (-ldflags -X).
+var Caskroom = "/opt/homebrew/Caskroom"
 
 // HomebrewManaged reports whether Homebrew manages the app at app, a
 // bundle's path: each version's folder in the cask's Caskroom holds a link
@@ -186,4 +188,89 @@ func HomebrewManaged(caskroom, app string) bool {
 		}
 	}
 	return false
+}
+
+// InstalledVersion is the version of the app at bundle as it is on disk
+// now, from its Info.plist (TODO item 65): after Homebrew, say, has
+// installed a newer one over the running copy, it's the new copy's.
+func InstalledVersion(bundle string) (Version, error) {
+	s, err := PlistString(filepath.Join(bundle, "Contents", "Info.plist"), "CFBundleShortVersionString")
+	if err != nil {
+		return Version{}, err
+	}
+	v, ok := ParseVersion(s)
+	if !ok {
+		return Version{}, fmt.Errorf("the installed version, %q, isn't three numbers", s)
+	}
+	return v, nil
+}
+
+// PlistString reads key's string from an XML property list. It's not a
+// full plist reader: enough for an app's Info.plist.
+func PlistString(path, key string) (string, error) {
+	f, err := os.Open(path) // #nosec G304 -- an app bundle's Info.plist
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	d := xml.NewDecoder(io.LimitReader(f, 1<<20))
+	var lastKey, text string
+	for {
+		tok, err := d.Token()
+		if err == io.EOF {
+			return "", fmt.Errorf("%s has no %s", path, key)
+		}
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", path, err)
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			text = ""
+		case xml.CharData:
+			text += string(t)
+		case xml.EndElement:
+			switch t.Name.Local {
+			case "key":
+				lastKey = text
+			case "string":
+				if lastKey == key {
+					return text, nil
+				}
+				lastKey = ""
+			default:
+				lastKey = ""
+			}
+		}
+	}
+}
+
+// Restarted is what the app writes before it quits to restart into a
+// newer version (TODO item 65), and the new version reads at launch: that
+// it was an update, from which version, and whether inference was paused,
+// which an update restart keeps (the maintainer: the user didn't choose
+// to restart).
+type Restarted struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Paused bool   `json:"paused,omitempty"`
+}
+
+// Save writes r to path, readable by the user alone.
+func (r Restarted) Save(path string) error {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(b, '\n'), 0o600)
+}
+
+// TakeRestarted reads the marker at path and removes it, so it counts for
+// one launch; ok is false when there's none.
+func TakeRestarted(path string) (r Restarted, ok bool) {
+	b, err := os.ReadFile(path) // #nosec G304 -- the app's own state file
+	if err != nil {
+		return r, false
+	}
+	_ = os.Remove(path) // best effort; read once either way
+	return r, json.Unmarshal(b, &r) == nil
 }
