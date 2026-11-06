@@ -3,7 +3,7 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
-## Unreleased
+## 0.3.3 (2026-11-06)
 
 - **Raise the GPU's memory limit** (Settings → Tweaks, off by default), so
   bigger models fit: the app sets `iogpu.wired_limit_mb`, in whole GB, and
