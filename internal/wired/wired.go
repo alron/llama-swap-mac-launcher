@@ -6,10 +6,12 @@ package wired
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 const (
@@ -72,26 +74,44 @@ func StoredPath(bundleID string) string {
 }
 
 // Stored reads the limit the helper keeps for the app with bundleID; 0
-// when there's none.
-func Stored(bundleID string) (int64, error) {
-	b, err := os.ReadFile(StoredPath(bundleID)) // #nosec G304 -- the helper's own file, from the bundle ID
+// when there's none. It refuses a symlink, or anything but a plain file,
+// and never repeats what it found: the helper reads it as root, and logs
+// to a file anyone can read.
+func Stored(bundleID string) (int64, error) { return stored(StoredPath(bundleID)) }
+
+func stored(path string) (int64, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0) // #nosec G304 -- the helper's own file, from the bundle ID
 	if os.IsNotExist(err) {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, err
 	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return 0, fmt.Errorf("%s isn't a plain file", path)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, 64))
+	if err != nil {
+		return 0, err
+	}
 	mb, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
 	if err != nil || mb < 0 {
-		return 0, fmt.Errorf("%s holds %q, not a limit", StoredPath(bundleID), strings.TrimSpace(string(b)))
+		return 0, fmt.Errorf("%s doesn't hold a limit", path)
 	}
 	return mb, nil
 }
 
 // requirement is a code signing requirement for code with identifier,
-// signed by team with an Apple-issued certificate.
+// signed by team with a Developer ID Application certificate: the form
+// codesign gives the app as its designated requirement. Without the two
+// markers (the Developer ID intermediate, and the Developer ID Application
+// leaf), any Apple-issued certificate of the team would do, an Apple
+// Development one included, which is a weaker secret (a security review,
+// 2026-11-05).
 func requirement(identifier, team string) string {
-	return fmt.Sprintf(`anchor apple generic and identifier %q and certificate leaf[subject.OU] = %q`, identifier, team)
+	return fmt.Sprintf(`anchor apple generic and identifier %q and certificate 1[field.1.2.840.113635.100.6.2.6] `+
+		`and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = %q`, identifier, team)
 }
 
 // AppRequirement is what the helper requires of its callers: the app.

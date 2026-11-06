@@ -388,6 +388,10 @@ func (a *app) setWired(mb int64, s wiredState, repair bool) {
 		case status == macos.LoginItemRequiresApproval:
 			a.waitForHelper(mb)
 			return
+		case status == macos.LoginItemEnabled:
+			a.problem("Couldn't start the app's helper", errors.New("macOS has the app's helper allowed, but didn't start it. "+
+				"Saving again in a few seconds may work"))
+			return
 		default:
 			if err == nil {
 				err = fmt.Errorf("macOS reports it as %s", helperStatusName(status))
@@ -424,10 +428,12 @@ func (a *app) registerHelper(repair bool) (status macos.LoginItemStatus, running
 	plist := wired.Plist(bundleID)
 	register := func() {
 		err = macos.RegisterHelper(plist, true)
-		for wait := 0; wait < 4; wait++ { // up to 2 seconds
+		// Up to about 2 seconds: a probe of a job launchd can't start takes
+		// its whole timeout (askHelper), so it's a deadline, not a count.
+		for deadline := time.Now().Add(2 * time.Second); ; {
 			// Waiting to be allowed goes straight to waitForHelper, which
 			// goes on looking, unless it's being repaired.
-			if status, running = a.helperState(); running || !repair && status == macos.LoginItemRequiresApproval {
+			if status, running = a.helperState(); running || !repair && status == macos.LoginItemRequiresApproval || time.Now().After(deadline) {
 				break
 			}
 			time.Sleep(500 * time.Millisecond)
@@ -525,12 +531,13 @@ func (a *app) tellWired(title, body string) {
 	macos.Alert(title, body)
 }
 
-// sendWired asks the helper to set mb, retrying for a few seconds while
-// it can't be reached: launchd may still be starting it, just allowed. It
-// checks what comes back: from root, with the limit in effect.
+// sendWired asks the helper to set mb, retrying for about 15 seconds
+// while it can't be reached: launchd may still be starting it, just
+// allowed. It checks what comes back: from root, with the limit in effect.
 func (a *app) sendWired(mb int64) error {
 	var err error
-	for try := 0; try < 10; try++ {
+	deadline := time.Now().Add(15 * time.Second)
+	for try := 0; try == 0 || time.Now().Before(deadline); try++ {
 		if try > 0 {
 			time.Sleep(time.Second)
 		}
@@ -554,9 +561,16 @@ func (a *app) sendWired(mb int64) error {
 }
 
 // askHelper sends the helper a request, accepting an answer only from the
-// helper in this app, signed by its team.
+// helper in this app, signed by its team. A running helper answers in
+// milliseconds; one launchd can't start never does, so "info" (asked by
+// Settings, llsl status and the diagnostics) waits 3 seconds, and "set",
+// which may have to wait for launchd to start the helper, 10.
 func (a *app) askHelper(op string, mb int64) (macos.HelperReply, error) {
-	return macos.HelperRequest(wired.Label(bundleID), wired.HelperRequirement(bundleID, teamID), op, mb)
+	timeout := 3 * time.Second
+	if op == "set" {
+		timeout = 10 * time.Second
+	}
+	return macos.HelperRequest(wired.Label(bundleID), wired.HelperRequirement(bundleID, teamID), op, mb, timeout)
 }
 
 // turnOffWired has the helper set macOS's default and forget its limit,
@@ -564,8 +578,15 @@ func (a *app) askHelper(op string, mb int64) (macos.HelperReply, error) {
 // so even if the first step fails, macOS's default returns then.
 func (a *app) turnOffWired() {
 	r, err := a.askHelper("set", 0)
-	if err == nil && !r.OK {
+	// Checked as sendWired checks: from root, with macOS's default now.
+	switch {
+	case err != nil:
+	case !r.OK:
 		err = errors.New(sentence(r.Error))
+	case r.UID != 0:
+		err = fmt.Errorf("the app's helper is running as user %d, not as root", r.UID)
+	case r.Limit != 0:
+		err = fmt.Errorf("macOS still reports %s", gbText(r.Limit))
 	}
 	if err == nil {
 		a.sup.Logf("GPU memory limit: back to macOS's default")

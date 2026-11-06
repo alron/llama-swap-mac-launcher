@@ -435,7 +435,7 @@ From use after publishing, continued. Item 47, the next configuration push, is o
     - **The status:** `llsl status`'s `apiKeysRequired` comes from what llama-swap started with (item 44). After a Save that only reloads, it has to follow what was written (done: `UpdateConfigFiles`).
     - **A failed reload** logs a warning in llama-swap's output and keeps the old config (item 34), and the app doesn't see it. The staged check makes it unlikely, so the app doesn't watch for the warning; noted, not built.
 
-51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; decided the same day, below; **built and verified hands-on 2026-11-05**; **done**, with its security review to come before 0.3.3's release: see the [roadmap](roadmap.md)). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
+51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; decided the same day, below; **built and verified hands-on 2026-11-05**; **done**; its security review's first pass is items 66 to 72, below, and the local models' is in the [roadmap](roadmap.md)). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
       - A daemon plist in the bundle's `Contents/Library/LaunchDaemons/`, registered with `[SMAppService daemonServiceWithPlistName:]`. Its `BundleProgram` names an executable inside the bundle, and `AssociatedBundleIdentifiers` makes System Settings show the app's name.
       - The user approves it once, in System Settings → General → Login Items & Extensions (`SMAppService.openSystemSettingsLoginItems`); the status goes from `requiresApproval` to `enabled`.
@@ -838,6 +838,266 @@ For 0.3.3, with milestone 7 (see the [roadmap](roadmap.md)).
       - with the fix, a menu restart into 0.3.6 posted nothing; then 0.3.7 swapped in, **"Llama Swap Launcher 0.3.7 is installed"** posted, and clicking it restarted into 0.3.7, posting nothing after.
       
       Not tried hands-on: waiting while requests are in flight (unit-tested), and a real `brew upgrade` with Gatekeeper, which 0.3.3's own upgrade will be.
+
+## Items 66 to 72: the security review of 0.3.3
+
+From a security review by Claude Fable 5.1 and Claude Opus 5.5 (2026-11-05), before 0.3.3 is released. Begun by Fable 5.1 at Max effort; partway through, Fable's safeguards flagged it (a false positive, which the maintainer reported) and the session went on with Opus 5.5. **All handled the same day:** 66, 68, 69 and 70 fixed as suggested; 67 tested live with the maintainer, with no change needed; 71 and 72's keychain note documented (the README, and the cask's caveat). Testing 67 also found a hang, fixed below. The review's text follows, each item with what came of it.
+
+Item 51's review, before 0.3.3 is released, with the rest of the release
+(items 58 to 65, milestone 7 and item 54's clipboard) alongside it. Every
+file of `v0.3.2..main` was read, claims were checked against the SDK headers
+(`xcrun --show-sdk-path`) and Homebrew's own source, and each item below says
+whether it was tested or only read. `make test lint sec vuln` is clean on the
+branch. Nothing found lets another user of the Mac, a web page or a hostile
+answer from GitHub reach the helper or change the limit. The one thing that
+can't be settled by reading is item 67, which needs a live test with the
+maintainer.
+
+66. **Medium: the code signing requirement is identifier-and-team, not
+    Developer ID** (`internal/wired/wired.go:93`, `AppRequirement` and
+    `HelperRequirement`; **tested**; **fixed**: both requirements now carry the two markers, checked with `codesign --verify -R` against the dev build, accepted, and an ad-hoc build, refused; hands-on, the app and the helper still talk). The requirement is `anchor apple
+    generic and identifier "<id>" and certificate leaf[subject.OU] =
+    "<team>"`. It omits the two certificate markers that codesign's own
+    designated requirement for the same binary carries: `certificate
+    1[field.1.2.840.113635.100.6.2.6]` (the Developer ID intermediate) and
+    `certificate leaf[field.1.2.840.113635.100.6.1.13]` (the Developer ID
+    Application leaf). So it accepts *any* Apple-issued certificate whose
+    leaf OU is the team, Apple Development and Apple Distribution included,
+    not only the Developer ID Application certificate that signs releases.
+    - **Tested:** a throwaway program of my own, signed with the team's
+      Developer ID but with `--identifier com.my-wang.llama-swap-launcher.dev`,
+      satisfies the helper's listener requirement (`codesign --verify -R=…`);
+      the same program ad-hoc signed is refused. So identity rests on the
+      identifier string alone, which any signing certificate can claim.
+    - **Failure scenario:** an Apple Development certificate leaks, which is
+      a weaker secret than the Developer ID key (one is issued per team
+      member, lives on each developer's Mac, and is easy to re-download).
+      Its holder signs a ten-line program with the app's bundle ID, connects
+      to the helper's Mach service and sets the limit to anything within the
+      bounds, with no Touch ID and no dialog. Development certificates can
+      also sign debuggable (`get-task-allow`) binaries, so such a program
+      can be driven by anything running as the user.
+    - **It cuts both ways:** `HelperRequirement` has the same shape, so a
+      team-signed binary with the identifier `<id>.wired-limit` would be
+      accepted by the app as its helper. Lower impact (the app only reads
+      `uid`, `limit` and `stored` from it) but the same one-line fix.
+    - **Fix:** add both marker clauses to `requirement`, so only a Developer
+      ID Application certificate passes; `codesign -d -r- <binary>` prints
+      the exact form. Keep the identifier and team clauses as they are.
+67. **Medium, and untested: does launchd re-validate the helper before
+    running it as root?** (`packaging/wired-limit.plist.in`, `BundleProgram`; **tested live with the maintainer, 2026-11-05: it does; no change needed**, results at the end of the item.)
+    The app installs into `/Applications`, where the bundle is owned by the
+    user who installed it, not root: that's how every Homebrew cask installs,
+    and how the maintainer's copy is (checked with `ls -l`). The
+    LaunchDaemon's program is a path *inside* that bundle, so anything
+    running as the user can rewrite `Contents/Helpers/wired-limit` between
+    one start of the helper and the next.
+    - **What's known:** Background Task Management's record for the job
+      carries `BTMConfigSHA256Checksum`, and that checksum is the *plist's*
+      SHA-256, not the helper's or the app's (**tested**: compared all three
+      against the record in the system log). The plist is public and
+      deterministic, so its checksum is no obstacle to anyone.
+    - **Evidence it is enforced anyway, read not tested:** `SMAppService.h`
+      says an app that updates the plist or the executable must re-register
+      "or it may not launch", and that apps containing LaunchDaemons must be
+      notarized; and the maintainer already saw launchd refuse to bootstrap
+      the job when BTM's copy of the record was out of step. So macOS very
+      probably checks the code signature at launch. It isn't written down,
+      and the project shouldn't rest on an assumption for its only root code.
+    - **Failure scenario if it isn't enforced:** same-user code replaces the
+      helper binary in the bundle (the app's signature then fails, but
+      nothing the user sees changes) and waits for the next boot, when
+      launchd runs it as root. That is a local root escalation, and it would
+      be macOS's bug rather than the app's, but the app is what exposes it.
+      A sharper variant: after `brew uninstall` without `--zap` the BTM
+      record survives while the bundle is gone, so the path is free for
+      anyone to create.
+    - **The test to run** (the maintainer's call; roughly ten minutes, and it
+      needs their approval in System Settings and their Watch): with the dev
+      helper registered and allowed, confirm the bundle verifies
+      (`codesign --verify --strict`), replace `Contents/Helpers/wired-limit`
+      with a stand-in that appends a line to its own log and exits,
+      `launchctl kickstart -k system/<label>` (and ideally a reboot), and see
+      whether the stand-in ran as root. Then `make dev` to restore it.
+      Afterwards, unregister and check whether switching the row back on in
+      System Settings alone brings the job back (item 71).
+    - **Results** (with stand-ins that only write which user they ran as, and exit; stand-in A ad-hoc signed with the helper's identifier, stand-in B signed with the team's Developer ID under another identifier):
+      - **launchd's job carries a launch constraint** (`launchctl print`, "LWCR"): signing identifier `<id>.wired-limit`, the team, and validation category 6, a Developer ID signature. It comes from the helper's signature when it's registered. So an Apple Development signature wouldn't pass at launch either, whatever item 66's requirement said.
+      - **A silent swap is refused:** with A swapped in by a rename (no privileges needed: the bundle is the user's) and `sudo launchctl kickstart -k`, amfid refused it ("adhoc signed or signed by an unknown certificate chain") and launchd logged `OS_REASON_CODESIGNING | Launch Constraint Violation … (Constraint not matched)`, then removed the job. Nothing ran; it refused 24 more starts that the app's requests set off.
+      - **Re-registering a tampered bundle is refused:** with A still there, a confirmed Save made the app register again. Background Task Management made a new record for the changed helper, found it disallowed, and, with the bundle's seal broken, turned the app off in System Settings, so nothing was bootstrapped.
+      - **Approving the tampered bundle anyway** (the maintainer switching it back on, as an unwary user might) wasn't settled: launchd's job still named the old record, which BTM had replaced, so every start failed before any program was chosen ("record not found"). Nothing ran as root in any of some 70 attempts. Even if approval let it run, it would take two explicit authentications (the confirmed Save, and approving in System Settings after the switch turned itself off): left as a residual risk, not probed further. Stand-in B wasn't needed.
+      - **Cleaned up:** `make dev` restored the helper, `sudo launchctl bootout` cleared the stale job, and a Save (after re-allowing, then the repair) set the limit again; unticking turned it off.
+    - **If launchd doesn't check:** report it to Apple, and say in the README
+      that the app's folder should not be writable by the user it protects
+      against. There is no fix inside the app: a helper can't meaningfully
+      verify itself.
+68. **Low: a `set` whose `mb` is missing or of another type turns the limit
+    off** (`cmd/wired-limit/xpc.c:77`, with `cmd/wired-limit/main.go:92`;
+    **tested** with a standalone XPC program; **fixed**: `mb` must be an `XPC_TYPE_INT64`, or the request is refused, and the helper cancels a peer's connection when it becomes invalid). `xpc_dictionary_get_int64`
+    answers 0 for a string, a double, an absent key and an out-of-range
+    `uint64`. `check(0)` allows 0 as macOS's default, so the helper applies
+    the default and deletes its stored limit. Only the app can send a
+    request, so nothing malicious reaches this today; but the one privileged
+    operation can't tell "set 0" from "malformed", which is the wrong
+    default for root code, and a future caller (or a future field) inherits
+    it.
+    - **Fix:** read the value with `xpc_dictionary_get_value` and require
+      `xpc_get_type(v) == XPC_TYPE_INT64`, passing a flag to Go for a
+      malformed request, which `answer` reports as an error.
+    - **Smaller, in the same file:** peer connections are never cancelled or
+      released (`lsl_helper_listen`), so each connect leaks a connection
+      object in a process that runs for the life of the Mac. Only the app
+      connects, so it grows slowly; cancelling the peer on
+      `XPC_ERROR_CONNECTION_INVALID` closes it.
+69. **Low: the helper writes its stored limit through symlinks**
+    (`cmd/wired-limit/main.go:184`, `store`; **tested** with a replica of the
+    function; **fixed**: the helper writes with `O_NOFOLLOW` into a folder it checks is root's, not a link and not writable by others, and `wired.Stored` reads with `O_NOFOLLOW`, refuses anything but a plain file, and no longer repeats what it found in its error, since the helper's log is readable by all; unit-tested). `os.MkdirAll` succeeds through a symlinked folder and
+    `os.WriteFile` writes through a symlinked file, as root, leaving 0755 and
+    0644. It can't be reached today: `/Library/Application Support` is
+    root-owned 0755 (group `admin`, without write) and `/Library/Logs`
+    root-owned 0755, so nothing running as the user can plant either link,
+    and once the helper's own folder exists it is root's. It matters if
+    anything ever loosens those folders, which third-party installers do.
+    - **Fix, as item 32 did for the logs:** open the file with
+      `O_NOFOLLOW|O_CREAT|O_TRUNC` and refuse anything that isn't a plain
+      file, and create the folder with `os.Mkdir` after an `os.Lstat` check.
+      0600 would also do, since only root reads it; `llsl` reads it as the
+      user, so 0644 is deliberate, and worth a comment saying so.
+70. **Low: turning the limit off trusts a reply that `sendWired` wouldn't**
+    (`cmd/llama-swap-launcher/wired.go:566`, `turnOffWired`; read; **fixed**: it now requires root and a limit of 0 too; verified hands-on). It checks
+    the error and `r.OK` only, while `sendWired` also requires `r.UID == 0`
+    and the limit macOS reports to match what was asked. So a reply claiming
+    success would have the app log "back to macOS's default", unregister and
+    tell the user the limit is off while it isn't. Unreachable, since owning
+    the privileged Mach name needs root (item 72), but the two paths should
+    agree. **Fix:** check `r.UID == 0` there too, and say in the alert what
+    the limit is now.
+71. **Low: an unregistered helper keeps its stored limit, and a later
+    register applies it before anything is confirmed**
+    (`cmd/llama-swap-launcher/wired.go:342` and `:565`, with the cask's
+    `zap`; read; **documented, no code change**: every way back to a registered helper is a confirmed Save, whose own limit follows within a second or two, or a reinstall after uninstalling without unticking, where the limit was never turned off. The README says so, and the README and the cask's caveat say how to recover from uninstalling without unticking). `wiredDrop` unregisters without clearing the stored file,
+    and `turnOffWired` unregisters even when the helper couldn't be reached
+    to set 0, which the alert says. `brew uninstall` without `--zap` leaves
+    both the file and the BTM record.
+    - **Failure scenario:** the user turns the limit off while the helper is
+      switched off in System Settings, so it can't be reached; months later
+      they tick the box again (or reinstall), the helper starts, applies the
+      *old* stored limit at startup, and only then does the app send the new
+      one. Nobody confirmed the old value this time, and on a Mac whose
+      memory has since been judged differently it may be the wrong one.
+    - **Fix:** remember that the limit should be gone and clear it at the
+      next successful contact, or have the app send 0 before it unregisters
+      and refuse to unregister until that succeeds (it already tells the user
+      when it can't). At the least, say it in the README's uninstall note.
+    - **The cask:** `zap` accepts `launchctl:` and does not run on upgrade
+      (**tested** by reading Homebrew 7's `cask/artifact/zap.rb` and
+      `abstract_uninstall.rb`), so a `zap launchctl:` line would unload the
+      job. It would *not* clear the BTM record (only the app's own
+      unregister does), so the caveat to untick first stays the real
+      mitigation; the caveats should also say what to do if someone forgot:
+      install the app again, untick, Save, then uninstall.
+72. **Notes, no change needed** (all read, the first two from the headers; the keychain note is now in the README's With Homebrew section):
+    - **The Mach name can't be squatted.**
+      `XPC_CONNECTION_MACH_SERVICE_LISTENER` "may only be passed for services
+      which are advertised in the process' launchd.plist(5). You may not use
+      this flag to dynamically add services to the Mach bootstrap namespace",
+      and the app looks the name up with
+      `XPC_CONNECTION_MACH_SERVICE_PRIVILEGED`, the privileged bootstrap. So
+      only a job launchd started from the daemon plist can answer, whatever
+      item 66 says about certificates.
+    - **The requirement is enforced before the handler:** "For a listener
+      connection, requests that do not satisfy the requirement are dropped",
+      which matches the spike's ad-hoc client being dropped before the helper
+      saw it.
+    - **`llsl status` makes the app talk to the root helper:**
+      `controlStatus` → `wiredState` → `helperState` sends an `info` request
+      on every status call, so any script can drive one XPC round trip per
+      call into a daemon that answers one at a time. `info` only reads, so
+      the effect is noise.
+    - **Item 65's check and open are not atomic** (`restart.go:198`): the
+      bundle could be swapped between `MatchesSelf` and `open`. Since the
+      same code could launch itself anyway, nothing is gained by it;
+      `restarted.json` is likewise plantable and only makes the app believe
+      it restarted into an update and keep a pause.
+    - **Uninstalling leaves the secrets:** `zap trash:` removes the support
+      folder, the logs and the preferences, but the API keys and secret
+      variables stay in the login keychain, which Homebrew can't reach. Worth
+      a line in the README's uninstall note.
+
+**Checked and found sound** (for done.md when 0.3.3 ships), beyond the notes
+in item 72:
+
+- **Only Settings changes the limit.** `applyWired` is called from
+  `editPreferences` alone, and nothing else reaches `askHelper("set", …)`
+  (`turnOffWired` is `applyWired`'s). The control socket's commands are
+  status, start, restart, stop, unload, pause, resume, output and
+  check-update, with no command for the limit, and `prefs.json` holds no
+  limit at all, so `llsl` and a hand edit can only read it.
+- **The confirmation can't be skipped.** `wiredSet` and `wiredOff` both go
+  through `macos.ConfirmOwner` before anything is sent; `wiredRetry` resends
+  only a limit equal to `pendingMB`, which lives in memory and is set only by
+  `waitForHelper`, itself reached only after a confirmation; `wiredDrop`
+  changes no limit, and unregistering needs none.
+- **Nothing can get into the app** (checked with `codesign` on both builds):
+  hardened runtime, and the entitlements the new provisioning profile brings
+  are exactly `application-identifier`, `developer.team-identifier` and
+  `usernotifications.time-sensitive`. No `get-task-allow`, no
+  `disable-library-validation`, no dyld exceptions, so no library injection
+  and no debugger. The designated requirement is unchanged by the profile, so
+  keychain items and the Local Network grant carry over.
+- **An ad-hoc build can't reach the helper at all:** the Makefile leaves
+  `TEAM` empty, the helper exits at once without its app and team,
+  `helperState` won't ask without `teamID`, and Settings greys the box out
+  with that reason.
+- **The bounds hold at the extremes** (**tested** against the real
+  `wired.Check` through a `go test -overlay`, so the repository was
+  untouched): `MaxInt64`, `MinInt64`, one MB over the reserve, exactly the
+  reserve, a 40 GB Mac, and a Mac whose memory couldn't be read (which
+  refuses rather than allows). `apply` refuses anything above `MaxInt32`
+  before narrowing to `C.int`; the app's `wiredFrom` caps the field at
+  `MaxInt32>>10` GB; and the stored value is checked again when it's read,
+  so a hand-edited file can't widen it.
+- **The helper's request loop** is serial, one request at a time; `enqueue`
+  retains the message and the peer, `reply` releases both and frees the node,
+  and a reply to a peer that has gone is dropped by XPC. A missing `op` reads
+  as `""`, which is answered as an unknown request.
+- **LocalAuthentication:** `LAPolicyDeviceOwnerAuthentication` is biometry or
+  the login password (the header: "If Touch ID is not available, not enrolled
+  or locked out, then the user is asked for password right away"), evaluated
+  by the system, with the app learning only yes or no. The reply arrives on
+  the framework's own queue and is waited for off the main thread, as Go
+  calls it from a goroutine; Quit invalidates the context, whose reply then
+  comes back as `LAErrorAppCancel`, which the shim reads as cancelled.
+  Forging a yes would need code inside the app, which the hardened runtime
+  prevents.
+- **The update check** (item 64): a fixed GitHub URL, the proxy-free client
+  with the app's own User-Agent, a 30-second timeout, the body read under a
+  1 MB limit, drafts and pre-releases refused, the tag parsed as three
+  numbers and nothing else, and the release page built from the parsed
+  version rather than taken from the answer. So the worst a tampered answer
+  can do is misstate a version number.
+- **The entitlements script** (item 60) refuses a profile that isn't for this
+  bundle ID, that has expired (ISO 8601 in UTC, so the strings compare as
+  times), or that doesn't name the signing certificate, and claims only what
+  the app uses.
+- **Publishing** (milestone 7): `publish.sh` checks the zip, the version, a
+  clean committed tree whose commit is on `origin/main`, the tag and any
+  SHA-256 in its message, and that no such release exists, before anything
+  leaves the Mac. `tap.sh` checks the tap's origin, that its commits use the
+  noreply address, that it's on `main`, clean and not behind GitHub, that
+  GitHub's asset digest is this zip's, and that the change is the two
+  expected lines, putting the cask back on any failure. Both honour
+  `DRY_RUN`. The two unpushed commits in the tap, and the unpushed commits
+  here, pass `CLAUDE.local.md`'s personal-details check (**run**).
+- **The clipboard** (item 54, carried over from 0.3.2): the write is
+  current-host-only, concealed and transient, the change count is kept from
+  the app's own write and the clipboard is cleared only if it hasn't changed
+  since, and the app never reads what's there. The timer runs in the common
+  modes, so it fires while a dialog is open, and Quit clears it while
+  AppKit's loop is still running. "Never" leaves the value, which the Tweaks
+  tab says.
+
+**Found while testing item 67:** the app's request to the helper had no timeout (`xpc_connection_send_message_with_reply_sync`). While launchd had the job but kept refusing to start it, Settings hung before its window appeared, the menu offering only Quit (which worked), and `llsl status` and Collect Diagnostics would have too. **Fixed:** the request is sent asynchronously and waited for up to 3 seconds for `info` and 10 for `set`, then cancelled; the retries that relied on quick failures are bounded by time (about 15 seconds for a set, 2 per register in a repair). Also reworded: the alert when macOS has the helper allowed but won't start it, and `llsl status` when macOS's default is unknown ("macOS's default (the Mac has 96 GB)").
 
 ## Milestone 0 results (2026-09-28)
 

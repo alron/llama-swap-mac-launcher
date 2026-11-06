@@ -77,20 +77,24 @@ func main() {
 	for {
 		var cop *C.char
 		var mb C.longlong
-		h := C.lsl_helper_next(&cop, &mb)
+		var hasMB C.int
+		h := C.lsl_helper_next(&cop, &mb, &hasMB)
 		op := C.GoString(cop)
 		C.free(unsafe.Pointer(cop))
-		answer(h, op, int64(mb))
+		answer(h, op, int64(mb), hasMB != 0)
 	}
 }
 
-// answer handles one request from the app: "info", or "set" with mb.
-func answer(h unsafe.Pointer, op string, mb int64) {
+// answer handles one request from the app: "info", or "set" with mb,
+// which must be there: a malformed request isn't macOS's default.
+func answer(h unsafe.Pointer, op string, mb int64, hasMB bool) {
 	var err error
 	switch op {
 	case "info":
 	case "set":
-		if err = check(mb); err == nil {
+		if !hasMB {
+			err = errors.New("a set request without a limit")
+		} else if err = check(mb); err == nil {
 			if err = apply(mb); err == nil {
 				err = store(mb)
 			}
@@ -181,6 +185,11 @@ func readStored() (int64, error) {
 	return mb, nil
 }
 
+// store keeps mb for every start, or with 0 removes it. As root, it
+// follows no symlinks: its folder must be root's own and not a link, and
+// the file is opened without following one (O_NOFOLLOW), so a link planted
+// there, should anything loosen /Library/Application Support, can't send
+// root's write elsewhere. Removing a link removes only the link.
 func store(mb int64) error {
 	if mb == 0 {
 		if err := os.Remove(storedPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -188,8 +197,29 @@ func store(mb int64) error {
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(storedPath()), 0o755); err != nil {
+	dir := filepath.Dir(storedPath())
+	switch fi, err := os.Lstat(dir); {
+	case errors.Is(err, os.ErrNotExist):
+		if err := os.Mkdir(dir, 0o755); err != nil { // #nosec G301 -- readable by all, so the app and llsl can show the limit; only root writes
+			return err
+		}
+	case err != nil:
+		return err
+	case !fi.IsDir() || fi.Sys().(*syscall.Stat_t).Uid != 0 || fi.Mode().Perm()&0o022 != 0:
+		return fmt.Errorf("%s isn't a folder only root can write", dir)
+	}
+	// 0644: the app and llsl read it, as the user, to show the limit.
+	f, err := os.OpenFile(storedPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, 0o644) // #nosec G302 G304 -- a limit, not a secret; the path is the helper's own
+	if err != nil {
 		return err
 	}
-	return os.WriteFile(storedPath(), []byte(strconv.FormatInt(mb, 10)+"\n"), 0o644) // #nosec G306 -- a limit, not a secret; only root can write it
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		_ = f.Close() // refused anyway
+		return fmt.Errorf("%s isn't a plain file", storedPath())
+	}
+	if _, err := f.WriteString(strconv.FormatInt(mb, 10) + "\n"); err != nil {
+		_ = f.Close() // the write's error is the one to report
+		return err
+	}
+	return f.Close()
 }

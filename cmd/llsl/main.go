@@ -539,7 +539,7 @@ func gpuMemory(g *control.GPUMemory) string {
 	case g.LimitMB == 0 && g.DefaultMB > 0:
 		line = fmt.Sprintf("macOS's default, about %.0f GB%s", float64(g.DefaultMB)/1024, of)
 	case g.LimitMB == 0:
-		line = "macOS's default" + of
+		line = "macOS's default (the Mac has " + gb(g.TotalMB) + ")"
 	case g.SetByApp:
 		line = gb(g.LimitMB) + of + ", set by the app"
 	default:

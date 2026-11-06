@@ -6,8 +6,9 @@
 char *lsl_helper_listen(const char *name, const char *requirement);
 
 // lsl_helper_next waits for the next request and returns its handle, with
-// its "op" and "mb"; *op is the caller's to free().
-void *lsl_helper_next(char **op, long long *mb);
+// its "op" and "mb"; *op is the caller's to free(). *has_mb says whether
+// "mb" was there, as a 64-bit integer.
+void *lsl_helper_next(char **op, long long *mb, int *has_mb);
 
 // lsl_helper_reply answers the request handle, and releases it.
 void lsl_helper_reply(void *handle, int ok, const char *error, long long uid, long long limit, long long stored);

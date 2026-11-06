@@ -10,6 +10,7 @@ import "C"
 
 import (
 	"errors"
+	"time"
 	"unsafe"
 )
 
@@ -50,9 +51,10 @@ type HelperReply struct {
 }
 
 // HelperRequest asks the helper at service, which must meet requirement,
-// to do op ("info", or "set" with mb). The error is for a request that
-// didn't reach the helper; one it refused comes back in the reply.
-func HelperRequest(service, requirement, op string, mb int64) (HelperReply, error) {
+// to do op ("info", or "set" with mb), waiting up to timeout for it. The
+// error is for a request that didn't reach the helper or wasn't answered
+// in time; one it refused comes back in the reply.
+func HelperRequest(service, requirement, op string, mb int64, timeout time.Duration) (HelperReply, error) {
 	cs, cr, co := cString(service), cString(requirement), cString(op)
 	defer func() {
 		for _, c := range []*C.char{cs, cr, co} {
@@ -62,7 +64,7 @@ func HelperRequest(service, requirement, op string, mb int64) (HelperReply, erro
 	var ok C.int
 	var cerr *C.char
 	var uid, limit, stored C.longlong
-	if failed := C.lsl_helper_request(cs, cr, co, C.longlong(mb), &ok, &cerr, &uid, &limit, &stored); failed != nil {
+	if failed := C.lsl_helper_request(cs, cr, co, C.longlong(mb), C.double(timeout.Seconds()), &ok, &cerr, &uid, &limit, &stored); failed != nil {
 		defer C.free(unsafe.Pointer(failed))
 		return HelperReply{}, errors.New(C.GoString(failed))
 	}

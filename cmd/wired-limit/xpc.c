@@ -55,6 +55,11 @@ char *lsl_helper_listen(const char *name, const char *requirement) {
 		xpc_connection_set_event_handler(peer, ^(xpc_object_t event) {
 			if (xpc_get_type(event) == XPC_TYPE_DICTIONARY) {
 				enqueue(peer, event);
+			} else if (event == XPC_ERROR_CONNECTION_INVALID) {
+				// The app has gone, or cancelled its side (it does after
+				// every request): cancelled here too, XPC frees the peer,
+				// which would otherwise stay for the life of the helper.
+				xpc_connection_cancel(peer);
 			}
 		});
 		xpc_connection_resume(peer);
@@ -63,7 +68,7 @@ char *lsl_helper_listen(const char *name, const char *requirement) {
 	return NULL;
 }
 
-void *lsl_helper_next(char **op, long long *mb) {
+void *lsl_helper_next(char **op, long long *mb, int *has_mb) {
 	dispatch_semaphore_wait(waiting, DISPATCH_TIME_FOREVER);
 	pthread_mutex_lock(&lock);
 	request *r = first;
@@ -74,7 +79,12 @@ void *lsl_helper_next(char **op, long long *mb) {
 	pthread_mutex_unlock(&lock);
 	const char *o = xpc_dictionary_get_string(r->message, "op");
 	*op = strdup(o != NULL ? o : "");
-	*mb = xpc_dictionary_get_int64(r->message, "mb");
+	// Only a 64-bit integer: xpc_dictionary_get_int64 answers 0 for a
+	// missing key or another type, which "set" would take as macOS's
+	// default.
+	xpc_object_t v = xpc_dictionary_get_value(r->message, "mb");
+	*has_mb = v != NULL && xpc_get_type(v) == XPC_TYPE_INT64;
+	*mb = *has_mb ? xpc_int64_get_value(v) : 0;
 	return r;
 }
 

@@ -24,7 +24,7 @@ char *lsl_helper_register(const char *plist, int enable) {
 	return strdup(msg ? msg : "unknown error");
 }
 
-char *lsl_helper_request(const char *service, const char *requirement, const char *op, long long mb,
+char *lsl_helper_request(const char *service, const char *requirement, const char *op, long long mb, double timeout,
                          int *ok, char **error, long long *uid, long long *limit, long long *stored) {
 	// Privileged: the service is a LaunchDaemon's, in the system's domain.
 	xpc_connection_t conn = xpc_connection_create_mach_service(service, NULL, XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
@@ -40,7 +40,20 @@ char *lsl_helper_request(const char *service, const char *requirement, const cha
 	xpc_object_t message = xpc_dictionary_create(NULL, NULL, 0);
 	xpc_dictionary_set_string(message, "op", op);
 	xpc_dictionary_set_int64(message, "mb", mb);
-	xpc_object_t reply = xpc_connection_send_message_with_reply_sync(conn, message);
+	// Not send_message_with_reply_sync, which has no timeout: while launchd
+	// has the job but keeps refusing to start its program (a launch
+	// constraint not met, say), the message waits for it forever, and so
+	// did Settings (a security review's test, 2026-11-05).
+	__block xpc_object_t reply = nil;
+	dispatch_semaphore_t done = dispatch_semaphore_create(0);
+	xpc_connection_send_message_with_reply(conn, message, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^(xpc_object_t r) {
+		reply = r;
+		dispatch_semaphore_signal(done);
+	});
+	if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeout * NSEC_PER_SEC))) != 0) {
+		xpc_connection_cancel(conn); // the handler still runs, with an error, and is let go
+		return strdup("the helper didn't answer: it may be registered but unable to start");
+	}
 	char *failed = NULL;
 	if (xpc_get_type(reply) == XPC_TYPE_DICTIONARY) {
 		*ok = xpc_dictionary_get_bool(reply, "ok") ? 1 : 0;

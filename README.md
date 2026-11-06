@@ -61,6 +61,8 @@ into the new version once llama-swap has no requests in flight (see
 open it again once. `brew uninstall --zap` also removes its settings and
 logs, and, with your password, the GPU memory limit's files. If you raised
 that limit, untick it before uninstalling (see [GPU memory](#gpu-memory)).
+Your API keys and secret variables stay in your login keychain, which
+Homebrew can't reach; Keychain Access can delete them (see [Files](#files)).
 
 If you installed the zip before, Homebrew can take over that copy in
 `/Applications`, when it's the same version as the cask:
@@ -814,7 +816,11 @@ Tweaks) does it for you, and again at every startup. Set it in whole GB.
   Allow in the Background, switched on: that's your permission,
   remembered, so turning the limit on again doesn't ask. Untick it before
   you delete the app, so the helper goes with it; `brew uninstall --zap`
-  deletes its files.
+  deletes its files. If you forgot, install the app again, untick, Save,
+  then uninstall. Turned off while the helper couldn't run (switched off in
+  System Settings, say), the helper keeps its last limit, and applies it
+  when it next starts, a moment before the app sets the one you've just
+  saved.
 - **Another LaunchDaemon setting the limit,** one of your own say: Settings
   notes a limit the app didn't set. Remove the other before ticking the
   box, so they don't both set it at startup.

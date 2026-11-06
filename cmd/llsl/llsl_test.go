@@ -248,6 +248,8 @@ func TestGPUMemoryLine(t *testing.T) {
 		{control.GPUMemory{TotalMB: 96 * gb, LimitMB: 80 * gb, StoredMB: 80 * gb, Helper: "enabled", SetByApp: true},
 			"80 GB of 96 GB, set by the app; the app's helper is allowed but not running (Save in Settings starts it again)"},
 		{control.GPUMemory{TotalMB: 256 * gb, LimitMB: 224 * gb, Helper: "not registered"}, "224 GB of 256 GB, not set by the app"},
+		// macOS's default unknown: the app opened with a limit set.
+		{control.GPUMemory{TotalMB: 96 * gb, Helper: "not registered"}, "macOS's default (the Mac has 96 GB)"},
 		{control.GPUMemory{TotalMB: 96 * gb, DefaultMB: 79626, Helper: "requires approval", PendingMB: 84 * gb},
 			"macOS's default, about 78 GB of 96 GB; 84 GB once the app's helper is allowed in System Settings (if it's allowed and nothing happens, Save in Settings again)"},
 		{control.GPUMemory{TotalMB: 96 * gb, LimitMB: 70 * gb, StoredMB: 84 * gb, Helper: "enabled", Running: true},
