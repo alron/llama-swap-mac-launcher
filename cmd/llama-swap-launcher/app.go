@@ -51,6 +51,8 @@ type app struct {
 	pauseWanted   bool
 	pausePid      int
 	pauseRestored bool
+	// notices are the macOS notifications posted for problems; see notices.go.
+	notices notices
 
 	status              *systray.MenuItem
 	details             []*systray.MenuItem // the status's explanation, wrapped over several lines
@@ -153,6 +155,7 @@ func (a *app) onReady() {
 
 	err := a.reloadPrefs()
 	a.restorePause() // before llama-swap starts, below
+	a.startNotices()
 	a.render()
 	go a.watchStatus()
 	go a.handleClicks()
@@ -199,6 +202,8 @@ func (a *app) shutdown() {
 			_ = a.ctl.Close() // best effort at exit; it removes the socket file
 		}
 		a.sup.Stop()
+		// Its problems end with it: none of its notices still apply.
+		macos.RemoveAllNotifications()
 	})
 }
 
@@ -403,22 +408,20 @@ func (a *app) reloadPrefs() error {
 }
 
 func (a *app) watchStatus() {
-	last := a.sup.Status().State
+	last := a.sup.Status()
 	for range a.sup.Changed() {
 		st := a.sup.Status()
 		a.syncMonitor(st)
 		a.render()
-		if st.State == supervisor.Failed && last != supervisor.Failed {
-			title := "llama-swap stopped with a problem"
-			switch {
-			case errors.Is(st.Err, supervisor.ErrQuarantined):
-				title = "macOS blocked llama-swap"
-			case errors.Is(st.Err, supervisor.ErrNotStarted):
-				title = "llama-swap couldn't start"
-			}
-			go macos.AlertWithOutput(title, st.Message, a.recentOutput(10))
+		// With notifications showing, its notice replaces the alert, and
+		// clicking it opens the alert (notices.go).
+		if st.State == supervisor.Failed && last.State != supervisor.Failed && !a.notifying() {
+			go macos.AlertWithOutput(failureTitle(st), st.Message, a.recentOutput(10))
 		}
-		last = st.State
+		if st.State == supervisor.Running && last.State == supervisor.Waiting {
+			a.postEvent(noticeRestarted, restartedNotice(last.Message))
+		}
+		last = st
 	}
 }
 
@@ -491,6 +494,7 @@ func (a *app) render() {
 	enable(a.openUI, idle && st.State == supervisor.Running && snap.Healthy)
 	enable(a.aboutItem, idle)
 	enable(a.prefsItem, idle)
+	a.noticesChanged() // the standing notices follow the same state
 }
 
 // showAbout shows the About panel.

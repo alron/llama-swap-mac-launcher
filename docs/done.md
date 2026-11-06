@@ -587,7 +587,7 @@ For the release after 0.3.1. Item 53, browser login through a form, is open: see
 
 **Found while taking 0.3.2's screenshots** (2026-11-01): the Peers tab's note beside Key was cut off at the dialog's edge ("sent to this pee"), since item 48 narrowed the dialog in 0.3.1. A long item widens the Key menu, and both it and the note resisted squeezing equally, so AppKit cut either one: here, a secret variable named `LLAMA_SWAP_SESSION_SECRET`. The note is now the warning alone ("sent to this peer with every request"), with the explanation in a tooltip on Key (item 48's rule), and the menu gives way first, shortening its title with "…" (`NSLayoutPriorityDefaultLow`). The dialog test program checks the note is whole and inside the tab with each of two peers selected, one with a 50-character key name and one whose variable is gone.
 
-## Items 58, 59 and 61 to 63
+## Items 58 to 63
 
 For 0.3.3, with milestone 7 (see the [roadmap](roadmap.md)).
 
@@ -623,7 +623,67 @@ For 0.3.3, with milestone 7 (see the [roadmap](roadmap.md)).
       - the dialog test program, six runs, 67 checks, nothing in AppKit's log: the box unticked by default with its tooltip, greyed and enabled with the first, keeping its tick, its left edge at the first box's title (38 points), the window still 663 × 839, and both in Save's reply as JSON booleans.
     - **Verified hands-on** by the maintainer with the dev app: the box indented under the first, unticked by default and greyed with the first unticked; a pause kept through quitting and reopening the app, with the log's line; Resume All forgetting it; a pause from llama-swap's web UI kept the same way; and unticking the box while paused forgetting it.
 
-<!-- Markdown numbers a list from its first item: this one starts its own, so it shows its number. -->
+60. **macOS notifications for problems, at a high priority** (the maintainer, 2026-11-02; **built and verified hands-on 2026-11-05**; **done**). Today a problem shows as text in the menu and a red arrow, and two of them also open an alert: llama-swap stopping with a problem, and a model's GPU backend failing. Neither reaches anyone who isn't looking at the Mac's screen. The app should post macOS notifications for anything that needs a person.
+    - **They stay on the Mac** (checked 2026-11-02). The maintainer hoped they'd reach every device on the iCloud account, but macOS doesn't forward a Mac app's notifications anywhere. Apple's forwarding only goes from iPhone to Mac (iPhone Mirroring). The maintainer: notifications on the Mac alone are still worth having, and fit the app's other macOS touches. Reaching a phone takes something else: see "Later" below.
+    - **How:** `UNUserNotificationCenter`, in a small shim (`notify.m`).
+      - **Permission:** macOS asks once (`requestAuthorizationWithOptions:`, for alerts and sounds); asked at launch (below). After that, what gets through (banners or alerts, sounds, time-sensitive) is the user's choice, in System Settings → Notifications, under the app's name. The dev and release apps are separate entries there.
+      - **While the app is active** (it activates itself for dialogs), macOS shows no banner unless the centre's delegate answers `willPresentNotification:` with banner, list and sound. So it does.
+      - **Clicks and action buttons** reach the delegate's response handler. Go waits for them in a goroutine, through a C function that blocks until the next one, so no Go function is exported to Objective-C.
+      - **One per kind:** each kind of problem has its own identifier. A new one replaces the last of its kind, so a crash loop is one notification, not one per restart. When the problem clears, the app removes it from Notification Centre.
+    - **High priority is the time-sensitive level** (`UNNotificationInterruptionLevelTimeSensitive`), which gets through a Focus. It needs the entitlement `com.apple.developer.usernotifications.time-sensitive`. Without it, macOS posts at the ordinary level instead.
+      - **On macOS that takes a provisioning profile:** an App ID for each bundle ID (release and `.dev`) in the developer account, with the Time Sensitive Notifications capability (which the account holder turns on, with no request to Apple), and a Developer ID provisioning profile for each, embedded as `Contents/embedded.provisionprofile`. Signing then needs an entitlements file (`codesign --entitlements`), the project's first.
+      - **Ad-hoc builds sign without it.** An app that claims the entitlement without a matching profile won't launch, so CI's builds and those of contributors without the certificate leave it out, and post at the ordinary level.
+      - **Granted** (the spike, 2026-11-05): the maintainer made explicit App IDs for both bundle IDs with the Time Sensitive Notifications capability, and a Developer ID profile for each, valid until 2044. Both profiles grant `com.apple.developer.usernotifications.time-sensitive`, beside the App ID and team, and name the maintainer's Developer ID certificate.
+      - **Profiles:** turning a capability on for an App ID invalidates that App ID's existing profiles, so adding one later means downloading them again. A profile holds no private key, but it's tied to the developer account and useless without its certificate, so they're kept out of git, in `packaging/profiles/<bundle id>.provisionprofile` (git-ignored). `packaging/entitlements.sh` writes the entitlements from the profile (App ID, team, time-sensitive; not the team's `keychain-access-groups`, which the app doesn't use) after checking it's for this bundle ID, names the signing certificate and hasn't expired; `bundle` in the Makefile embeds it as `Contents/embedded.provisionprofile` and signs with them. Without a profile (ad-hoc builds, CI) it signs as before and says notifications won't be time-sensitive.
+      - **Not critical alerts,** the level above: Apple grants those to health and safety apps.
+    - **What notifies** (decided by the maintainer, 2026-11-05: "That list is fine"):
+      - **Time-sensitive:**
+        - llama-swap stopped with a problem: the crash-loop cap, a quarantined binary, or one that couldn't start.
+        - llama-swap not responding.
+        - A model's GPU backend failed, with automatic unloading off.
+      - **Ordinary:**
+        - llama-swap restarted after an unexpected exit.
+        - A faulted model was unloaded automatically.
+        - llama-swap refused the app, over its API key.
+      - **Nothing** for what the user just did in the menu or Settings, for `llsl` requests (whose caller gets the answer), or for a pause.
+    - **Actions:**
+      - The GPU fault's notification offers **Unload**, as its alert does (`UNNotificationCategory`).
+      - Clicking a failure's notification shows the alert with llama-swap's last lines.
+    - **A Tweaks checkbox, on by default** (the maintainer, 2026-11-02), worded something like **Native notifications**, so turning them off doesn't mean blocking the app in System Settings.
+      - **In `prefs.json`:** `notifications`, a `*bool` like item 57's checkbox, written only when it's off. A file saved with the default then stays readable by older versions, whose `prefs.Load` rejects keys it doesn't know.
+      - **Permission:** macOS asks at the first launch with the box ticked. By default, that's the first launch of the version that has notifications; otherwise, when the box is ticked again. Never at the first problem, which is the worst moment for the question.
+      - **When macOS doesn't allow them** (the user said no, or turned them off in System Settings), the box stays ticked, and a hint under it says so and where to change it. It's a warning that changes with the settings, so it's a hint, not a tooltip (item 48).
+      - **Unticking** stops new notifications and clears the app's notifications from Notification Centre.
+    - **Decided by the maintainer** (2026-11-02):
+      - **Notifications replace those two alerts while the box is ticked.** Unticked, the alerts come back as today. Clicking a failure's notification still opens its alert, with llama-swap's last lines.
+      - **No Send Test Notification button,** unless notifications turn out to be troublesome and users need a way to check them.
+    - **The spike** (2026-11-05), with `notify.m` and a temporary menu item in the dev build, then a release build:
+      - **The app still launches** with the profile and entitlements, and its secrets in the keychain stay readable with no prompt: the signature's designated requirement (bundle ID and team) is unchanged.
+      - **The permission prompt** names the app. When the first time-sensitive notification arrived, macOS also asked whether to keep allowing time-sensitive ones; the app's settings then show a **Time sensitive notifications** switch, which appears only with the entitlement.
+      - **Time-sensitive works:** marked *Time Sensitive* in Notification Centre. **Through a Focus, only if the Focus allows it:** on macOS 27, a Do Not Disturb with no allowed apps silenced it too. Once the app was allowed in it (or with Intelligent Breakthrough & Silencing on), it came through with its sound. The README must say so.
+      - **Clicks reach the app:** **Unload** came back as action `unload`, a click on a notification as `default`.
+      - **One per kind:** posting with the same identifier replaced the earlier one.
+      - **The style is the user's:** every app starts on **Temporary** (banners, which go to Notification Centre after a few seconds). `NSUserNotificationAlertStyle = alert` in Info.plist isn't honoured by `UNUserNotificationCenter` (the settings came back `banner`), so it's not used; **Persistent** (alerts, which stay until dismissed) is the user's choice in System Settings, which the README should suggest for problems.
+      - **Notarization accepts it:** a release build carrying its profile and entitlements was accepted with no issues, stapled, and passed `spctl` and `check-zip.sh`.
+    - **Built:**
+      - **The shim** (`notify.m`, `notify.go`): the centre's delegate (banners while the app is active, clicks queued for Go), the GPU fault's category with **Unload**, asking permission, posting at the ordinary or time-sensitive level, removing one or all, waiting for the next click, and what macOS allows (`NotificationPermission`, with `Shown` and `Blocked`).
+      - **The decisions** (`notices.go`): `standingNotices` maps llama-swap's state and the health snapshot to the notices it calls for; `watchNotices`, woken by every `render`, posts those that begin or change and removes those that end. Events are posted where they happen: `restartedNotice` when the supervisor goes from waiting to running, `unloadedNotice` when a faulted model is unloaded automatically. All of the app's notifications are cleared at launch (leftovers from a crash) and at quit.
+      - **Replacing the alerts:** the failure alert and the GPU fault's are skipped while `notifying()`: the box ticked **and** macOS showing the app's notifications. If macOS doesn't (the user said no, or turned them off), the alerts stay, so a problem is never left unseen; not in the decision as written, but what it was for. Clicking the failure's notification opens its alert with llama-swap's last lines; the fault's **Unload** unloads the model, and a click on the fault's notification opens its Unload or Later alert (`offerUnload`).
+      - **Settings:** **Native notifications** first on the Tweaks tab, with its tooltip, and the hint, shown while the box is ticked and macOS blocks them, grouped with it so a hidden hint leaves no gap. `notifications` in `prefs.json` is written only when off (`Prefs.Notifies`). macOS is asked at launch if it never has been, and when the box is ticked again; unticking clears Notification Centre.
+      - **Also:** Collect Diagnostics shows the box and what macOS allows (authorization, alerts and style, time-sensitive, sound); the README has a Notifications section (what notifies, Persistent, letting time-sensitive ones through a Focus) and the build section says what the profiles are for; the CHANGELOG.
+    - **Tested:**
+      - unit tests: `standingNotices` for ready, paused, starting, stopped, waiting to restart, failed, not responding, refused and GPU faults, with and without automatic unloading, and which are time-sensitive, and that only faults get **Unload**; the failure's titles; the restart's text; the box through the dialog's form, written only when off;
+      - the dialog test program: the box ticked with its tooltip, the hint shown while blocked and the box ticked, hidden when it's unticked and back when it's ticked again, the reply's boolean, the window still 663 × 839, nothing in AppKit's log;
+      - `make test lint sec`, and an ad-hoc build, as CI's, which leaves the profile out and says so.
+    - **Verified hands-on** by the maintainer (2026-11-05), with the dev app, a stand-in model that reports a GPU fault (a file in its managed config folder, removed afterwards) and signals to its llama-swap:
+      - a GPU fault: a time-sensitive notification with **Unload** and no alert; **Unload** unloaded the model and the notification went; a click on the next one opened the Unload or Later alert;
+      - SIGKILL: "llama-swap restarted", with "signal 9, killed"; the fault's notification went with the old llama-swap;
+      - SIGSTOP: "llama-swap isn't responding" 35 seconds later (a 60-second health check); SIGCONT: ready again 18 seconds later, and the notification went;
+      - five SIGKILLs: "llama-swap stopped with a problem" and no alert; a click opened the alert with llama-swap's last lines; **Start** removed the notification (macOS also removes one when it's clicked);
+      - the box unticked: Notification Centre cleared, and a SIGKILL notified nothing; ticked again, it notified again.
+      
+      Not tried hands-on: the hint and the alerts' return with notifications turned off in System Settings (the hint is in the test program), and the prompt at the release app's first launch (seen with the dev app in the spike).
+    - **Later, reaching a phone** (noted, not planned): a command, chosen by the user, that the app runs for each notification with its title and text. The user's own script sends it on, through ntfy, Pushover, Home Assistant or a message. It would run as the app's child, with the app's Local Network permission. A command keeps any third-party service out of the app itself.
 
 61. **Tab from a name to its value, in Settings' tables** (the maintainer, 2026-11-03, while checking item 58: "a UI/UX element that is fairly baked into my brain, likely from dealing with spreadsheets"; **built and verified hands-on 2026-11-03**; **done**). Tab while editing a cell ended the edit and selected the table, in 0.3.2 too. It should move to the next cell, as in a spreadsheet.
     - **Built:** `tabAcross` in `prefs.m`, from the cell fields' delegate (`control:textView:doCommandBySelector:`, in `LSLSecretTable` and `LSLPeers`): Tab moves editing to the next cell with an editable field, a name to its value, a peer's name to its URL, and from a row's last to the next row's first, selecting it (as Numbers does; the maintainer: "Wrapping to the next row is fine"); Shift-Tab goes back. The peers' checkboxes, and fields that are off, are skipped. Past the table's last cell, or before its first, Tab leaves the table as before. The edit being left is kept, as a click elsewhere keeps it.

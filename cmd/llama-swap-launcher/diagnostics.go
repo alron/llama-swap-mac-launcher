@@ -178,6 +178,15 @@ func (a *app) diagnosticSummary(p prefs.Prefs, secrets map[string]string) string
 	if msg := message(st, a.snapshot()); msg != "" {
 		line("", "%s", msg)
 	}
+	// What macOS allows the app's notifications (TODO item 60), the first
+	// thing to look at when one didn't show.
+	n := macos.NotificationSettings()
+	setting := "off"
+	if p.Notifies() {
+		setting = "on"
+	}
+	line("Notifications", "%s in Settings; macOS: %s, alerts %s (%s), time-sensitive %s, sound %s", setting,
+		orUnknown(n.Authorization), orUnknown(n.Alerts), orUnknown(n.Style), orUnknown(n.TimeSensitive), orUnknown(n.Sound))
 	if since, err := os.ReadFile(a.paths.PauseFile()); err == nil { // #nosec G304 -- the app's own state file
 		line("Pause kept", "since %s, for the app's next launch (Settings → Tweaks)", strings.TrimSpace(string(since)))
 	}

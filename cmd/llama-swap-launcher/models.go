@@ -227,16 +227,24 @@ func (a *app) reportFaults(snap health.Snapshot) {
 			// The unloadOnGpuFault preference: for runs nobody is watching.
 			a.sup.Logf("unloading %s automatically, as the preferences ask", m.ID)
 			go a.unloadModel(m.ID)
+			go a.postEvent(noticeUnloaded+m.ID, unloadedNotice(m.ID))
 			continue
 		}
-		go func() {
-			if macos.Confirm(m.ID+"'s GPU backend has failed",
-				"Requests to this model will fail until it's unloaded. llama-swap loads it again, "+
-					"in a new process, on the next request for it.",
-				"Unload "+m.ID, "Later") {
-				a.unloadModel(m.ID)
-			}
-		}()
+		// With notifications showing, its notice (with Unload) replaces the
+		// alert; clicking the notice opens the alert (notices.go).
+		if !a.notifying() {
+			go a.offerUnload(m.ID)
+		}
+	}
+}
+
+// offerUnload asks whether to unload a model whose GPU backend has failed.
+func (a *app) offerUnload(model string) {
+	if macos.Confirm(model+"'s GPU backend has failed",
+		"Requests to this model will fail until it's unloaded. llama-swap loads it again, "+
+			"in a new process, on the next request for it.",
+		"Unload "+model, "Later") {
+		a.unloadModel(model)
 	}
 }
 

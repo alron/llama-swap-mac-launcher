@@ -448,6 +448,10 @@ static NSString *newKey(void) {
 // The Tweaks tab's two pause boxes: the second needs the first.
 @property(strong) NSButton *keepPaused;
 @property(strong) NSButton *keepPausedApp;
+// Native notifications, and the hint under it while macOS blocks them.
+@property(strong) NSButton *notifications;
+@property(strong) NSTextField *notificationsHint;
+@property BOOL notificationsBlocked;
 @end
 
 @implementation LSLPrefsController
@@ -539,6 +543,12 @@ static NSString *newKey(void) {
 // restarts llama-swap too (TODO item 59). The second box keeps its tick.
 - (void)keepPausedChanged:(id)sender {
 	self.keepPausedApp.enabled = self.keepPaused.state == NSControlStateValueOn;
+}
+
+// notificationsChanged shows the hint only while it matters: the box ticked,
+// and macOS blocking the app's notifications (TODO item 60).
+- (void)notificationsChanged:(id)sender {
+	self.notificationsHint.hidden = !(self.notificationsBlocked && self.notifications.state == NSControlStateValueOn);
 }
 
 // ownDirValue is the user's own folder, whichever folder the field shows.
@@ -1608,7 +1618,29 @@ char *lsl_preferences(const char *json, int *result) {
 		keepPaused.action = @selector(keepPausedChanged:);
 		[c keepPausedChanged:nil];
 		NSView *keepPausedAppRow = underTitle(keepPausedApp, keepPaused);
-		NSStackView *tweaks = column(@[ grid(@[ @[ clearLabel, clearAfter ] ]), keepPaused, keepPausedAppRow ]);
+		// Native notifications (TODO item 60), first: the setting most will
+		// look for. Its hint is a warning that changes with macOS's setting.
+		c.notifications = checkbox(@"Native notifications", in[@"notifications"]);
+		explain(@"Problems that need you are posted as macOS notifications, in place of the alerts for them. "
+		        @"Time-sensitive: llama-swap stopping with a problem or not responding, and a model's GPU backend failing "
+		        @"(with an Unload button). Ordinary: llama-swap restarting after a crash, a faulted model unloaded "
+		        @"automatically, and llama-swap refusing the app. A Focus lets the time-sensitive ones through if it "
+		        @"allows the app; to keep them on screen until dismissed, choose Persistent in System Settings → "
+		        @"Notifications. Unticked, the alerts come back.",
+		        @[ c.notifications ]);
+		NSString *appName = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"Llama Swap Launcher";
+		c.notificationsHint = hint([NSString stringWithFormat:@"macOS isn't showing the app's notifications, so problems show as "
+		                                                      @"alerts. To use them, allow them in System Settings → "
+		                                                      @"Notifications → %@.", appName]);
+		c.notificationsBlocked = [in[@"notificationsBlocked"] boolValue];
+		c.notifications.target = c;
+		c.notifications.action = @selector(notificationsChanged:);
+		[c notificationsChanged:nil];
+		// The box and its hint together, so a hidden hint leaves no gap.
+		NSStackView *notificationsGroup = column(@[ c.notifications, c.notificationsHint ]);
+		notificationsGroup.spacing = 4;
+		NSStackView *tweaks = column(@[ notificationsGroup, grid(@[ @[ clearLabel, clearAfter ] ]), keepPaused, keepPausedAppRow ]);
+		[tweaks setCustomSpacing:16 afterView:notificationsGroup];
 
 		// Secrets: the API keys, then the secret environment variables.
 		c.keys = [[LSLSecretTable alloc] initWithRows:in[@"apiKeys"]];
@@ -1817,6 +1849,7 @@ char *lsl_preferences(const char *json, int *result) {
 			@"clipboardSeconds" : @(clearAfter.selectedTag),
 			@"keepPausedOnRestart" : keepPaused.state == NSControlStateValueOn ? @YES : @NO,
 			@"keepPausedOnAppRestart" : keepPausedApp.state == NSControlStateValueOn ? @YES : @NO,
+			@"notifications" : c.notifications.state == NSControlStateValueOn ? @YES : @NO,
 			@"tab" : tabs.selectedTabViewItem.identifier ?: @"general",
 		};
 		NSData *encoded = [NSJSONSerialization dataWithJSONObject:fields options:0 error:nil];

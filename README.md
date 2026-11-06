@@ -63,8 +63,10 @@ The app doesn't include llama-swap; install that separately.
   pid.
 - **Last GPU fault**, once a model's GPU backend has failed since the app
   started: which model, when, and whether it was unloaded automatically. A
-  fault otherwise brings an alert offering to unload the model, or, with the
-  `unloadOnGpuFault` preference, the app unloads it without asking.
+  fault otherwise brings a notification with an **Unload** button (see
+  [Notifications](#notifications)), or an alert offering to unload the
+  model, or, with the `unloadOnGpuFault` preference, the app unloads it
+  without asking.
 - **Models:** the models loaded on this Mac, each with an **Unload** submenu,
   plus **Unload All Models**. Once a model has answered a request, the
   average generation speed of its latest one shows beside it ("last 119
@@ -331,9 +333,10 @@ environment variables (a table, with **+** and **−**), and the settings below;
 environment variables, the **Peers** tab the peers the app manages (see
 [Peers](#peers)), the **Security** tab which web pages may use llama-swap
 (see [Web pages](#web-pages)), the **Logs** tab where the logs go (see
-below), and the **Tweaks** tab settings that fit no other tab: how long a
-copied secret stays on the clipboard (see [API keys](#api-keys)), and
-whether a pause outlasts a restart of llama-swap, or of the app (see
+below), and the **Tweaks** tab settings that fit no other tab: whether
+problems come as macOS notifications (see [Notifications](#notifications)),
+how long a copied secret stays on the clipboard (see [API keys](#api-keys)),
+and whether a pause outlasts a restart of llama-swap, or of the app (see
 [The menu](#the-menu)).
 Rest the pointer on a setting, or its label, for what it's for;
 warnings stay on screen. Save checks
@@ -381,6 +384,7 @@ misspelling, is reported as an error rather than ignored.
 | `appApiKey` | `""` | Which of them the app uses for its own requests. Empty: the first. |
 | `secretEnv` | `[]` | The names of secret environment variables. Their values are in the keychain; see below. |
 | `keepPausedOnRestart` | `true` | After **Pause All** or `llsl pause`, pause llama-swap again whenever the app restarts it, until it's resumed. Not written while it's the default. |
+| `notifications` | `true` | Post problems that need you as macOS notifications, in place of the alerts for them; see [Notifications](#notifications). Not written while it's the default. |
 | `keepPausedOnAppRestart` | `false` | With `keepPausedOnRestart`, a pause also outlasts quitting and reopening the app: it's kept in a file named `paused` beside `prefs.json` until it's resumed. Not written while it's the default. |
 | `clipboardClearSeconds` | `90` | How long a key or secret variable copied in Settings stays on the clipboard: `10`, `30`, `60`, `90`, `120` or `300`, or `0` to leave it there (Never). Not written while it's the default. |
 
@@ -624,6 +628,40 @@ Up to version 0.1.2, the launcher log was called `llama-swap.log`; later
 versions call it `launcher.log`, and an old `llama-swap.log` simply stops
 growing.
 
+### Notifications
+
+With **Native notifications** ticked (Settings… → Tweaks; the default),
+problems that need you come as macOS notifications:
+
+| Notification | When |
+|---|---|
+| **llama-swap stopped with a problem** (time-sensitive) | It kept crashing, macOS blocked it, or it couldn't start. Click it for the alert with llama-swap's last lines. |
+| **llama-swap isn't responding** (time-sensitive) | It stopped answering the app's health checks. |
+| ***model*'s GPU backend has failed** (time-sensitive) | A model's Metal backend failed, so every request to it fails. **Unload** unloads it; click it for the alert offering the same. |
+| **llama-swap restarted** | It exited unexpectedly, and the app started it again. |
+| ***model*'s GPU backend failed**, unloaded | The same, with `unloadOnGpuFault` on, so the app has already unloaded it. |
+| **Llama Swap Launcher can't follow llama-swap** | llama-swap refused the app, over its API key for instance. |
+
+These replace the alerts for the first and third. A notification goes
+away when its problem does, and all of them when the app quits. Nothing
+notifies for what you did yourself in the menu or Settings, for `llsl`'s
+requests (its caller gets the answer), or for a pause.
+
+macOS asks once whether the app may post them. After that, what gets
+through is up to System Settings → Notifications → Llama Swap Launcher:
+
+- **Persistent** keeps a notification on screen until you dismiss it;
+  **Temporary**, the default, slides it into Notification Centre after a few
+  seconds. Persistent suits problems you shouldn't miss.
+- **Time-sensitive** ones get through a Focus only if the Focus allows
+  them: in System Settings → Focus, add Llama Swap Launcher to the Focus's
+  allowed apps, or turn on its intelligent breakthrough.
+
+If macOS doesn't show the app's notifications, the alerts stay, so a
+problem is never missed; the Tweaks tab says so under the box. Untick it
+to have the alerts back: that also clears the app's notifications from
+Notification Centre.
+
 ## Files
 
 | What | Where |
@@ -754,6 +792,15 @@ Override `SIGN_IDENTITY` (use `-` for an unsigned, ad-hoc build) and
 **Llama Swap Launcher Dev**, with its own preferences, logs and Local Network
 permission. Its `llsl` talks to it rather than to the release app.
 `LLSL_BUNDLE_ID` overrides which app `llsl` talks to.
+
+**Time-sensitive notifications need a provisioning profile** for the bundle
+ID: a Developer ID profile from an App ID with the Time Sensitive
+Notifications capability, as `packaging/profiles/<bundle id>.provisionprofile`
+(git-ignored; `PROFILES` points elsewhere). With one, the build embeds it
+and signs with the entitlements it grants
+([`packaging/entitlements.sh`](packaging/entitlements.sh) checks it first);
+without one, as in an ad-hoc build, the app signs without them and its
+notifications post at the ordinary level.
 
 **Forks and ad-hoc builds should use their own bundle ID** (`make
 BUNDLE_ID=com.example.llama-swap-launcher …`). Under this one, an ad-hoc

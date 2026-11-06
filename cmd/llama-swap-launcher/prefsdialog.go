@@ -62,6 +62,7 @@ func (a *app) editPreferences(tab string) (restart bool) {
 	form.FoundBinary = prefs.AbbreviateHome(supervisor.FindBinary("llama-swap", supervisor.SearchDirs(home)))
 	form.ManagedConfigDir = a.paths.ManagedConfigDir()
 	form.File = a.paths.Prefs()
+	form.NotificationsBlocked = macos.NotificationSettings().Blocked()
 
 	for {
 		edited, result, err := macos.Preferences(form)
@@ -138,6 +139,7 @@ func (a *app) editPreferences(tab string) (restart bool) {
 		a.prefs = p
 		a.recordPause() // kept on disk, or not, as the Tweaks tab now says
 		a.mu.Unlock()
+		a.notificationsSaved(old.Notifies(), p.Notifies())
 		// The logs move at once; the writers switch between lines.
 		if err := a.logs.apply(p); err != nil {
 			a.problem("A log couldn't be opened", err)
@@ -323,6 +325,7 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 		ClipboardSeconds:       p.ClipboardSeconds(),
 		KeepPausedOnRestart:    p.KeepsPause(),
 		KeepPausedOnAppRestart: p.KeepPausedOnAppRestart,
+		Notifications:          p.Notifies(),
 		KeyPrefix:              prefs.KeyPrefix,
 		Tab:                    "general",
 	}
@@ -493,6 +496,9 @@ func generalFrom(f macos.PreferencesForm) (prefs.Prefs, error) {
 	}
 	if !f.KeepPausedOnRestart {
 		p.KeepPausedOnRestart = &f.KeepPausedOnRestart
+	}
+	if !f.Notifications {
+		p.Notifications = &f.Notifications
 	}
 	// Not in the dialog any more, but kept as the file has them, for flags
 	// newer than the app.

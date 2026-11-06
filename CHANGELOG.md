@@ -5,6 +5,16 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **macOS notifications for problems** (Settings → Tweaks, **Native
+  notifications**, on by default). llama-swap stopping with a problem or not
+  responding, and a model's GPU backend failing, are time-sensitive, so they
+  get through a Focus that allows the app; a GPU fault's has an **Unload**
+  button. A restart after a crash, a faulted model unloaded automatically,
+  and llama-swap refusing the app are ordinary ones. They replace the alerts
+  for a failure and a GPU fault (clicking one opens its alert), and go away
+  when the problem does. macOS asks once whether the app may post them; see
+  [Notifications](https://github.com/alron/llama-swap-mac-launcher#notifications)
+  for keeping them on screen and letting them through a Focus.
 - **Keep inference paused when Llama Swap Launcher restarts** (Settings →
   Tweaks, off by default): with it and the box above it ticked, a pause
   outlasts quitting and reopening the app, an upgrade, or a restart of the

@@ -99,6 +99,12 @@ void lsl_notify_remove(const char *id) {
 	[center removePendingNotificationRequestsWithIdentifiers:ids];
 }
 
+void lsl_notify_remove_all(void) {
+	UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+	[center removeAllDeliveredNotifications];
+	[center removeAllPendingNotificationRequests];
+}
+
 char *lsl_notify_next_response(void) {
 	dispatch_semaphore_wait(responseReady, DISPATCH_TIME_FOREVER);
 	NSArray<NSString *> *r;

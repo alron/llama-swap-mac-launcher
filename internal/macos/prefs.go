@@ -60,6 +60,8 @@ type PreferencesForm struct {
 	ClipboardSeconds       int  `json:"clipboardSeconds"`
 	KeepPausedOnRestart    bool `json:"keepPausedOnRestart"`
 	KeepPausedOnAppRestart bool `json:"keepPausedOnAppRestart"`
+	// Notifications is the Native notifications box (TODO item 60).
+	Notifications bool `json:"notifications"`
 	// Tab is the tab to show first, "general", "secrets", "peers",
 	// "security", "logs" or "tweaks", and comes back as the one showing when
 	// the dialog closed.
@@ -67,9 +69,12 @@ type PreferencesForm struct {
 
 	// Shown but not edited:
 	FoundBinary string `json:"foundBinary"` // greyed out in the empty binary field
-	File        string `json:"file"`        // the preferences file
-	Error       string `json:"error"`       // why the last Save didn't work
-	KeyPrefix   string `json:"keyPrefix"`   // shown before each key's name
+	// NotificationsBlocked means the user has turned the app's
+	// notifications off in System Settings: a hint under the box says so.
+	NotificationsBlocked bool   `json:"notificationsBlocked"`
+	File                 string `json:"file"`      // the preferences file
+	Error                string `json:"error"`     // why the last Save didn't work
+	KeyPrefix            string `json:"keyPrefix"` // shown before each key's name
 	// The app's own config folder, shown greyed out with "Managed by the
 	// app".
 	ManagedConfigDir string `json:"managedConfigDir"`

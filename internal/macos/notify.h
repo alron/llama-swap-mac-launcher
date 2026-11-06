@@ -18,6 +18,9 @@ char *lsl_notify_post(const char *id, const char *title, const char *body, const
 // lsl_notify_remove removes the notification with id, delivered or not.
 void lsl_notify_remove(const char *id);
 
+// lsl_notify_remove_all removes all of the app's notifications.
+void lsl_notify_remove_all(void);
+
 // lsl_notify_next_response waits for the next click on a notification and
 // returns it as "<id>\n<action>", for the caller to free(). The action is
 // "default" for a click on the notification itself.

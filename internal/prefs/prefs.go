@@ -116,6 +116,16 @@ type Prefs struct {
 	// Off, the default, isn't written, so an older app can still read the
 	// file.
 	KeepPausedOnAppRestart bool `json:"keepPausedOnAppRestart,omitempty"`
+	// Notifications posts problems that need a person as macOS
+	// notifications, in place of the alerts for them (TODO item 60). Unset
+	// means on, which isn't written, so an older app can still read the
+	// file.
+	Notifications *bool `json:"notifications,omitempty"`
+}
+
+// Notifies is Notifications, on unless it's set off.
+func (p Prefs) Notifies() bool {
+	return p.Notifications == nil || *p.Notifications
 }
 
 // KeepsPause is KeepPausedOnRestart, on unless it's set off.

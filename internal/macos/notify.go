@@ -9,6 +9,7 @@ package macos
 import "C"
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"unsafe"
@@ -70,6 +71,11 @@ func RemoveNotification(id string) {
 	C.lsl_notify_remove(c)
 }
 
+// RemoveAllNotifications removes all of the app's notifications.
+func RemoveAllNotifications() {
+	C.lsl_notify_remove_all()
+}
+
 // NextNotificationResponse waits for the next click on a notification.
 func NextNotificationResponse() NotificationResponse {
 	c := C.lsl_notify_next_response()
@@ -78,10 +84,38 @@ func NextNotificationResponse() NotificationResponse {
 	return NotificationResponse{ID: id, Action: action}
 }
 
-// NotificationSettings returns what macOS allows the app, as JSON: whether
-// it may post, in what style, and whether time-sensitive ones get through.
-func NotificationSettings() string {
+// NotificationPermission is what macOS allows the app's notifications, as
+// set in System Settings → Notifications.
+type NotificationPermission struct {
+	// Authorization is "not determined" (never asked), "denied",
+	// "authorized", "provisional" or "ephemeral".
+	Authorization string `json:"authorization"`
+	// Alerts, Sound, NotificationCentre and TimeSensitive are "enabled",
+	// "disabled" or "not supported".
+	Alerts             string `json:"alerts"`
+	Sound              string `json:"sound"`
+	NotificationCentre string `json:"notificationCentre"`
+	TimeSensitive      string `json:"timeSensitive"`
+	// Style is "none", "banner" (Temporary) or "alert" (Persistent).
+	Style string `json:"style"`
+}
+
+// Shown reports whether notifications the app posts are shown at all.
+func (p NotificationPermission) Shown() bool {
+	return (p.Authorization == "authorized" || p.Authorization == "provisional") && p.Alerts == "enabled"
+}
+
+// Blocked reports whether the user has turned the app's notifications off,
+// as opposed to never having been asked.
+func (p NotificationPermission) Blocked() bool {
+	return p.Authorization == "denied" || (p.Authorization != "not determined" && p.Alerts == "disabled")
+}
+
+// NotificationSettings returns what macOS allows the app's notifications.
+func NotificationSettings() NotificationPermission {
 	c := C.lsl_notify_settings()
 	defer C.free(unsafe.Pointer(c))
-	return C.GoString(c)
+	var p NotificationPermission
+	_ = json.Unmarshal([]byte(C.GoString(c)), &p) // the shim writes it; empty if it ever doesn't parse
+	return p
 }
