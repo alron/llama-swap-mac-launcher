@@ -2,7 +2,7 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 88. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 89. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
@@ -68,6 +68,32 @@ It found three things the earlier reviews hadn't, all checked against the code (
     - **The problem:** `update.PlistString` wraps its XML decoder in `io.LimitReader(f, 1<<20)`, and this one doesn't.
     - **Why it's minor:** the file is in the bundle `llsl` runs from, so anything that can grow it can replace `llsl` too. This is consistency, not defence.
     - **Fix:** the same `LimitReader`. `llsl` doesn't import `internal/update` (which would bring in `net/http`), so the two readers stay separate.
+
+### Peers' models (the maintainer, 2026-11-07)
+
+88. **Fetch Models removes what the peer no longer serves, and models added by hand are kept apart, as `customModels`** (the maintainer, 2026-11-07; decided the same day).
+    - **The problem:**
+      - Fetch Models only adds. A model the peer has dropped stays ticked, llama-swap keeps offering it, and requests for it fail at the peer. Today the only way to remove it is to untick it by hand.
+      - Fetch can't remove it safely, because a peer's `models` mixes the models the peer listed with ones typed into Add, and nothing says which is which. Typed models include llama-swap's `unlisted: true` models, aliases, and models from providers whose `/v1/models` is incomplete.
+    - **Decided:**
+      - **The new list:** each peer in `prefs.json` gets `customModels` beside `models`: the models typed into Add. Like `disabled`, it's only written when it isn't empty. `models` keeps its shape and meaning, the peer's own models. The maintainer's reasons: it's the easiest change, and going back to an older version, which rejects keys it doesn't know, means deleting one key rather than editing a list.
+      - **llama-swap's config** (`peers.yaml`) gets both lists. A model in both (only possible through a hand edit) is kept once, as custom. Save's "tick at least one model" counts both lists.
+      - **Fetch:**
+        - it adds new models to `models` unticked, as now, and removes any in `models` that the peer no longer lists, ticked or not;
+        - it never touches `customModels`;
+        - the status line names every model it removed, and Cancel undoes the Fetch along with the rest of the dialog;
+        - a Fetch that fails, or comes back with no models, removes nothing, so a peer answering in the middle of a reload can't wipe the ticks.
+      - **Add** puts a new model in `customModels`, ticked; a model the peer already lists is just ticked, as now. A custom model the peer later lists stays custom. Unticking a model removes it at Save, as it does for any model.
+      - **The model table** gets a third column, right-aligned, in secondary grey: `custom` on custom rows and blank on the peer's, with a tooltip saying what it means.
+    - **Upgrading:**
+      - Models added by hand before this version are in `models`, so a Fetch treats them as the peer's, and removes any the peer doesn't list.
+      - The status line names them. Cancel brings them back, and so does adding them again with Add, which makes them custom.
+      - The changelog says so.
+    - **With it:**
+      - **README:** step 3 of the Peers steps, and the `peers` row of the preferences table.
+      - **Go tests:** for the load-time merge, the config written, and the dialog's split into the two lists.
+      - **The dialog test program:** for Fetch's merge, with a stand-in for `lsl_fetch_peer_models`.
+      - **The new column** follows CLAUDE.md's table notes: `NSTableCellView` cells, styled in place.
 
 ## Blocked
 
