@@ -2,7 +2,7 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 85. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 88. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
@@ -26,6 +26,48 @@ Two small fixes for the next release branch, from the review recorded in done.md
     - **The problem:** `NextNotificationResponse` (`internal/macos/notify.go`) splits `notify.m`'s `<identifier>\n<action>` at the first `\n`. A model whose ID contains a newline, possible only as a quoted key in the user's own YAML, gets its click routed to the ID's first line, and the action is lost.
     - **At worst:** an offer to unload another model that has faulted, which the user still confirms.
     - **Fix:** split at the last newline, since the action (`default` or `unload`) never contains one.
+
+### From a security review by Qwen 3.8 Flash Next (2026-11-07)
+
+The second pass by this model, run on a different inference engine from items 74 to 80's. It covered `v0.3.2..v0.3.4` with item 51's questions a to f, then items 65, 64, 60 and 54, publishing and the cask.
+
+Its method:
+- the code read whole, with claims checked against the SDK headers;
+- `codesign --verify -R=` with `internal/wired`'s requirement strings against the installed release app and helper;
+- a scratch Mach listener in the user's own launchd domain, to see which error a peer gets;
+- probes of `wiredPlan`, `wiredFrom` and `update.Latest` through `go test -overlay`, without changing the tree;
+- `make test lint sec vuln`, clean.
+
+It found three things the earlier reviews hadn't, all checked against the code (2026-11-07), and none urgent. They're to fix on the next release branch with 82 and 84. It re-verified the earlier fixes in place. Its sound list adds three points to item 81's:
+- the code seal covers the helper's plist (`CodeResources` has its `hash2`);
+- XPC errors are `XPC_TYPE_ERROR`, so `wired.m`'s dictionary-first order can't confuse an error with a reply;
+- a cancelled or exited client shows up in the helper as `XPC_ERROR_CONNECTION_INVALID`, as `xpc.c`'s comment says.
+
+<!-- Items 85 on start a list of their own: 82 to 84 are above. -->
+85. **Low: a Save can send an unconfirmed `set 0` when the GPU memory box was greyed out at open but isn't at Save** (`cmd/llama-swap-launcher/wired.go`: `wiredFrom`, `wiredPlan`; tested by the review with `go test -overlay`, and read).
+    - **The path:**
+      - `wiredFrom` checks the form against the state when Settings opened (`wiredNow` in `prefsdialog.go`). A greyed-out box comes back as `{on: s.managed(), mb: s.storedMB}`, which is `{on: true, mb: 0}` when the helper is registered with nothing stored.
+      - `applyWired` plans against a fresh read. If that's usable, and the helper isn't running, `wiredPlan`'s retry case (`want.on && s.pendingMB == want.mb && !s.running`) matches on 0 == 0.
+      - `wiredRetry` skips `ConfirmOwner`, since it's meant only for a limit a Save already confirmed. `setWired(0, …)` then registers or repairs the helper and sends `set 0`, or waits for approval and opens Login Items.
+    - **How likely:** only if `iogpu.wired_limit_mb` can't be read when Settings opens and can at Save. The other reasons the box is greyed out (a small Mac, an ad-hoc build) don't change while the dialog is open, and nothing a user or another program can do makes the sysctl unreadable.
+    - **At worst:** it returns the limit to macOS's default, possibly another LaunchDaemon's limit, without the confirmation every change should have. It can't raise the limit: a non-zero `want.mb` never matches `pendingMB`'s 0, and goes to `wiredSet`, which confirms. The review rated it Medium for breaking that rule; Low, since nothing can arrange it.
+    - **Fix, both parts:**
+      - a greyed-out box means the limit is left as it is, so `wiredFrom` should return a want that `wiredPlan` turns into `wiredNothing` (a `keep` field), rather than one re-planned against a newer state;
+      - the retry case should require `s.pendingMB != 0`, since a wait only starts after a confirmed Save set a non-zero value.
+      - Add `wired_test.go` rows for both.
+86. **Low: a hostile answer to the update check puts up to 1 MiB of its own text in an alert, `launcher.log` and `update.json`** (`internal/update/update.go`, `Latest`; tested by the review with an overlay probe, and read).
+    - **The path:** a tag that isn't a version is echoed whole: `fmt.Errorf("the latest release's tag, %q, isn't a version", release.Tag)`, bounded only by the body's 1 MiB limit. The error reaches:
+      - Check for Updates…'s alert ("Couldn't check for updates");
+      - `launcher.log`;
+      - `update.json`'s `failed`;
+      - the diagnostics summary.
+    - **What it can't do:** `%q` escapes control characters and newlines, so it can't forge log lines (the review said the alert and log don't escape; they get the quoted form). What a hostile answer controls is length and printable text in an alert, such as instructions to run something. Go's own decode errors don't echo values (the review checked).
+    - **Who could send one:** GitHub itself, or a TLS interception the Mac trusts. Item 79's "a hostile answer can name no host or path" still holds: `ReleaseURL` is built from the parsed version.
+    - **Fix:** bound the echo (`%.40q`, which truncates before quoting), so a mis-tagged release stays recognisable. Any future error built from an answer's field should do the same.
+87. **Note: `llsl`'s `plistBundleID` reads its `Info.plist` without a size limit** (`cmd/llsl/bundle.go`; read).
+    - **The problem:** `update.PlistString` wraps its XML decoder in `io.LimitReader(f, 1<<20)`, and this one doesn't.
+    - **Why it's minor:** the file is in the bundle `llsl` runs from, so anything that can grow it can replace `llsl` too. This is consistency, not defence.
+    - **Fix:** the same `LimitReader`. `llsl` doesn't import `internal/update` (which would bring in `net/http`), so the two readers stay separate.
 
 ## Blocked
 
