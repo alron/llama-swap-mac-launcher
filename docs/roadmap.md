@@ -2,7 +2,7 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 89. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 90. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
@@ -94,6 +94,26 @@ It found three things the earlier reviews hadn't, all checked against the code (
       - **Go tests:** for the load-time merge, the config written, and the dialog's split into the two lists.
       - **The dialog test program:** for Fetch's merge, with a stand-in for `lsl_fetch_peer_models`.
       - **The new column** follows CLAUDE.md's table notes: `NSTableCellView` cells, styled in place.
+
+### Notifications (the maintainer, 2026-11-07)
+
+89. **A config reload flashes "llama-swap isn't responding"** (the maintainer, 2026-11-07; found with the release app, diagnosed from its log the same day).
+    - **Seen:** after a Save that changed a peer's models, a notification started, often with its sound, and vanished before it could be read, with no explanation.
+    - **The cause:**
+      - With Watch config on, such a Save only rewrites the files in the config folder (`UpdateConfigFiles`), and llama-swap reloads them itself ("updated the files in llama-swap's config folder; llama-swap reloads them itself").
+      - The reload closes every `/api/events` stream, the app's included. `streamEvents` marks the monitor disconnected the moment its stream ends, and `Run` reconnects 250 ms later.
+      - Meanwhile `Healthy` (connected and `/health` OK) is false while `WasHealthy` is true. `describe` calls that "not responding", and `watchNotices` posts that notice at once. It's time-sensitive, so it breaks through a Focus with its sound.
+      - A moment later the stream is back, the problem has ended, and the notice is removed.
+    - **Not affected:**
+      - A real restart: the supervisor goes to Stopping, and the new process gets a new monitor, which reads "starting".
+      - The 401 on `/api/version` just after the reload: that's `probeOpen`, asking without a key on purpose to learn whether keys are required.
+    - **Affected too:** any reload, including the user's own config edits with Watch config on, and any other brief drop of the stream.
+    - **Fix:**
+      - **A grace period:** a standing notice for a condition that can pass in a moment ("not responding", and "can't follow llama-swap") is posted only once the condition has lasted a grace period, about 10 seconds, and is still removed as soon as it ends. `watchNotices` notes when each first appeared, and wakes itself when the grace runs out, since a condition that just lasts sends no change.
+      - **Immediate as before:** llama-swap failing and a GPU fault, which are definite when they happen.
+      - **What that buys:** a real hang still gets its time-sensitive notice, 10 seconds later than now (hang detection already takes up to the health-check interval plus 3 s), and its text ("stopped answering the app's health checks") is then true.
+      - **Tests:** Go tests of the decisions with a stand-in clock: a condition shorter than the grace posts nothing; a longer one posts once, and is removed when it ends.
+    - **The menu** shows the same 250 ms of "not responding", with the red arrow, but too briefly to see. If it ever shows, the same grace could apply there.
 
 ## Blocked
 

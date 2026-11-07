@@ -33,7 +33,7 @@ Each change to `llsl` or the preferences also needs `README.md` updated.
 
 The open items (2026-11-06):
 - **From 0.3:** 73 (the wired limit's helper after an upgrade that changes it), at the first such upgrade.
-- **Next release:** 88 (Fetch Models removes what a peer no longer serves, with models added by hand kept apart as `customModels`); and 82, 84 and 85 to 87 (small fixes from two reviews: `sendWired`'s retry time, a notification click's ID with a newline, an unconfirmed `set 0` in an unreachable state, the update check's error echoing a whole tag, and `llsl`'s unbounded plist read).
+- **Next release:** 88 (Fetch Models removes what a peer no longer serves, with models added by hand kept apart as `customModels`); 89 (a config reload flashes a "not responding" notification); and 82, 84 and 85 to 87 (small fixes from two reviews: `sendWired`'s retry time, a notification click's ID with a newline, an unconfirmed `set 0` in an unreachable state, the update check's error echoing a whole tag, and `llsl`'s unbounded plist read).
 - **Blocked:** 53 (browser login through a form), on a llama-swap release that has it.
 - **0.4:** 47 (models, with the app's presets in place of macros, and routing, managed by the app).
 - **Later:** 35 (TLS) and 37 (Tailcat).
