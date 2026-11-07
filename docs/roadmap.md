@@ -2,7 +2,7 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 82. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 85. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
@@ -10,6 +10,22 @@ Items keep their numbers; a new one takes the next, from 82. When one is done, i
 
 <!-- Item 73 starts a list of its own: the items above it are done. -->
 73. **The helper after an upgrade that changes it** (found 2026-11-05; to check at the first upgrade after 0.3.3 that changes `cmd/wired-limit`). When the dev helper's binary changed, Background Task Management made a new record for it, and the next register waited for approval although the switch in System Settings was on; a second Save's repair started it, with nothing to approve. `SMAppService.h` says an app that updates its daemon's executable must register again "or it may not launch". To see, with the release app and the limit on: after `brew upgrade` to a version with a changed helper, does the limit still apply at the next boot (the launch constraint is the identifier, team and Developer ID, not the binary's hash, so it should), and does a Save set a new limit without asking to allow the helper again? If not, the app could register again when it finds its helper changed, or the release notes say to allow it again. Also then (the second security review, item 79's live tests): after `brew uninstall` without `--zap`, with the limit on, what `launchctl print system/<label>` and the system log show for the job, and that nothing is applied at the next boot once the stored file is gone.
+
+### From a security review by Laguna S 2.1 (2026-11-06)
+
+Two small fixes for the next release branch, from the review recorded in done.md ("Items 82 to 84"). Neither is a security issue.
+
+<!-- Items 82 on start a list of their own. -->
+82. **`sendWired`'s retries can run to about 21 seconds, not 15** (Note; read, and confirmed in the code).
+    - **The problem:** `sendWired` (`cmd/llama-swap-launcher/wired.go`) retries a `set` until 15 seconds have passed, but a try that starts before then runs to its own 10-second timeout. A first try that times out at 10 seconds leaves time for a second, which ends near 21 seconds.
+    - **When it happens:** only while launchd holds the request without starting the helper. A helper that isn't registered fails at once.
+    - **Fix:** give each try the time left, at most 10 seconds and at least 1. The whole wait is then about 15 seconds, as the comment says, and as CLAUDE.md and done.md ("about 15 seconds for a set") already say.
+
+<!-- Item 84 starts a list of its own: 83 is done. -->
+84. **A notification click's ID is cut at the first newline** (Note; read; item 79 noted it as harmless, and reviews keep raising it).
+    - **The problem:** `NextNotificationResponse` (`internal/macos/notify.go`) splits `notify.m`'s `<identifier>\n<action>` at the first `\n`. A model whose ID contains a newline, possible only as a quoted key in the user's own YAML, gets its click routed to the ID's first line, and the action is lost.
+    - **At worst:** an offer to unload another model that has faulted, which the user still confirms.
+    - **Fix:** split at the last newline, since the action (`default` or `unload`) never contains one.
 
 ## Blocked
 

@@ -435,7 +435,7 @@ From use after publishing, continued. Item 47, the next configuration push, is o
     - **The status:** `llsl status`'s `apiKeysRequired` comes from what llama-swap started with (item 44). After a Save that only reloads, it has to follow what was written (done: `UpdateConfigFiles`).
     - **A failed reload** logs a warning in llama-swap's output and keeps the old config (item 34), and the app doesn't see it. The staged check makes it unlikely, so the app doesn't watch for the warning; noted, not built.
 
-51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; decided the same day, below; **built and verified hands-on 2026-11-05**; **done**; its security reviews are items 66 to 72 and 74 to 80, below, and after 0.3.4, item 81). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
+51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; decided the same day, below; **built and verified hands-on 2026-11-05**; **done**; its security reviews are items 66 to 72 and 74 to 80, below, and after 0.3.4, items 81 to 84). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
       - A daemon plist in the bundle's `Contents/Library/LaunchDaemons/`, registered with `[SMAppService daemonServiceWithPlistName:]`. Its `BundleProgram` names an executable inside the bundle, and `AssociatedBundleIdentifiers` makes System Settings show the app's name.
       - The user approves it once, in System Settings → General → Login Items & Extensions (`SMAppService.openSystemSettingsLoginItems`); the status goes from `requiresApproval` to `enabled`.
@@ -1183,6 +1183,42 @@ From a security review by Ornith 1.5 122B (2026-11-06), another of the maintaine
 - **e.** The requirement strings have the same clauses as the release app's designated requirement, in another order: identifier, `anchor apple generic`, the Developer ID intermediate and leaf markers, and the team. The helper's uses `<bundle id>.wired-limit`. This is item 78's deliberate choice.
 - **f.** The helper's log holds timestamps, sentences, uids and limits in MB, never request payloads or anything from the preferences. Collect Diagnostics adds its last 200 lines through the same redaction as every other file. `llsl status` costs one `info` request, bounded to 3 seconds (item 72).
 - Items 60, 64 and 65, `publish.sh` and `tap.sh`, the cask and item 54's clipboard are unchanged since item 79's notes, which still hold.
+
+**Live tests:** none new; item 73 stays the open one.
+
+## Items 82 to 84: a security review of 0.3.4 by Laguna S 2.1
+
+From a security review by Laguna S 2.1 (2026-11-06), another of the maintainer's local models, the second after 0.3.4's release.
+
+- **Scope:** `v0.3.2..v0.3.4`, with item 51's questions a to f as for item 81; then items 65, 64, 60 and 54, and publishing.
+- **Method:**
+  - it read the code;
+  - it checked claims against the SDK headers;
+  - a throwaway C program confirmed that the requirement strings compile and that malformed ones are refused;
+  - `codesign -d -r-` confirmed the requirements match the binaries' designated requirements;
+  - a test plist confirmed `entitlements.sh`'s date compare;
+  - `make test lint sec vuln` was clean.
+- **Result:** nothing lets another user, a web page or a hostile GitHub answer reach the helper or change the limit, and the fixes of items 66 to 72, 74 to 80 and 81 are in place.
+- **Its three notes:**
+  - 82 holds;
+  - 83 and 84 restate items 71, 77 and 79, which the handoff had listed as settled;
+  - 84 is still worth one line, since reviews keep raising it.
+- **Handled the same day:** 83 declined (below). 82 and 84 are in the roadmap, to fix on the next release branch.
+
+<!-- Item 83 starts a list of its own: 82 and 84 are open, in the roadmap. -->
+83. **Note: turning the limit off unregisters the helper even when `set 0` fails, leaving its stored limit** (`turnOffWired`, `cmd/llama-swap-launcher/wired.go`; read; **declined, no change**: items 71 and 77).
+    - **What the review said:** if the limit is turned off while launchd can't start the helper, the app removes the helper but the stored limit stays. Registered again later, the helper applies it at startup. It suggested clearer wording, or logging it.
+    - **Why it's declined:** this is item 71's documented behaviour, which item 77's retries already narrowed. The alert's text is true: an unregistered helper doesn't run, so macOS's default returns at the next restart. The helper is only registered again through a confirmed Save with a new limit, which it receives a moment after applying the old one. The README's GPU memory section already says so ("Turned off while the helper couldn't run…"), and Settings shows a stored limit that isn't in effect.
+
+**Checked and found sound** (from the review, checked against the code; beyond item 81's list, which it confirmed):
+
+- **b.** A reply arriving after the timeout's cancel reaches the handler as `XPC_ERROR_CONNECTION_INVALID`, and each request has its own reply and semaphore, so no reply is taken for another request's.
+- **c.** `pendingMB` is set only when a confirmed Save starts the wait, and cleared when the wait ends or is replaced. A counter keeps an older wait from clearing a newer one.
+- **Item 65:** `MatchesSelf` (`codesign.m`) checks the new copy with `kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode` against the running app's designated requirement, read at launch. `reopenAfterExit` passes the bundle's path to its fixed shell script as an argument, never inside the script's text.
+- **Item 64:** a tampered answer can only misstate a version, as item 79 says: HTTP 200, a 1 MiB limit, drafts and pre-releases refused, and the tag parsed.
+- **Item 60:** `entitlements.sh`'s compare holds for a plist `<date>` (item 81).
+- **Item 54:** as item 79 says.
+- **Publishing:** as item 79 says.
 
 **Live tests:** none new; item 73 stays the open one.
 

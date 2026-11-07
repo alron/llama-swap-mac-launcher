@@ -33,6 +33,7 @@ Each change to `llsl` or the preferences also needs `README.md` updated.
 
 The open items (2026-11-06):
 - **From 0.3:** 73 (the wired limit's helper after an upgrade that changes it), at the first such upgrade.
+- **Next release:** 82 and 84 (two small fixes from a review: `sendWired`'s retry time, and a notification click's ID with a newline).
 - **Blocked:** 53 (browser login through a form), on a llama-swap release that has it.
 - **0.4:** 47 (models, with the app's presets in place of macros, and routing, managed by the app).
 - **Later:** 35 (TLS) and 37 (Tailcat).
