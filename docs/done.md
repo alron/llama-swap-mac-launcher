@@ -435,7 +435,7 @@ From use after publishing, continued. Item 47, the next configuration push, is o
     - **The status:** `llsl status`'s `apiKeysRequired` comes from what llama-swap started with (item 44). After a Save that only reloads, it has to follow what was written (done: `UpdateConfigFiles`).
     - **A failed reload** logs a warning in llama-swap's output and keeps the old config (item 34), and the app doesn't see it. The staged check makes it unlikely, so the app doesn't watch for the warning; noted, not built.
 
-51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; decided the same day, below; **built and verified hands-on 2026-11-05**; **done**; its security reviews are items 66 to 72 and 74 to 80, below). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
+51. **The GPU's wired memory limit, kept across reboots** (the maintainer, 2026-10-26; decided the same day, below; **built and verified hands-on 2026-11-05**; **done**; its security reviews are items 66 to 72 and 74 to 80, below, and after 0.3.4, item 81). `sysctl iogpu.wired_limit_mb=N` lets the GPU wire more memory, so bigger models fit. It needs root, and it resets at every boot. Today the maintainer sets it with a LaunchDaemon written by hand in `/Library/LaunchDaemons`. The app should do it through **`SMAppService.daemon`** (the maintainer's choice, over an `osascript` password prompt at every change; SMJobBless is deprecated).
     - **What it takes** (from Apple's documentation as remembered; check it in the spike below):
       - A daemon plist in the bundle's `Contents/Library/LaunchDaemons/`, registered with `[SMAppService daemonServiceWithPlistName:]`. Its `BundleProgram` names an executable inside the bundle, and `AssociatedBundleIdentifiers` makes System Settings show the app's name.
       - The user approves it once, in System Settings → General → Login Items & Extensions (`SMAppService.openSystemSettingsLoginItems`); the status goes from `requiresApproval` to `enabled`.
@@ -1153,6 +1153,38 @@ Nothing found reaches the helper or changes the limit without the device owner's
 - The helper's stored folder checks the *directory's* ownership and write bits, which closes the symlinked-parent variant of 69's attack; `store` at 0 also removes only the one link/file, never a folder's contents.
 - `SuggestedReserveGB`'s table and `gbText`'s rounding are display-only; every decision uses the MB values checked against `wired.Check`.
 - `health.NewClient` naming, the User-Agent on the GitHub request, and the redaction of secrets from `llsl`/diagnostics all unchanged from round 1's sound list.
+
+## Item 81: a security review of 0.3.4
+
+From a security review by Ornith 1.5 122B (2026-11-06), another of the maintainer's local models, after 0.3.4's release. It covered `v0.3.2..v0.3.4` and item 51's questions a to f: the 0.3.4 fix, the request's timeout, the confirmation paths, the helper's files, the requirement strings, and what leaves in diagnostics and `llsl status`. It then covered items 60, 64 and 65, publishing, the cask and item 54's clipboard. Method: it read the code and checked its claims against the SDK headers (`xpc/connection.h`, `os/object.h`). It compiled small programs with `-fobjc-arc`, as `wired.go` builds, for the XPC request's object lifetimes, and ran `make test lint sec vuln` with an ad-hoc identity (clean). It found nothing that reaches the helper or changes the limit, and made one note, declined. **Handled the same day:** 81 declined (below). The rest was checked against the code and is recorded as sound, with the few details it got wrong corrected.
+
+<!-- Item 81 starts a list of its own. -->
+81. **Note: the provisioning profile's expiry is compared as a string** (`packaging/entitlements.sh:31` and `:32`; read; **declined, no change**: the review's premise is wrong). The script compares the profile's `ExpirationDate` with the current time as ISO 8601 strings in UTC.
+    - **What the review said:** it took the date for an ASN.1 time decoded to midnight. It suggested checking that the date matches `T00:00:00Z`, so that a change of format fails loudly.
+    - **Why that's wrong:** the profile's payload is a property list, and `ExpirationDate` is a plist `<date>`. XML plists always write one as ISO 8601 in UTC, and `plutil -extract … raw` prints it the same way: `2044-10-31T22:50:55Z` and `2044-10-31T22:49:57Z` in the two profiles (**tested**). The suggested check would refuse both. The format is fixed by the plist format, not by Apple's profile service, and the profile is the maintainer's own, downloaded from the developer account.
+    - **If it ever did change:** the script could accept an expired profile. A string starting with a letter sorts after digits, so this wouldn't "fail safe" as the review said. But an app claiming entitlements its profile doesn't grant won't launch, so the release build would fail loudly at its first launch rather than quietly.
+
+**Checked and found sound** (from the review, checked against the code):
+
+- **The app's request to the helper** (`lsl_helper_request` in `internal/macos/wired.m`) leaks nothing and uses nothing freed.
+  - Under ARC (`wired.go`'s `-fobjc-arc`), the connection, message and semaphore are Objective-C objects, released on each of the three returns: the invalid requirement, the timeout, and the answer.
+  - The `__block` reply lives in the block's heap copy once XPC copies the handler, so a reply arriving after the timeout's cancel writes to live memory. The handler also holds the semaphore, so a late signal is safe.
+  - The helper's `xpc.c` is plain C, with explicit `xpc_release`. Each file's ownership style is right for it.
+- **a.** The 0.3.4 fix (`neverRegistered`, `helperInBundle`): a plist in the bundle only makes "not found" read as "not registered", so the setting can be offered. Registering still needs the user's approval, the helper's launch constraint and its Developer ID signature (item 67). If `bundlePath()` can't find the bundle, the helper reads as missing and the setting is greyed out.
+- **c.** The confirmation chain:
+  - The only path to a `set` is `applyWired` (one call site, in `prefsdialog.go`), after `ConfirmOwner`.
+  - `wiredRetry` and `waitForHelper` resend only the `pendingMB` that a confirmed Save set, and the repair sends only `info`.
+  - None of the control socket's commands (`status`, `start`, `restart`, `stop`, `unload`, `pause`, `resume`, `output`, `check-update`) touches the limit, and `prefs.json` never holds it.
+- **d.** The helper:
+  - The root check comes before it reads or applies anything.
+  - `store` checks the folder's owner and write bits with `Lstat` and opens with `O_NOFOLLOW`, and `readStored` checks the bounds again before applying.
+  - A `set` without an integer `mb` is refused (item 68), and a limit applied but not kept is reported as such (item 74).
+  - Item 69's residual risk, a group-writable `/Library/Application Support` (which macOS doesn't ship), is unchanged.
+- **e.** The requirement strings have the same clauses as the release app's designated requirement, in another order: identifier, `anchor apple generic`, the Developer ID intermediate and leaf markers, and the team. The helper's uses `<bundle id>.wired-limit`. This is item 78's deliberate choice.
+- **f.** The helper's log holds timestamps, sentences, uids and limits in MB, never request payloads or anything from the preferences. Collect Diagnostics adds its last 200 lines through the same redaction as every other file. `llsl status` costs one `info` request, bounded to 3 seconds (item 72).
+- Items 60, 64 and 65, `publish.sh` and `tap.sh`, the cask and item 54's clipboard are unchanged since item 79's notes, which still hold.
+
+**Live tests:** none new; item 73 stays the open one.
 
 ## Milestone 7 results (2026-11-06)
 
