@@ -196,8 +196,15 @@ type Peer struct {
 	// KeyVariable names the secret variable (SecretEnv) holding its API key,
 	// which llama-swap sends with each request. Empty means none.
 	KeyVariable string `json:"keyVariable"`
-	// Models are the peer's models that llama-swap offers.
+	// Models are the peer's models that llama-swap offers, from those it
+	// lists: Fetch Models removes one it no longer lists (TODO item 88).
 	Models []string `json:"models"`
+	// CustomModels are models it offers that were added by hand, with
+	// Add: ones it doesn't list, such as llama-swap's unlisted models.
+	// Fetch Models leaves them alone. Only written when there are some, so
+	// an older app, which refuses keys it doesn't know, still reads a file
+	// without any.
+	CustomModels []string `json:"customModels,omitempty"`
 	// Timeouts are those llama-swap's requests to the peer use instead of
 	// its defaults.
 	Timeouts PeerTimeouts `json:"timeouts"`
@@ -279,7 +286,7 @@ func (p Prefs) checkPeers() error {
 			return fmt.Errorf("peers: %s's key is %s, which isn't one of the secret variables", peer.Name, peer.KeyVariable)
 		case peer.KeyVariable != "" && !configVariable.MatchString(peer.KeyVariable):
 			return fmt.Errorf("peers: %s's key is %s, but llama-swap's config can only use variables named with letters, digits and underscores", peer.Name, peer.KeyVariable)
-		case len(peer.Models) == 0:
+		case len(peer.Models) == 0 && len(peer.CustomModels) == 0:
 			return fmt.Errorf("peers: %s has no models; llama-swap needs at least one", peer.Name)
 		}
 		seen[peer.Name] = true
@@ -310,6 +317,18 @@ func (p Prefs) checkPeers() error {
 				return fmt.Errorf("peers: %s lists %s twice", peer.Name, m)
 			}
 			models[m] = true
+		}
+		custom := map[string]bool{}
+		for _, m := range peer.CustomModels {
+			switch {
+			case !UsableModelID(m):
+				return fmt.Errorf("peers: %s has a model named %q, which llama-swap can't use", peer.Name, m)
+			case models[m]:
+				return fmt.Errorf("peers: %s lists %s in both models and customModels; keep it in one", peer.Name, m)
+			case custom[m]:
+				return fmt.Errorf("peers: %s lists %s twice", peer.Name, m)
+			}
+			custom[m] = true
 		}
 	}
 	return nil

@@ -449,7 +449,7 @@ misspelling, is reported as an error rather than ignored.
 | `configDirMode` | `"off"` | Whether llama-swap also reads a folder of config files (`-config-dir`): `"off"`, `"own"` (`configDir`) or `"managed"` (the app's own folder). See [Config folder](#config-folder). |
 | `configDir` | `""` | Your own config folder, with `"own"`. The app never writes there. |
 | `manageApiKeys` | `false` | With the managed folder, list the API keys in llama-swap's `apiKeys` for it, so it requires them. See [API keys](#api-keys). |
-| `peers` | `[]` | The peers the app manages, each with `name`, `url`, `keyVariable` (a secret variable, or `""`), `models`, optionally `timeouts` (`responseHeader`, `connect`, `keepalive`, in seconds, as llama-swap names them), and `"disabled": true` for one that's turned off. Used with the managed folder; see [Peers](#peers). |
+| `peers` | `[]` | The peers the app manages, each with `name`, `url`, `keyVariable` (a secret variable, or `""`), `models` (from those it lists), `customModels` (added with **Add**; only written when there are some), optionally `timeouts` (`responseHeader`, `connect`, `keepalive`, in seconds, as llama-swap names them), and `"disabled": true` for one that's turned off. Used with the managed folder; see [Peers](#peers). |
 | `cors` | off | Which web pages may use llama-swap: `restrict`, `allowedOrigins`, `allowCredentials`, `allowPrivateNetwork` and `maxAge`, as llama-swap's `security.cors` names them. Used with the managed folder; see [Web pages](#web-pages). |
 | `args` | `[]` | Extra llama-swap arguments, for flags newer than the app. Settings doesn't show them. Not `-config`, `-listen`, `-config-dir` or `-watch-config`, which are settings above, nor the TLS flags, `-validate` or `-version`. A `-watch-config` here from an earlier version becomes `watchConfig` when the file is read. |
 | `env` | `{}` | Environment variables for llama-swap and the commands its config runs, e.g. `{"HF_TOKEN": "…"}`. Values are used exactly as typed, quotes included; for a path with spaces, see [Good to know](#good-to-know). |
@@ -530,8 +530,12 @@ set to **Managed by the app**:
 3. **Fetch Models** asks the peer what it serves, with the key, and lists
    it. Tick the models llama-swap should offer. **Filter** narrows a long
    list, and **Tick All Shown** and **Untick All Shown** act on what it
-   shows. Fetching again adds new models unticked and keeps your ticks. For
-   a model the peer doesn't list, type its name and click **Add**.
+   shows. Fetching again adds new models unticked, keeps your ticks, and
+   removes models the peer no longer serves, ticked or not, naming them
+   under the button; **Cancel** brings them back. For a model the peer
+   doesn't list (llama-swap's unlisted models, say), type its name and
+   click **Add**: it's marked **custom**, and fetching never removes it.
+   Untick it to remove it.
 4. If the peer is slow to start answering (slower hardware, or long prompts
    at a large context), raise **Wait for a reply** above llama-swap's 60
    seconds. **Connect** and **Keep-alive** are there too. They start at

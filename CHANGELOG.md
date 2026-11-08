@@ -5,6 +5,13 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **Fetch Models** (Settings → Peers) now removes models the peer no
+  longer serves, ticked or not, and names them; **Cancel** brings them
+  back. Models you add by hand with **Add** are marked **custom**, kept in
+  their own list (`customModels` in `prefs.json`), and never removed by a
+  Fetch. A Fetch that fails, or finds no models at all, removes nothing.
+  Models you added by hand before this version count as the peer's: if a
+  Fetch removes one the peer doesn't list, **Add** it again, or **Cancel**.
 - **llama-swap isn't responding** no longer flashes up and away, its sound
   cut off, after a Save that changes the peers or anything else llama-swap
   reloads by itself: the reload breaks the app's connection for a moment.

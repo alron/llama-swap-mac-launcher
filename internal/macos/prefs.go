@@ -118,10 +118,13 @@ type SecretField struct {
 // variable holding its key ("" for none), and the models ticked for
 // llama-swap to offer.
 type PeerField struct {
-	Name        string   `json:"name"`
-	URL         string   `json:"url"`
-	KeyVariable string   `json:"keyVariable"`
-	Models      []string `json:"models"`
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	KeyVariable string `json:"keyVariable"`
+	// Models are its ticked models from those it lists; CustomModels, those
+	// added by hand.
+	Models       []string `json:"models"`
+	CustomModels []string `json:"customModels"`
 	// Its timeouts, in seconds, as typed.
 	ResponseHeader string `json:"responseHeader"`
 	Connect        string `json:"connect"`

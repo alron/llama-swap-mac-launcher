@@ -921,6 +921,25 @@ static NSString *sentenceCase(NSString *s) {
 }
 
 
+// customTip explains the models list's "custom".
+static NSString *const customTip = @"Custom: added by hand with Add. Fetch Models removes models the peer no longer "
+                                   @"lists, but never a custom one; untick it to remove it.";
+
+// nameSome names up to three of names, then how many more.
+static NSString *nameSome(NSArray<NSString *> *names) {
+	if (names.count <= 3) {
+		return [names componentsJoinedByString:@", "];
+	}
+	return [NSString stringWithFormat:@"%@ and %lu more", [[names subarrayWithRange:NSMakeRange(0, 3)] componentsJoinedByString:@", "],
+	                                  (unsigned long)(names.count - 3)];
+}
+
+static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
+	[models sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+		return [a[@"id"] caseInsensitiveCompare:b[@"id"]];
+	}];
+}
+
 @implementation LSLPeers
 - (instancetype)initWithRows:(id)rows {
 	self = [super init];
@@ -931,15 +950,21 @@ static NSString *sentenceCase(NSString *s) {
 			if (![r isKindOfClass:[NSDictionary class]]) {
 				continue;
 			}
+			// Each model is {id, on, custom}: custom ones were added by
+			// hand, and Fetch Models leaves them alone (TODO item 88).
 			NSMutableArray *models = [NSMutableArray array];
-			id ids = r[@"models"];
-			if ([ids isKindOfClass:[NSArray class]]) {
+			for (NSString *list in @[ @"models", @"customModels" ]) {
+				id ids = r[list];
+				if (![ids isKindOfClass:[NSArray class]]) {
+					continue;
+				}
 				for (id m in ids) {
 					if ([m isKindOfClass:[NSString class]]) {
-						[models addObject:[@{@"id" : m, @"on" : @YES} mutableCopy]];
+						[models addObject:[@{@"id" : m, @"on" : @YES, @"custom" : [list isEqual:@"customModels"] ? @YES : @NO} mutableCopy]];
 					}
 				}
 			}
+			sortModels(models);
 			[self.peers addObject:[@{
 				@"name" : string(r, @"name"),
 				@"url" : string(r, @"url"),
@@ -999,6 +1024,15 @@ static NSString *sentenceCase(NSString *s) {
 		b.state = [m[@"on"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
 		b.enabled = self.managed;
 		return b;
+	}
+	if ([column.identifier isEqual:@"origin"]) {
+		// Only the exception is marked: the models added by hand.
+		BOOL custom = [m[@"custom"] boolValue];
+		NSTextField *l = [NSTextField labelWithString:custom ? @"custom" : @""];
+		l.alignment = NSTextAlignmentRight;
+		l.textColor = NSColor.secondaryLabelColor;
+		l.toolTip = custom ? customTip : nil;
+		return tableCell(l, nil);
 	}
 	NSTextField *l = [NSTextField labelWithString:m[@"id"]];
 	l.lineBreakMode = NSLineBreakByTruncatingMiddle;
@@ -1196,13 +1230,8 @@ static NSString *sentenceCase(NSString *s) {
 	[self updateCount];
 }
 
-static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
-	[models sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
-		return [a[@"id"] caseInsensitiveCompare:b[@"id"]];
-	}];
-}
-
-// addModel adds, ticked, a model the peer doesn't list, typed by hand.
+// addModel adds, ticked, a model the peer doesn't list, typed by hand: a
+// custom one, which Fetch Models leaves alone. One it lists is just ticked.
 - (void)addModel:(id)sender {
 	NSMutableDictionary *peer = self.selected;
 	NSString *id_ = [self.addField.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
@@ -1219,7 +1248,7 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 	if (found != nil) {
 		found[@"on"] = @YES;
 	} else {
-		[models addObject:[@{@"id" : id_, @"on" : @YES} mutableCopy]];
+		[models addObject:[@{@"id" : id_, @"on" : @YES, @"custom" : @YES} mutableCopy]];
 		sortModels(models);
 	}
 	self.addField.stringValue = @"";
@@ -1242,7 +1271,8 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 
 // fetch asks the peer for its models, with the selected key's value as it
 // stands in the Secrets table, so a key added a moment ago works before
-// Save. New models arrive unticked; ticks already made stay.
+// Save. New models arrive unticked; ticks already made stay; models it no
+// longer lists go, ticked or not, except those added by hand (fetched:).
 - (void)fetch:(id)sender {
 	NSMutableDictionary *peer = self.selected;
 	if (peer == nil) {
@@ -1288,6 +1318,25 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 		return;
 	}
 	NSMutableArray *models = peer[@"models"];
+	NSMutableSet *listed = [NSMutableSet set];
+	for (id i in ids) {
+		if ([i isKindOfClass:[NSString class]]) {
+			[listed addObject:i];
+		}
+	}
+	// Models it no longer lists go, ticked or not (TODO item 88), but not
+	// those added by hand, and nothing when it lists none: a peer answering
+	// in the middle of a reload mustn't wipe the ticks. Cancel undoes it.
+	NSMutableArray<NSString *> *removed = [NSMutableArray array];
+	if (listed.count > 0) {
+		NSIndexSet *gone = [models indexesOfObjectsPassingTest:^BOOL(NSDictionary *m, NSUInteger i, BOOL *stop) {
+			return ![m[@"custom"] boolValue] && ![listed containsObject:m[@"id"]];
+		}];
+		for (NSDictionary *m in [models objectsAtIndexes:gone]) {
+			[removed addObject:m[@"id"]];
+		}
+		[models removeObjectsAtIndexes:gone];
+	}
 	NSMutableSet *known = [NSMutableSet set];
 	for (NSDictionary *m in models) {
 		[known addObject:m[@"id"]];
@@ -1295,7 +1344,7 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 	NSUInteger added = 0;
 	for (id i in ids) {
 		if ([i isKindOfClass:[NSString class]] && ![known containsObject:i]) {
-			[models addObject:[@{@"id" : i, @"on" : @NO} mutableCopy]];
+			[models addObject:[@{@"id" : i, @"on" : @NO, @"custom" : @NO} mutableCopy]];
 			[known addObject:i];
 			added++;
 		}
@@ -1305,7 +1354,13 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 		[self applyFilter];
 	}
 	NSInteger skipped = [reply[@"skipped"] isKindOfClass:[NSNumber class]] ? [reply[@"skipped"] integerValue] : 0;
-	NSString *message = [NSString stringWithFormat:@"It serves %lu models; %lu new, unticked.", (unsigned long)ids.count, (unsigned long)added];
+	NSString *message = listed.count == 0
+		? @"It serves no models, so none were removed."
+		: [NSString stringWithFormat:@"It serves %lu model%@; %lu new, unticked.", (unsigned long)listed.count, listed.count == 1 ? @"" : @"s",
+		                             (unsigned long)added];
+	if (removed.count > 0) {
+		message = [message stringByAppendingFormat:@" Removed %lu it no longer serves: %@.", (unsigned long)removed.count, nameSome(removed)];
+	}
 	if (skipped > 0) {
 		message = [message stringByAppendingFormat:@" %ld left out, with names llama-swap's config can't take "
 		                                           @"(control characters, or too long).", (long)skipped];
@@ -1339,18 +1394,19 @@ static void sortModels(NSMutableArray<NSMutableDictionary *> *models) {
 	[self showSelected];
 }
 
-// json is the peers, each with only its ticked models, for the reply.
+// json is the peers, each with only its ticked models, those it lists and
+// those added by hand apart, for the reply.
 - (NSArray *)json {
 	NSMutableArray *out = [NSMutableArray array];
 	for (NSDictionary *p in self.peers) {
-		NSMutableArray *models = [NSMutableArray array];
+		NSMutableArray *models = [NSMutableArray array], *custom = [NSMutableArray array];
 		for (NSDictionary *m in p[@"models"]) {
 			if ([m[@"on"] boolValue]) {
-				[models addObject:m[@"id"]];
+				[[m[@"custom"] boolValue] ? custom : models addObject:m[@"id"]];
 			}
 		}
 		[out addObject:@{
-			@"name" : p[@"name"], @"url" : p[@"url"], @"keyVariable" : p[@"key"], @"models" : models,
+			@"name" : p[@"name"], @"url" : p[@"url"], @"keyVariable" : p[@"key"], @"models" : models, @"customModels" : custom,
 			@"responseHeader" : p[@"responseHeader"], @"connect" : p[@"connect"], @"keepalive" : p[@"keepalive"],
 			@"disabled" : [p[@"disabled"] boolValue] ? @YES : @NO,
 		}];
@@ -1424,13 +1480,23 @@ static NSView *peersTab(LSLPeers *p) {
 	on.width = 22;
 	NSTableColumn *model = [[NSTableColumn alloc] initWithIdentifier:@"id"];
 	model.title = @"Model";
-	model.width = 490;
+	model.width = 430;
+	// Right-aligned beside the ID: "custom" for a model added by hand.
+	NSTableColumn *origin = [[NSTableColumn alloc] initWithIdentifier:@"origin"];
+	origin.title = @"";
+	origin.width = 60;
+	origin.headerToolTip = customTip;
+	// Only the ID's column takes up a change of width.
+	on.resizingMask = NSTableColumnNoResizing;
+	origin.resizingMask = NSTableColumnNoResizing;
+	model.resizingMask = NSTableColumnAutoresizingMask;
 	[list addTableColumn:on];
 	[list addTableColumn:model];
+	[list addTableColumn:origin];
 	list.dataSource = p;
 	list.delegate = p;
 	list.usesAlternatingRowBackgroundColors = YES;
-	list.columnAutoresizingStyle = NSTableViewLastColumnOnlyAutoresizingStyle;
+	list.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
 	p.list = list;
 	NSScrollView *listScroll = [[NSScrollView alloc] init];
 	listScroll.documentView = list;

@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
@@ -65,7 +66,7 @@ func peersFile(p prefs.Prefs) []byte {
 				fmt.Fprintf(&b, "    apiKey: %s\n", quoted("${env."+peer.KeyVariable+"}"))
 			}
 			b.WriteString("    models:\n")
-			for _, m := range peer.Models {
+			for _, m := range slices.Concat(peer.Models, peer.CustomModels) {
 				fmt.Fprintf(&b, "      - %s\n", quoted(m))
 			}
 			// Only those changed from llama-swap's defaults.

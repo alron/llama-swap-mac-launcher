@@ -287,7 +287,8 @@ func formFrom(p prefs.Prefs, secrets map[string]string) macos.PreferencesForm {
 	peers := []macos.PeerField{}
 	for _, peer := range p.Peers {
 		peers = append(peers, macos.PeerField{
-			Name: peer.Name, URL: peer.URL, KeyVariable: peer.KeyVariable, Models: peer.Models, Disabled: peer.Disabled,
+			Name: peer.Name, URL: peer.URL, KeyVariable: peer.KeyVariable, Models: peer.Models, CustomModels: peer.CustomModels,
+			Disabled:       peer.Disabled,
 			ResponseHeader: shownTimeout(peer.Timeouts.ResponseHeader, prefs.DefaultResponseHeader),
 			Connect:        shownTimeout(peer.Timeouts.Connect, prefs.DefaultConnect),
 			KeepAlive:      shownTimeout(peer.Timeouts.KeepAlive, prefs.DefaultKeepAlive),
@@ -404,13 +405,13 @@ func prefsFrom(f macos.PreferencesForm) (prefs.Prefs, map[string]string, error) 
 	p.Peers = []prefs.Peer{}
 	for i, f := range f.Peers {
 		peer := prefs.Peer{Name: strings.TrimSpace(f.Name), URL: strings.TrimSpace(f.URL), KeyVariable: f.KeyVariable, Models: f.Models,
-			Disabled: f.Disabled}
+			CustomModels: f.CustomModels, Disabled: f.Disabled}
 		switch {
 		case peer.Name == "":
 			return p, nil, peerError{fmt.Errorf("peers, row %d: give the peer a name", i+1)}
 		case peer.URL == "":
 			return p, nil, peerError{fmt.Errorf("peers: give %s's URL, such as http://192.168.1.20:8080", peer.Name)}
-		case len(peer.Models) == 0:
+		case len(peer.Models) == 0 && len(peer.CustomModels) == 0:
 			return p, nil, peerError{fmt.Errorf("peers: tick at least one of %s's models. Fetch Models lists them", peer.Name)}
 		}
 		var err error

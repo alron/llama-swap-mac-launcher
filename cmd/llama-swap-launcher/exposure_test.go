@@ -108,7 +108,7 @@ func TestManagedFiles(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 	peers := prefs.Prefs{ConfigDirMode: prefs.ConfigDirManaged, Peers: []prefs.Peer{
-		{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "STUDIO_KEY", Models: []string{"gemma", "org/model \"q\""}},
+		{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "STUDIO_KEY", Models: []string{"gemma", "org/model \"q\""}, CustomModels: []string{"hidden"}},
 		{Name: "open", URL: "https://example.com/api", Models: []string{"x"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: seconds(600), Connect: seconds(0)}},
 	}}
 	wantPeers := managedHeader + `peers:
@@ -118,6 +118,7 @@ func TestManagedFiles(t *testing.T) {
     models:
       - "gemma"
       - "org/model \"q\""
+      - "hidden"
   "open":
     proxy: "https://example.com/api"
     models:
