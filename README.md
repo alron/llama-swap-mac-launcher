@@ -731,7 +731,10 @@ a newer version installed that the app won't restart into by itself, and,
 if you ask, the restart into one (see [Updates](#updates)).
 
 These replace the alerts for the first and third problems. A notification goes
-away when its problem does, and all of them when the app quits. Nothing
+away when its problem does, and all of them when the app quits. **Not
+responding** and **can't follow** wait until their problem has lasted 10
+seconds, so a moment's break, such as llama-swap reloading its config after
+a Save, posts nothing. Nothing
 notifies for what you did yourself in the menu or Settings, for `llsl`'s
 requests (its caller gets the answer), or for a pause.
 

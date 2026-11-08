@@ -5,6 +5,11 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- **llama-swap isn't responding** no longer flashes up and away, its sound
+  cut off, after a Save that changes the peers or anything else llama-swap
+  reloads by itself: the reload breaks the app's connection for a moment.
+  That notification, and **Llama Swap Launcher can't follow llama-swap**,
+  now wait until their problem has lasted 10 seconds.
 - Small fixes from security reviews of 0.3.4, none reachable by anything
   else on the Mac:
   - A Save could have returned the GPU's memory limit to macOS's default

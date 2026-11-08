@@ -3,8 +3,10 @@ package main
 // macOS notifications for problems that need a person (TODO item 60).
 //
 // Standing notices follow llama-swap's state: one is posted when its problem
-// begins and removed when it ends (watchNotices). Events, such as a restart
-// after a crash, are posted once, as they happen. While Settings' Native
+// begins and removed when it ends (watchNotices). A problem that can pass in
+// a moment waits out a grace period first, so a config reload doesn't flash
+// one. Events, such as a restart after a crash, are posted once, as they
+// happen. While Settings' Native
 // notifications box is ticked and macOS shows the app's notifications,
 // they replace the alerts for llama-swap failing and a GPU fault; clicking
 // one of those opens its alert.
@@ -14,6 +16,7 @@ import (
 	"maps"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alron/llama-swap-mac-launcher/internal/health"
 	"github.com/alron/llama-swap-mac-launcher/internal/macos"
@@ -29,7 +32,17 @@ type notice struct {
 	category string
 	// timeSensitive gets it through a Focus that allows the app.
 	timeSensitive bool
+	// grace holds it back until its problem has lasted noticeGrace: one
+	// that can pass in a moment, such as the event stream dropping while
+	// llama-swap reloads its config (TODO item 89).
+	grace bool
 }
+
+// noticeGrace is how long a problem marked grace must last to be posted.
+// A config reload drops the event stream for about a quarter of a second;
+// a real hang lasts, and hang detection already takes up to the
+// health-check interval plus 3 seconds.
+const noticeGrace = 10 * time.Second
 
 // The notices' ids, and their kinds' prefixes.
 const (
@@ -60,9 +73,10 @@ func standingNotices(st supervisor.Status, snap health.Snapshot, autoUnload bool
 			body: "It stopped answering the app's health checks, so requests to it may hang. " +
 				"If it doesn't recover, Restart it from the menu.",
 			timeSensitive: true,
+			grace:         true,
 		}
 	case snap.Problem != "":
-		n[noticeRefused] = notice{title: "Llama Swap Launcher can't follow llama-swap", body: sentence(snap.Problem) + "."}
+		n[noticeRefused] = notice{title: "Llama Swap Launcher can't follow llama-swap", body: sentence(snap.Problem) + ".", grace: true}
 	}
 	if !autoUnload {
 		for _, m := range snap.Faulted() {
@@ -167,13 +181,24 @@ func (a *app) noticesChanged() {
 }
 
 // watchNotices keeps the standing notices in step with llama-swap's state:
-// it posts those that begin or change, and removes those that end.
+// it posts those that begin or change, once past any grace, and removes
+// those that end. A problem within its grace sends no change when it simply
+// lasts, so a timer wakes it when the grace is over.
 func (a *app) watchNotices() {
+	since := map[string]time.Time{}
+	var timer *time.Timer
 	for range a.notices.wake {
 		p := a.currentPrefs()
 		want := map[string]notice{}
 		if p.Notifies() {
 			want = standingNotices(a.sup.Status(), a.snapshot(), p.UnloadOnGPUFault)
+		}
+		want, next := due(want, since, time.Now())
+		if timer != nil {
+			timer.Stop()
+		}
+		if next > 0 {
+			timer = time.AfterFunc(next, a.noticesChanged)
 		}
 		a.notices.mu.Lock()
 		shown := maps.Clone(a.notices.shown)
@@ -197,6 +222,38 @@ func (a *app) watchNotices() {
 		a.notices.shown = shown
 		a.notices.mu.Unlock()
 	}
+}
+
+// due returns the notices wanted now, less those whose grace hasn't run
+// out, and how long until the first of those is due (0 for none). since
+// holds when each graced notice was first wanted; due adds to it, and drops
+// those no longer wanted, so a problem that comes back waits again.
+func due(want map[string]notice, since map[string]time.Time, now time.Time) (map[string]notice, time.Duration) {
+	for id := range since {
+		if _, ok := want[id]; !ok {
+			delete(since, id)
+		}
+	}
+	shown := map[string]notice{}
+	var next time.Duration
+	for id, n := range want {
+		if !n.grace {
+			shown[id] = n
+			continue
+		}
+		first, ok := since[id]
+		if !ok {
+			first, since[id] = now, now
+		}
+		if left := noticeGrace - now.Sub(first); left > 0 {
+			if next == 0 || left < next {
+				next = left
+			}
+			continue
+		}
+		shown[id] = n
+	}
+	return shown, next
 }
 
 // postEvent posts a one-off notice, if notifications are on.
