@@ -40,7 +40,9 @@ func plistBundleID(path string) string {
 		return ""
 	}
 	defer f.Close()
-	d := xml.NewDecoder(f)
+	// An Info.plist is a few kilobytes; this bounds a misbehaving one, as
+	// update.PlistString does (TODO item 87).
+	d := xml.NewDecoder(io.LimitReader(f, 1<<20))
 	var lastKey, text string
 	for {
 		tok, err := d.Token()

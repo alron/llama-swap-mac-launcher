@@ -88,6 +88,14 @@ func TestLatest(t *testing.T) {
 			t.Errorf("%s: taken as %v", name, v)
 		}
 	}
+	// A tag that isn't a version is quoted, cut short: the answer chooses
+	// its text, which goes into an alert and the log (TODO item 86).
+	answer = `{"tag_name":"` + strings.Repeat("Run this: ", 50000) + `"}`
+	if _, err := Latest(ctx, client, srv.URL); err == nil || len(err.Error()) > 100 {
+		t.Errorf("a long tag: %d bytes of error", len(err.Error()))
+	} else if want := `the latest release's tag, "Run this: Run this: Run this: Run this: ", isn't a version`; err.Error() != want {
+		t.Errorf("a long tag: %q", err)
+	}
 	answer, status = `{"message":"API rate limit exceeded"}`, http.StatusForbidden
 	if _, err := Latest(ctx, client, srv.URL); err == nil || !strings.Contains(err.Error(), "403") {
 		t.Errorf("rate limited: %v", err)

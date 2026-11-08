@@ -97,7 +97,10 @@ func Latest(ctx context.Context, client *http.Client, url string) (Version, erro
 	}
 	v, ok := ParseVersion(release.Tag)
 	if !ok {
-		return Version{}, fmt.Errorf("the latest release's tag, %q, isn't a version", release.Tag)
+		// Quoted, and cut to 40 characters before it's quoted: the error
+		// goes into an alert, the log and update.json, and the answer
+		// chooses the text (TODO item 86).
+		return Version{}, fmt.Errorf("the latest release's tag, %.40q, isn't a version", release.Tag)
 	}
 	return v, nil
 }

@@ -3,6 +3,18 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
+## Unreleased
+
+- Small fixes from security reviews of 0.3.4, none reachable by anything
+  else on the Mac:
+  - A Save could have returned the GPU's memory limit to macOS's default
+    without asking for Touch ID or your password, had macOS's limit been
+    unreadable when Settings opened. Now it leaves the limit as it is.
+  - **Check for Updates…** quotes at most 40 characters of a release tag
+    it can't read, so a bad answer can't fill an alert or the log.
+  - Setting the GPU's memory limit gives up after about 15 seconds when
+    the helper can't be reached, as meant, rather than up to 21.
+
 ## 0.3.4 (2026-11-06)
 
 - **Raise the GPU's memory limit** couldn't be turned on in 0.3.3: on a
