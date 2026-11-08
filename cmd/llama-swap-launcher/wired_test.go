@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alron/llama-swap-mac-launcher/internal/macos"
 )
@@ -33,6 +34,8 @@ func TestWiredPlan(t *testing.T) {
 	unusable.unusable = "Only on Macs with more than 32 GB"
 	stalled := mac96(enabled, 80*gb, 80*gb) // allowed, but launchd isn't running it
 	stalled.running = false
+	allowedIdle := mac96(enabled, 0, 0) // allowed, not running, nothing stored
+	allowedIdle.running = false
 	for _, tt := range []struct {
 		name string
 		s    wiredState
@@ -40,11 +43,11 @@ func TestWiredPlan(t *testing.T) {
 		do   wiredAction
 	}{
 		{"off, and off", mac96(off, 0, 0), wiredWant{}, wiredNothing},
-		{"turned on", mac96(off, 0, 0), wiredWant{true, 84 * gb}, wiredSet},
-		{"in effect", mac96(enabled, 84*gb, 84*gb), wiredWant{true, 84 * gb}, wiredNothing},
-		{"changed", mac96(enabled, 84*gb, 84*gb), wiredWant{true, 80 * gb}, wiredSet},
-		{"changed back by something else", mac96(enabled, 70*gb, 84*gb), wiredWant{true, 84 * gb}, wiredSet},
-		{"allowed, nothing set yet", mac96(enabled, 0, 0), wiredWant{true, 84 * gb}, wiredSet},
+		{"turned on", mac96(off, 0, 0), wiredWant{on: true, mb: 84 * gb}, wiredSet},
+		{"in effect", mac96(enabled, 84*gb, 84*gb), wiredWant{on: true, mb: 84 * gb}, wiredNothing},
+		{"changed", mac96(enabled, 84*gb, 84*gb), wiredWant{on: true, mb: 80 * gb}, wiredSet},
+		{"changed back by something else", mac96(enabled, 70*gb, 84*gb), wiredWant{on: true, mb: 84 * gb}, wiredSet},
+		{"allowed, nothing set yet", mac96(enabled, 0, 0), wiredWant{on: true, mb: 84 * gb}, wiredSet},
 		{"turned off", mac96(enabled, 84*gb, 84*gb), wiredWant{}, wiredOff},
 		{"turned off, set back by something else", mac96(enabled, 0, 84*gb), wiredWant{}, wiredOff},
 		// Nothing of the app's in effect: no confirmation, and someone
@@ -52,16 +55,22 @@ func TestWiredPlan(t *testing.T) {
 		{"allowed with nothing, turned off", mac96(enabled, 0, 0), wiredWant{}, wiredDrop},
 		{"someone else's, helper allowed, turned off", mac96(enabled, 70*gb, 0), wiredWant{}, wiredDrop},
 		{"never allowed, turned off", mac96(approval, 0, 0), wiredWant{}, wiredDrop},
-		{"waiting, same again", waiting, wiredWant{true, 84 * gb}, wiredRetry}, // no confirmation: it was confirmed
-		{"waiting, another", waiting, wiredWant{true, 80 * gb}, wiredSet},
+		{"waiting, same again", waiting, wiredWant{on: true, mb: 84 * gb}, wiredRetry}, // no confirmation: it was confirmed
+		{"waiting, another", waiting, wiredWant{on: true, mb: 80 * gb}, wiredSet},
 		{"waiting, turned off", waiting, wiredWant{}, wiredDrop},
-		{"not allowed, nothing waiting, on", mac96(approval, 0, 0), wiredWant{true, 84 * gb}, wiredSet},
+		{"not allowed, nothing waiting, on", mac96(approval, 0, 0), wiredWant{on: true, mb: 84 * gb}, wiredSet},
 		{"someone else's, left off", mac96(off, 70*gb, 0), wiredWant{}, wiredNothing},
-		{"unusable", unusable, wiredWant{true, 84 * gb}, wiredNothing},
+		{"unusable", unusable, wiredWant{on: true, mb: 84 * gb}, wiredNothing},
 		// Allowed but not running: a Save starts it again, even for the
 		// limit in effect; turning off still confirms, then sets the default.
-		{"not running, same again", stalled, wiredWant{true, 80 * gb}, wiredSet},
+		{"not running, same again", stalled, wiredWant{on: true, mb: 80 * gb}, wiredSet},
 		{"not running, turned off", stalled, wiredWant{}, wiredOff},
+		// TODO item 85: the box greyed out at open (iogpu.wired_limit_mb
+		// unreadable), usable at Save, with the helper allowed, not running
+		// and nothing stored. Kept as it is, nothing is sent; and even a
+		// want of 0 mustn't match pendingMB's 0 and skip the confirmation.
+		{"greyed at open, usable at Save", allowedIdle, wiredWant{keep: true}, wiredNothing},
+		{"on at 0, nothing waiting", allowedIdle, wiredWant{on: true, mb: 0}, wiredSet},
 	} {
 		if got := wiredPlan(tt.s, tt.want); got != tt.do {
 			t.Errorf("%s: %d, want %d", tt.name, got, tt.do)
@@ -110,11 +119,11 @@ func TestWiredFrom(t *testing.T) {
 		ok   bool
 	}{
 		{false, "anything", wiredWant{}, true},
-		{true, "84", wiredWant{true, 84 * gb}, true},
-		{true, " 88 GB ", wiredWant{true, 88 * gb}, true},
+		{true, "84", wiredWant{on: true, mb: 84 * gb}, true},
+		{true, " 88 GB ", wiredWant{on: true, mb: 88 * gb}, true},
 		{true, "89", wiredWant{}, false},
 		{true, "7", wiredWant{}, false},
-		{true, "8", wiredWant{true, 8 * gb}, true},
+		{true, "8", wiredWant{on: true, mb: 8 * gb}, true},
 		{true, "84.5", wiredWant{}, false},
 		{true, "", wiredWant{}, false},
 		{true, "-84", wiredWant{}, false},
@@ -130,9 +139,9 @@ func TestWiredFrom(t *testing.T) {
 			}
 		}
 	}
-	// Where it can't be changed, the greyed box comes back as it went in.
+	// Where it can't be changed, the greyed box keeps the limit as it is.
 	s.unusable = "no"
-	if got, err := wiredFrom(macos.PreferencesForm{WiredLimit: true, WiredLimitGB: "84"}, s); err != nil || got != (wiredWant{}) {
+	if got, err := wiredFrom(macos.PreferencesForm{WiredLimit: true, WiredLimitGB: "84"}, s); err != nil || got != (wiredWant{keep: true}) {
 		t.Errorf("unusable: %+v, %v", got, err)
 	}
 }
@@ -188,5 +197,25 @@ func TestNeverRegistered(t *testing.T) {
 		if got := neverRegistered(tt.st, tt.inBundle); got != tt.want {
 			t.Errorf("%d, in the bundle %v: %d, want %d", tt.st, tt.inBundle, got, tt.want)
 		}
+	}
+}
+
+// sendWired's tries stay within its 15 seconds (TODO item 82): a first try
+// that times out at 10 seconds leaves the second only what's left.
+func TestTryWithin(t *testing.T) {
+	for _, tt := range []struct{ left, want time.Duration }{
+		{sendWiredFor, setTimeout},
+		{4 * time.Second, 4 * time.Second},
+		{300 * time.Millisecond, time.Second},
+		{-time.Second, time.Second},
+	} {
+		if got := tryWithin(tt.left); got != tt.want {
+			t.Errorf("%v left: %v, want %v", tt.left, got, tt.want)
+		}
+	}
+	// The worst case: a try that times out, a second's pause, and the
+	// rest.
+	if total := setTimeout + time.Second + tryWithin(sendWiredFor-setTimeout-time.Second); total > sendWiredFor {
+		t.Errorf("two tries take %v, more than %v", total, sendWiredFor)
 	}
 }

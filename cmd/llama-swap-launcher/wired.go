@@ -281,10 +281,12 @@ func fillWiredForm(f *macos.PreferencesForm, s wiredState) {
 	f.WiredMaxGB = (s.totalMB - wired.ReserveMB) >> 10
 }
 
-// wiredWant is the limit as Settings was saved: off, or on at mb.
+// wiredWant is the limit as Settings was saved: off, or on at mb, or keep:
+// left as it is, the box greyed out.
 type wiredWant struct {
-	on bool
-	mb int64
+	on   bool
+	mb   int64
+	keep bool
 }
 
 // tweakError is a problem on the Tweaks tab, so the dialog comes back
@@ -293,10 +295,12 @@ type tweakError struct{ error }
 
 // wiredFrom reads the limit from the dialog, checked against the bounds
 // the helper enforces too. Where it can't be changed, the box was greyed
-// out, and it's left as it is.
+// out, and it's left as it is, whatever the state at Save: a want made
+// from the state at open could otherwise be planned against a newer one
+// (TODO item 85).
 func wiredFrom(f macos.PreferencesForm, s wiredState) (wiredWant, error) {
 	if s.unusable != "" {
-		return wiredWant{on: s.managed(), mb: s.storedMB}, nil
+		return wiredWant{keep: true}, nil
 	}
 	if !f.WiredLimit {
 		return wiredWant{}, nil
@@ -338,10 +342,12 @@ const (
 func wiredPlan(s wiredState, want wiredWant) wiredAction {
 	enabled := s.helper == macos.LoginItemEnabled
 	switch {
-	case s.unusable != "":
+	case want.keep || s.unusable != "":
 		return wiredNothing
-	case want.on && s.pendingMB == want.mb && !s.running:
-		return wiredRetry // already confirmed, and waiting
+	case want.on && s.pendingMB != 0 && s.pendingMB == want.mb && !s.running:
+		// Already confirmed, and waiting: a wait only starts after a
+		// confirmed Save set a limit, so pendingMB is never 0 then.
+		return wiredRetry
 	case want.on && enabled && s.running && s.storedMB == want.mb && s.limitMB == want.mb:
 		return wiredNothing // in effect
 	case want.on:
@@ -580,13 +586,13 @@ func (a *app) tellWired(title, body string) {
 // allowed. It checks what comes back: from root, with the limit in effect.
 func (a *app) sendWired(mb int64) error {
 	var err error
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(sendWiredFor)
 	for try := 0; try == 0 || time.Now().Before(deadline); try++ {
 		if try > 0 {
 			time.Sleep(time.Second)
 		}
 		var r macos.HelperReply
-		r, err = a.askHelper("set", mb)
+		r, err = a.askHelperWithin("set", mb, tryWithin(time.Until(deadline)))
 		if err != nil {
 			continue // not reached: try again
 		}
@@ -609,16 +615,36 @@ func (a *app) sendWired(mb int64) error {
 	return fmt.Errorf("the app's helper couldn't be reached: %w", err)
 }
 
+// How long the helper's requests wait for an answer. A running helper
+// answers in milliseconds; one launchd can't start never does, so "info"
+// (asked by Settings, llsl status and the diagnostics) waits 3 seconds,
+// and "set", which may have to wait for launchd to start the helper, 10.
+const (
+	infoTimeout = 3 * time.Second
+	setTimeout  = 10 * time.Second
+	// sendWiredFor bounds sendWired's retries, each try included.
+	sendWiredFor = 15 * time.Second
+)
+
+// tryWithin is how long one of sendWired's tries may wait, given what's
+// left of its time: up to setTimeout, and at least a second, so a try that
+// starts near the end still has a chance (TODO item 82: a try started at
+// 11 seconds once ran to its own 10-second timeout, ending near 21).
+func tryWithin(left time.Duration) time.Duration {
+	return min(setTimeout, max(left, time.Second))
+}
+
 // askHelper sends the helper a request, accepting an answer only from the
-// helper in this app, signed by its team. A running helper answers in
-// milliseconds; one launchd can't start never does, so "info" (asked by
-// Settings, llsl status and the diagnostics) waits 3 seconds, and "set",
-// which may have to wait for launchd to start the helper, 10.
+// helper in this app, signed by its team, within the request's timeout.
 func (a *app) askHelper(op string, mb int64) (macos.HelperReply, error) {
-	timeout := 3 * time.Second
+	timeout := infoTimeout
 	if op == "set" {
-		timeout = 10 * time.Second
+		timeout = setTimeout
 	}
+	return a.askHelperWithin(op, mb, timeout)
+}
+
+func (a *app) askHelperWithin(op string, mb int64, timeout time.Duration) (macos.HelperReply, error) {
 	return macos.HelperRequest(wired.Label(bundleID), wired.HelperRequirement(bundleID, teamID), op, mb, timeout)
 }
 

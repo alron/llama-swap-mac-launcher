@@ -80,8 +80,19 @@ func RemoveAllNotifications() {
 func NextNotificationResponse() NotificationResponse {
 	c := C.lsl_notify_next_response()
 	defer C.free(unsafe.Pointer(c))
-	id, action, _ := strings.Cut(C.GoString(c), "\n")
-	return NotificationResponse{ID: id, Action: action}
+	return parseResponse(C.GoString(c))
+}
+
+// parseResponse reads notify.m's "<identifier>\n<action>". It splits at the
+// last newline: the action ("default", or a button's, such as "unload")
+// never has one, but an identifier made from a model's ID could (TODO item
+// 84).
+func parseResponse(s string) NotificationResponse {
+	i := strings.LastIndexByte(s, '\n')
+	if i < 0 {
+		return NotificationResponse{ID: s}
+	}
+	return NotificationResponse{ID: s[:i], Action: s[i+1:]}
 }
 
 // NotificationPermission is what macOS allows the app's notifications, as

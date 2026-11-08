@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -130,6 +131,11 @@ func TestValidate(t *testing.T) {
 		{"peer URL without a host", Prefs{Peers: []Peer{{Name: "a", URL: "http://", Models: []string{"x"}}}}, false},
 		{"peer URL with a variable", Prefs{Peers: []Peer{{Name: "a", URL: "http://${env.HOST}", Models: []string{"x"}}}}, false},
 		{"peer model twice", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x", "x"}}}}, false},
+		// TODO item 88: models added by hand, kept apart from those listed.
+		{"peer with only custom models", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", CustomModels: []string{"hidden"}}}}, true},
+		{"peer model in both lists", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, CustomModels: []string{"x"}}}}, false},
+		{"peer custom model twice", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, CustomModels: []string{"y", "y"}}}}, false},
+		{"peer custom model llama-swap can't use", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", CustomModels: []string{"a\nb"}}}}, false},
 		{"peer timeouts", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, Timeouts: PeerTimeouts{ResponseHeader: seconds(600), Connect: seconds(0)}}}}, true},
 		{"peer timeout negative", Prefs{Peers: []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, Timeouts: PeerTimeouts{KeepAlive: seconds(-1)}}}}, false},
 		{"cors", Prefs{CORS: CORS{Restrict: true, AllowedOrigins: []string{"http://localhost:3000", "https://app.example.com"}, AllowCredentials: true, MaxAge: seconds(600)}}, true},
@@ -331,6 +337,29 @@ func TestPeerTimeoutsJSON(t *testing.T) {
 	}
 	if to := got.Peers[0].Timeouts; to.ResponseHeader == nil || *to.ResponseHeader != 600 || to.Connect != nil || to.KeepAlive != nil {
 		t.Errorf("loaded %+v", to)
+	}
+}
+
+// customModels is written only when there are some (TODO item 88), so a
+// file without any is one an older app, which refuses keys it doesn't
+// know, can still read; and one from before it loads as it was.
+func TestCustomModelsJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prefs.json")
+	p := Defaults()
+	p.Peers = []Peer{{Name: "a", URL: "http://h", Models: []string{"x"}, CustomModels: []string{}}}
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); strings.Contains(string(b), "customModels") {
+		t.Errorf("none, but saved as:\n%s", b)
+	}
+	p.Peers[0].CustomModels = []string{"hidden"}
+	if err := p.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil || !slices.Equal(got.Peers[0].CustomModels, []string{"hidden"}) || !slices.Equal(got.Peers[0].Models, []string{"x"}) {
+		t.Errorf("loaded %+v, %v", got.Peers, err)
 	}
 }
 

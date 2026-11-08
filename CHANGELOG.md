@@ -3,6 +3,32 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
+## 0.3.5 (2026-11-08)
+
+- **Fetch Models** (Settings → Peers) now removes models the peer no
+  longer serves, ticked or not, and names them; **Cancel** brings them
+  back. Models you add by hand with **Add** are marked **custom**, kept in
+  their own list (`customModels` in `prefs.json`), and never removed by a
+  Fetch. A Fetch that fails, or finds no models at all, removes nothing.
+  Models you added by hand before this version count as the peer's: if a
+  Fetch removes one the peer doesn't list, **Add** it again, or **Cancel**.
+- **llama-swap isn't responding** no longer flashes up and away, its sound
+  cut off, after a Save that changes the peers or anything else llama-swap
+  reloads by itself: the reload breaks the app's connection for a moment.
+  That notification, and **Llama Swap Launcher can't follow llama-swap**,
+  now wait until their problem has lasted 10 seconds.
+- Tested with llama-swap v271, so the launcher log no longer notes v270 or
+  v271 as newer than the app was tested with.
+- Small fixes from security reviews of 0.3.4, none reachable by anything
+  else on the Mac:
+  - A Save could have returned the GPU's memory limit to macOS's default
+    without asking for Touch ID or your password, had macOS's limit been
+    unreadable when Settings opened. Now it leaves the limit as it is.
+  - **Check for Updates…** quotes at most 40 characters of a release tag
+    it can't read, so a bad answer can't fill an alert or the log.
+  - Setting the GPU's memory limit gives up after about 15 seconds when
+    the helper can't be reached, as meant, rather than up to 21.
+
 ## 0.3.4 (2026-11-06)
 
 - **Raise the GPU's memory limit** couldn't be turned on in 0.3.3: on a

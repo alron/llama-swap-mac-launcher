@@ -75,6 +75,20 @@ func TestPlistBundleID(t *testing.T) {
 	if got := plistBundleID(filepath.Join(t.TempDir(), "missing.plist")); got != "" {
 		t.Errorf("missing file: got %q", got)
 	}
+	// Past the first MiB, nothing is read (TODO item 87).
+	os.WriteFile(path, []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>Padding</key>
+	<string>`+strings.Repeat("x", 1<<20)+`</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.my-wang.llama-swap-launcher.dev</string>
+</dict>
+</plist>
+`), 0o600)
+	if got := plistBundleID(path); got != "" {
+		t.Errorf("a giant Info.plist: got %q", got)
+	}
 }
 
 func TestUsageErrors(t *testing.T) {

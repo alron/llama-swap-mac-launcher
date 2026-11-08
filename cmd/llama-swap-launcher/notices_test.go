@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/alron/llama-swap-mac-launcher/internal/health"
 	"github.com/alron/llama-swap-mac-launcher/internal/prefs"
@@ -58,7 +59,55 @@ func TestStandingNotices(t *testing.T) {
 			if (n.category == faultCategory) != (len(id) > len(noticeFaultPrefix) && id[:len(noticeFaultPrefix)] == noticeFaultPrefix) {
 				t.Errorf("%s: %s has category %q; only GPU faults get Unload", tt.name, id, n.category)
 			}
+			// Only problems that can pass in a moment wait out the grace
+			// (TODO item 89); a failure and a GPU fault are definite.
+			if graced := id == noticeNotResponding || id == noticeRefused; n.grace != graced {
+				t.Errorf("%s: %s grace %v, want %v", tt.name, id, n.grace, graced)
+			}
 		}
+	}
+}
+
+// A problem marked grace is posted only once it has lasted noticeGrace,
+// and one that ends first posts nothing: a config reload drops the event
+// stream for a moment, which flashed "llama-swap isn't responding", sound
+// and all (TODO item 89). Others are posted at once.
+func TestDue(t *testing.T) {
+	hang := notice{title: "llama-swap isn't responding", body: "b", timeSensitive: true, grace: true}
+	failed := notice{title: "llama-swap stopped with a problem", body: "b", timeSensitive: true}
+	since := map[string]time.Time{}
+	t0 := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	at := func(d time.Duration, want map[string]notice) (map[string]notice, time.Duration) {
+		t.Helper()
+		return due(want, since, t0.Add(d))
+	}
+
+	// A reload: the stream drops and is back a quarter of a second later.
+	if shown, next := at(0, map[string]notice{noticeNotResponding: hang}); len(shown) != 0 || next != noticeGrace {
+		t.Fatalf("at once: %v, next %v", shown, next)
+	}
+	if shown, next := at(250*time.Millisecond, map[string]notice{}); len(shown) != 0 || next != 0 || len(since) != 0 {
+		t.Fatalf("reconnected: %v, next %v, since %v", shown, next, since)
+	}
+
+	// A hang: held back, then posted once the grace is over, and the time
+	// left is counted from when it began.
+	at(time.Minute, map[string]notice{noticeNotResponding: hang})
+	if shown, next := at(time.Minute+4*time.Second, map[string]notice{noticeNotResponding: hang}); len(shown) != 0 || next != 6*time.Second {
+		t.Fatalf("4s in: %v, next %v", shown, next)
+	}
+	if shown, next := at(time.Minute+noticeGrace, map[string]notice{noticeNotResponding: hang}); shown[noticeNotResponding] != hang || next != 0 {
+		t.Fatalf("10s in: %v, next %v", shown, next)
+	}
+
+	// A failure is posted at once, beside a problem still in its grace.
+	shown, next := at(2*time.Minute, map[string]notice{noticeFailed: failed})
+	if len(shown) != 1 || shown[noticeFailed] != failed || next != 0 {
+		t.Fatalf("failed: %v, next %v", shown, next)
+	}
+	shown, next = at(3*time.Minute, map[string]notice{noticeFailed: failed, noticeNotResponding: hang})
+	if len(shown) != 1 || next != noticeGrace {
+		t.Fatalf("failed, and a hang beginning: %v, next %v", shown, next)
 	}
 }
 

@@ -33,7 +33,7 @@ func TestFormRoundTrip(t *testing.T) {
 		CORS:                      prefs.CORS{Restrict: true, AllowedOrigins: []string{"http://localhost:3000"}, AllowPrivateNetwork: true, MaxAge: seconds(600)},
 		SecretEnv:                 []string{"GITHUB_TOKEN"},
 		Peers: []prefs.Peer{
-			{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "GITHUB_TOKEN", Models: []string{"a", "org/b"}},
+			{Name: "studio", URL: "http://192.168.1.20:8080", KeyVariable: "GITHUB_TOKEN", Models: []string{"a", "org/b"}, CustomModels: []string{"hidden"}},
 			{Name: "open", URL: "https://example.com/api", Models: []string{"x"}, Timeouts: prefs.PeerTimeouts{ResponseHeader: seconds(600), KeepAlive: seconds(0)}},
 			{Name: "away", URL: "http://192.168.1.30:8080", Models: []string{"y"}, Disabled: true},
 		},
@@ -293,6 +293,7 @@ func TestPrefsFromPeerErrors(t *testing.T) {
 		{"no name", macos.PeerField{URL: "http://h", Models: []string{"a"}}, "give the peer a name"},
 		{"no URL", macos.PeerField{Name: "studio", Models: []string{"a"}}, "give studio's URL"},
 		{"nothing ticked", macos.PeerField{Name: "studio", URL: "http://h"}, "tick at least one"},
+		{"nothing ticked, none added", macos.PeerField{Name: "studio", URL: "http://h", Models: []string{}, CustomModels: []string{}}, "tick at least one"},
 		{"bad URL", macos.PeerField{Name: "studio", URL: "h:8080", Models: []string{"a"}}, "isn't an http://"},
 		{"key gone", macos.PeerField{Name: "studio", URL: "http://h", KeyVariable: "GONE", Models: []string{"a"}}, "isn't one of the secret variables"},
 		{"timeout not a number", macos.PeerField{Name: "studio", URL: "http://h", Models: []string{"a"}, ResponseHeader: "ten"}, "isn't a whole number of seconds"},
@@ -307,6 +308,10 @@ func TestPrefsFromPeerErrors(t *testing.T) {
 	}
 	if _, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{ok}}); err != nil {
 		t.Errorf("a good peer: %v", err)
+	}
+	// Only models added by hand is enough (TODO item 88).
+	if _, _, err := prefsFrom(macos.PreferencesForm{Peers: []macos.PeerField{{Name: "studio", URL: "http://h", CustomModels: []string{"hidden"}}}}); err != nil {
+		t.Errorf("a peer with only custom models: %v", err)
 	}
 	// A peer that's off isn't written, so its key's variable may be gone,
 	// or have ${ in it; the rest is still checked.
