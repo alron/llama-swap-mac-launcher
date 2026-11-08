@@ -1203,12 +1203,22 @@ From a security review by Laguna S 2.1 (2026-11-06), another of the maintainer's
   - 82 holds;
   - 83 and 84 restate items 71, 77 and 79, which the handoff had listed as settled;
   - 84 is still worth one line, since reviews keep raising it.
-- **Handled the same day:** 83 declined (below). 82 and 84 are in the roadmap, to fix on the next release branch.
+- **Handled:** 83 declined the same day (below); 82 and 84 fixed in 0.3.5.
 
-<!-- Item 83 starts a list of its own: 82 and 84 are open, in the roadmap. -->
+<!-- Items 82 to 84 start a list of their own. -->
+82. **`sendWired`'s retries can run to about 21 seconds, not 15** (Note; read, and confirmed in the code; **fixed in 0.3.5**).
+    - **The problem:** `sendWired` (`cmd/llama-swap-launcher/wired.go`) retries a `set` until 15 seconds have passed, but a try that starts before then runs to its own 10-second timeout. A first try that times out at 10 seconds leaves time for a second, which ends near 21 seconds.
+    - **When it happens:** only while launchd holds the request without starting the helper. A helper that isn't registered fails at once.
+    - **Fix:** give each try the time left, at most 10 seconds and at least 1. The whole wait is then about 15 seconds, as the comment says, and as CLAUDE.md and done.md ("about 15 seconds for a set") already say.
+    - **Fixed:** `tryWithin` gives each try what's left of the 15 seconds, at most 10 and at least 1. `TestTryWithin` checks that a try that times out, the pause and the rest stay within 15 seconds.
 83. **Note: turning the limit off unregisters the helper even when `set 0` fails, leaving its stored limit** (`turnOffWired`, `cmd/llama-swap-launcher/wired.go`; read; **declined, no change**: items 71 and 77).
     - **What the review said:** if the limit is turned off while launchd can't start the helper, the app removes the helper but the stored limit stays. Registered again later, the helper applies it at startup. It suggested clearer wording, or logging it.
     - **Why it's declined:** this is item 71's documented behaviour, which item 77's retries already narrowed. The alert's text is true: an unregistered helper doesn't run, so macOS's default returns at the next restart. The helper is only registered again through a confirmed Save with a new limit, which it receives a moment after applying the old one. The README's GPU memory section already says so ("Turned off while the helper couldn't run…"), and Settings shows a stored limit that isn't in effect.
+84. **A notification click's ID is cut at the first newline** (Note; read; item 79 noted it as harmless, and reviews keep raising it; **fixed in 0.3.5**).
+    - **The problem:** `NextNotificationResponse` (`internal/macos/notify.go`) splits `notify.m`'s `<identifier>\n<action>` at the first `\n`. A model whose ID contains a newline, possible only as a quoted key in the user's own YAML, gets its click routed to the ID's first line, and the action is lost.
+    - **At worst:** an offer to unload another model that has faulted, which the user still confirms.
+    - **Fix:** split at the last newline, since the action (`default` or `unload`) never contains one.
+    - **Fixed:** `parseResponse` splits at the last newline. `TestParseResponse` is the `macos` package's first test.
 
 **Checked and found sound** (from the review, checked against the code; beyond item 81's list, which it confirmed):
 
@@ -1221,6 +1231,120 @@ From a security review by Laguna S 2.1 (2026-11-06), another of the maintainer's
 - **Publishing:** as item 79 says.
 
 **Live tests:** none new; item 73 stays the open one.
+
+## Items 85 to 87: a second security review of 0.3.4 by Qwen 3.8 Flash Next
+
+The second pass by this model, run on a different inference engine from items 74 to 80's. It covered `v0.3.2..v0.3.4` with item 51's questions a to f, then items 65, 64, 60 and 54, publishing and the cask.
+
+Its method:
+- the code read whole, with claims checked against the SDK headers;
+- `codesign --verify -R=` with `internal/wired`'s requirement strings against the installed release app and helper;
+- a scratch Mach listener in the user's own launchd domain, to see which error a peer gets;
+- probes of `wiredPlan`, `wiredFrom` and `update.Latest` through `go test -overlay`, without changing the tree;
+- `make test lint sec vuln`, clean.
+
+It found three things the earlier reviews hadn't, all checked against the code (2026-11-07), and none urgent. **Fixed in 0.3.5**, each with a unit test. It re-verified the earlier fixes in place. Its sound list adds three points to item 81's:
+- the code seal covers the helper's plist (`CodeResources` has its `hash2`);
+- XPC errors are `XPC_TYPE_ERROR`, so `wired.m`'s dictionary-first order can't confuse an error with a reply;
+- a cancelled or exited client shows up in the helper as `XPC_ERROR_CONNECTION_INVALID`, as `xpc.c`'s comment says.
+
+<!-- Items 85 to 87 start a list of their own. -->
+85. **Low: a Save can send an unconfirmed `set 0` when the GPU memory box was greyed out at open but isn't at Save** (`cmd/llama-swap-launcher/wired.go`: `wiredFrom`, `wiredPlan`; tested by the review with `go test -overlay`, and read).
+    - **The path:**
+      - `wiredFrom` checks the form against the state when Settings opened (`wiredNow` in `prefsdialog.go`). A greyed-out box comes back as `{on: s.managed(), mb: s.storedMB}`, which is `{on: true, mb: 0}` when the helper is registered with nothing stored.
+      - `applyWired` plans against a fresh read. If that's usable, and the helper isn't running, `wiredPlan`'s retry case (`want.on && s.pendingMB == want.mb && !s.running`) matches on 0 == 0.
+      - `wiredRetry` skips `ConfirmOwner`, since it's meant only for a limit a Save already confirmed. `setWired(0, …)` then registers or repairs the helper and sends `set 0`, or waits for approval and opens Login Items.
+    - **How likely:** only if `iogpu.wired_limit_mb` can't be read when Settings opens and can at Save. The other reasons the box is greyed out (a small Mac, an ad-hoc build) don't change while the dialog is open, and nothing a user or another program can do makes the sysctl unreadable.
+    - **At worst:** it returns the limit to macOS's default, possibly another LaunchDaemon's limit, without the confirmation every change should have. It can't raise the limit: a non-zero `want.mb` never matches `pendingMB`'s 0, and goes to `wiredSet`, which confirms. The review rated it Medium for breaking that rule; Low, since nothing can arrange it.
+    - **Fix, both parts:**
+      - a greyed-out box means the limit is left as it is, so `wiredFrom` should return a want that `wiredPlan` turns into `wiredNothing` (a `keep` field), rather than one re-planned against a newer state;
+      - the retry case should require `s.pendingMB != 0`, since a wait only starts after a confirmed Save set a non-zero value.
+      - Add `wired_test.go` rows for both.
+    - **Fixed:** both parts. `wiredFrom` returns `wiredWant{keep: true}` for a greyed-out box, which `wiredPlan` turns into nothing, and the retry case needs a non-zero `pendingMB`. `TestWiredPlan` has a row for each.
+
+86. **Low: a hostile answer to the update check puts up to 1 MiB of its own text in an alert, `launcher.log` and `update.json`** (`internal/update/update.go`, `Latest`; tested by the review with an overlay probe, and read).
+    - **The path:** a tag that isn't a version is echoed whole: `fmt.Errorf("the latest release's tag, %q, isn't a version", release.Tag)`, bounded only by the body's 1 MiB limit. The error reaches:
+      - Check for Updates…'s alert ("Couldn't check for updates");
+      - `launcher.log`;
+      - `update.json`'s `failed`;
+      - the diagnostics summary.
+    - **What it can't do:** `%q` escapes control characters and newlines, so it can't forge log lines (the review said the alert and log don't escape; they get the quoted form). What a hostile answer controls is length and printable text in an alert, such as instructions to run something. Go's own decode errors don't echo values (the review checked).
+    - **Who could send one:** GitHub itself, or a TLS interception the Mac trusts. Item 79's "a hostile answer can name no host or path" still holds: `ReleaseURL` is built from the parsed version.
+    - **Fix:** bound the echo (`%.40q`, which truncates before quoting), so a mis-tagged release stays recognisable. Any future error built from an answer's field should do the same.
+    - **Fixed:** `%.40q`. `TestLatest` sends a 500 KB tag and gets a short error.
+
+87. **Note: `llsl`'s `plistBundleID` reads its `Info.plist` without a size limit** (`cmd/llsl/bundle.go`; read).
+    - **The problem:** `update.PlistString` wraps its XML decoder in `io.LimitReader(f, 1<<20)`, and this one doesn't.
+    - **Why it's minor:** the file is in the bundle `llsl` runs from, so anything that can grow it can replace `llsl` too. This is consistency, not defence.
+    - **Fix:** the same `LimitReader`. `llsl` doesn't import `internal/update` (which would bring in `net/http`), so the two readers stay separate.
+    - **Fixed:** the `LimitReader`. `TestPlistBundleID` checks that a key past the first MiB isn't read.
+
+## Items 88 and 89
+
+Two changes the maintainer asked for after 0.3.4, from using it (2026-11-07), built for 0.3.5.
+
+88. **Fetch Models removes what the peer no longer serves, and models added by hand are kept apart, as `customModels`** (the maintainer, 2026-11-07; decided the same day; **built 2026-11-08 and verified hands-on; released in 0.3.5**).
+    - **The problem:**
+      - Fetch Models only adds. A model the peer has dropped stays ticked, llama-swap keeps offering it, and requests for it fail at the peer. Today the only way to remove it is to untick it by hand.
+      - Fetch can't remove it safely, because a peer's `models` mixes the models the peer listed with ones typed into Add, and nothing says which is which. Typed models include llama-swap's `unlisted: true` models, aliases, and models from providers whose `/v1/models` is incomplete.
+    - **Decided:**
+      - **The new list:** each peer in `prefs.json` gets `customModels` beside `models`: the models typed into Add. Like `disabled`, it's only written when it isn't empty. `models` keeps its shape and meaning, the peer's own models. The maintainer's reasons: it's the easiest change, and going back to an older version, which rejects keys it doesn't know, means deleting one key rather than editing a list.
+      - **llama-swap's config** (`peers.yaml`) gets both lists. A model in both (only possible through a hand edit) is refused when the preferences load, naming it, as a model listed twice in one list already was (changed from "kept once, as custom" while building it, for consistency). Save's "tick at least one model" counts both lists.
+      - **Fetch:**
+        - it adds new models to `models` unticked, as now, and removes any in `models` that the peer no longer lists, ticked or not;
+        - it never touches `customModels`;
+        - the status line names every model it removed, and Cancel undoes the Fetch along with the rest of the dialog;
+        - a Fetch that fails, or comes back with no models, removes nothing, so a peer answering in the middle of a reload can't wipe the ticks.
+      - **Add** puts a new model in `customModels`, ticked; a model the peer already lists is just ticked, as now. A custom model the peer later lists stays custom. Unticking a model removes it at Save, as it does for any model.
+      - **The model table** gets a third column, right-aligned, in secondary grey: `custom` on custom rows and blank on the peer's, with a tooltip saying what it means.
+    - **Upgrading:**
+      - Models added by hand before this version are in `models`, so a Fetch treats them as the peer's, and removes any the peer doesn't list.
+      - The status line names them. Cancel brings them back, and so does adding them again with Add, which makes them custom.
+      - The changelog says so.
+    - **With it:**
+      - **README:** step 3 of the Peers steps, and the `peers` row of the preferences table.
+      - **Go tests:** for the load-time merge, the config written, and the dialog's split into the two lists.
+      - **The dialog test program:** for Fetch's merge, with a stand-in for `lsl_fetch_peer_models`.
+      - **The new column** follows CLAUDE.md's table notes: `NSTableCellView` cells, styled in place.
+    - **Built:** as decided. Fetch names up to three removed models, then how many more ("Removed 3 it no longer serves: a, b, c."), and says "It serves no models, so none were removed." for an empty answer; "It serves 1 model" is singular now. Only the ID's column takes up a change of width (uniform autoresizing, the other two fixed).
+    - **Tested:**
+      - **Go tests:** the checks (custom only, one in both lists, twice, unusable), `customModels` left out of the JSON when empty, the form round trip, and `peers.yaml` listing a custom model after the peer's own.
+      - **A test program on the real dialog,** with a stand-in for `lsl_fetch_peer_models`:
+        - both lists shown sorted, custom marked and right-aligned with its tooltip;
+        - a Fetch removing one model, naming it, and adding one unticked;
+        - an empty and a failed Fetch removing nothing;
+        - Add marking a new model custom, and only ticking one listed;
+        - three named of many;
+        - Save returning the lists apart;
+        - rendered to PNGs, with no lost-view warning in its log.
+    - **Verified hands-on (2026-11-08, the dev build, a real peer):**
+      - a Fetch removed a model the peer no longer served and named it ("It serves 31 models; 27 new, unticked. Removed 1 it no longer serves: …");
+      - `test-custom`, added with Add, was marked custom, survived a Fetch, was saved as `customModels` and written to `peers.yaml`, and was still marked when Settings reopened;
+      - unticked and saved, it left no `customModels` key in `prefs.json`.
+
+89. **A config reload flashes "llama-swap isn't responding"** (the maintainer, 2026-11-07; found with the release app, diagnosed from its log the same day; **fixed 2026-11-08 and verified hands-on; released in 0.3.5**).
+    - **Seen:** after a Save that changed a peer's models, a notification started, often with its sound, and vanished before it could be read, with no explanation.
+    - **The cause:**
+      - With Watch config on, such a Save only rewrites the files in the config folder (`UpdateConfigFiles`), and llama-swap reloads them itself ("updated the files in llama-swap's config folder; llama-swap reloads them itself").
+      - The reload closes every `/api/events` stream, the app's included. `streamEvents` marks the monitor disconnected the moment its stream ends, and `Run` reconnects 250 ms later.
+      - Meanwhile `Healthy` (connected and `/health` OK) is false while `WasHealthy` is true. `describe` calls that "not responding", and `watchNotices` posts that notice at once. It's time-sensitive, so it breaks through a Focus with its sound.
+      - A moment later the stream is back, the problem has ended, and the notice is removed.
+    - **Not affected:**
+      - A real restart: the supervisor goes to Stopping, and the new process gets a new monitor, which reads "starting".
+      - The 401 on `/api/version` just after the reload: that's `probeOpen`, asking without a key on purpose to learn whether keys are required.
+    - **Affected too:** any reload, including the user's own config edits with Watch config on, and any other brief drop of the stream.
+    - **Fix:**
+      - **A grace period:** a standing notice for a condition that can pass in a moment ("not responding", and "can't follow llama-swap") is posted only once the condition has lasted a grace period, about 10 seconds, and is still removed as soon as it ends. `watchNotices` notes when each first appeared, and wakes itself when the grace runs out, since a condition that just lasts sends no change.
+      - **Immediate as before:** llama-swap failing and a GPU fault, which are definite when they happen.
+      - **What that buys:** a real hang still gets its time-sensitive notice, 10 seconds later than now (hang detection already takes up to the health-check interval plus 3 s), and its text ("stopped answering the app's health checks") is then true.
+      - **Tests:** Go tests of the decisions with a stand-in clock: a condition shorter than the grace posts nothing; a longer one posts once, and is removed when it ends.
+    - **The menu** shows the same 250 ms of "not responding", with the red arrow, but too briefly to see. If it ever shows, the same grace could apply there.
+    - **Built:** as planned. `notice.grace` marks the two notices, `noticeGrace` is 10 seconds, and `due()` decides, keeping when each graced notice was first wanted. `watchNotices` sets a timer for the first one still waiting. The README's Notifications section says so.
+    - **Tested:** `TestDue`, with a stand-in clock: a reload's quarter second posts nothing; a hang is held back, then posted at 10 seconds, counted from when it began; a failure is posted at once, beside a problem still in its grace. `TestStandingNotices` checks which notices are marked grace.
+    - **Verified hands-on (2026-11-08, the dev build):**
+      - two Saves that changed a peer's models made llama-swap reload (the log shows the event stream closing each time), and posted no notification;
+      - llama-swap frozen with `kill -STOP`: the app marked it not responding at its next health check (36 s), and the notification appeared about 10 seconds later, with its sound;
+      - resumed with `kill -CONT`, it was ready at the following check (35 s), and the notification went away.
 
 ## Milestone 7 results (2026-11-06)
 
@@ -1338,3 +1462,4 @@ The status section's account of the project, as it stood on 2026-10-31, when the
 - **0.3.2** (2026-11-01): pause and resume (item 57), Copy and the Tweaks tab (54), the app named in every request (55), About's credits and llama-swap's whole version (56), the taller tables (52), and the Peers tab's Key note fixed, found in its screenshots; tested with llama-swap v269. Tagged `v0.3.2` on 6bf3fcc and published as an immutable release, the downloaded zip matching (SHA-256 `c7050626…`). The README's screenshots were retaken from it.
 - **0.3.3** (2026-11-06), finishing the 0.3 series: the GPU's wired memory limit through a root helper (item 51), after two security reviews whose findings were all handled (items 66 to 72, by Claude Fable 5.1 and Opus 5.5, and 74 to 80, by Qwen 3.8 Flash Next); macOS notifications (60); checking for updates (64) and restarting into one Homebrew installs (65); and the smaller Settings fixes (58, 59, 61 to 63). With it, milestone 7: the cask in our own tap, made public the same day, which `make publish` updated for the first time. Built with Go 1.27.3 and notarized; `make test lint sec vuln` and CI clean; tagged `v0.3.3` on a4f8af0 and published as an immutable release, the downloaded zip matching (SHA-256 `bf7c5daf…`). Its Tweaks screenshot predates the GPU memory limit.
 - **0.3.4** (2026-11-06): item 51's helper on a Mac where it had never been registered, which 0.3.3 took for missing (item 51, "Found after release"). The first release through a release branch and a pull request (#1), merged with a merge commit; the repository now allows only merge commits, since `make publish` needs the commit the tested zip was built from on `main`. The zip was tested before publishing, in `/Applications`, then published as built: tagged `v0.3.4` on 1c84bd8, immutable, SHA-256 `206d1640…`. Its `brew upgrade` from 0.3.3 was the first in which the app restarted itself (item 65; milestone 7's results).
+- **0.3.5** (2026-11-08): Fetch Models removes models a peer no longer serves, with models added by hand kept apart as `customModels` (item 88); a config reload no longer flashes "llama-swap isn't responding" (item 89); and small fixes from three security reviews of 0.3.4, by local models (items 81 to 87: Ornith 1.5 122B's single note declined, Laguna S 2.1's, and Qwen 3.8 Flash Next's second pass); tested with llama-swap v271. Built on `release/0.3.5` (#2, merged with a merge commit), notarized; `make test lint sec vuln` and CI clean; tagged `v0.3.5` on 0fd6f5b and published as an immutable release, the downloaded zip matching (SHA-256 `cf993146…`); the tap's cask updated by `make publish` (5425b62). Its upgrade is item 73's first real test: Go stamps the commit into every binary, so every release changes the helper's code hash.
