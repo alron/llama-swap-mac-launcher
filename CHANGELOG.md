@@ -3,10 +3,8 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
-## Unreleased
+## 0.3.5 (2026-11-08)
 
-- Tested with llama-swap v271, so the launcher log no longer notes v270 or
-  v271 as newer than the app was tested with.
 - **Fetch Models** (Settings → Peers) now removes models the peer no
   longer serves, ticked or not, and names them; **Cancel** brings them
   back. Models you add by hand with **Add** are marked **custom**, kept in
@@ -19,6 +17,8 @@ not published; they're listed for people who had them.
   reloads by itself: the reload breaks the app's connection for a moment.
   That notification, and **Llama Swap Launcher can't follow llama-swap**,
   now wait until their problem has lasted 10 seconds.
+- Tested with llama-swap v271, so the launcher log no longer notes v270 or
+  v271 as newer than the app was tested with.
 - Small fixes from security reviews of 0.3.4, none reachable by anything
   else on the Mac:
   - A Save could have returned the GPU's memory limit to macOS's default
