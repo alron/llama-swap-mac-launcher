@@ -5,6 +5,8 @@ not published; they're listed for people who had them.
 
 ## Unreleased
 
+- Tested with llama-swap v271, so the launcher log no longer notes v270 or
+  v271 as newer than the app was tested with.
 - **Fetch Models** (Settings → Peers) now removes models the peer no
   longer serves, ticked or not, and names them; **Cancel** brings them
   back. Models you add by hand with **Add** are marked **custom**, kept in

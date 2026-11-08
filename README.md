@@ -20,7 +20,7 @@ The app doesn't include llama-swap; install that separately.
 ## Requirements
 
 - macOS 15 or later, Apple Silicon.
-- llama-swap v252 or later (tested with v269), and whatever its config runs
+- llama-swap v252 or later (tested with v271), and whatever its config runs
   (such as llama.cpp's `llama-server`). With Homebrew, as
   [llama-swap's README](https://github.com/mostlygeek/llama-swap/blob/main/README.md)
   describes:
