@@ -24,6 +24,7 @@ func TestLookFor(t *testing.T) {
 		{"stopped", supervisor.Status{State: supervisor.Stopped}, health.Snapshot{}, menuBarLook{macos.ColorFaded, macos.ColorFaded}},
 		{"failed", supervisor.Status{State: supervisor.Failed}, health.Snapshot{}, menuBarLook{macos.ColorNormal, macos.ColorAlert}},
 		{"restarting", supervisor.Status{State: supervisor.Waiting}, health.Snapshot{}, menuBarLook{macos.ColorNormal, macos.ColorBusy}},
+		{"waiting for its files", supervisor.Status{State: supervisor.Pending}, health.Snapshot{}, menuBarLook{macos.ColorNormal, macos.ColorBusy}},
 		{"starting", running, health.Snapshot{}, menuBarLook{macos.ColorNormal, macos.ColorBusy}},
 		{"ready", running, health.Snapshot{Healthy: true, WasHealthy: true, Models: []health.Model{ready}}, menuBarLook{macos.ColorNormal, macos.ColorNormal}},
 		{"model loading", running, health.Snapshot{Healthy: true, WasHealthy: true, Models: []health.Model{{ID: "m", State: "starting"}}}, menuBarLook{macos.ColorNormal, macos.ColorBusy}},

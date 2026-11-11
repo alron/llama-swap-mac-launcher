@@ -3,6 +3,17 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
+## Unreleased
+
+- **llama-swap on a disk that mounts after login,** such as a ZFS pool, an
+  external drive or a network share: when the app opens before the disk is
+  there, it now waits up to 5 minutes for llama-swap's binary, config and
+  config folder, with the menu showing `waiting for its files` and the
+  path, then starts it. It used to fail at once, with an alert, and leave
+  llama-swap stopped. `llsl start` waits along with it, and **Stop** ends
+  the wait. See
+  [Good to know](https://github.com/alron/llama-swap-mac-launcher#good-to-know).
+
 ## 0.3.5 (2026-11-08)
 
 - **Fetch Models** (Settings → Peers) now removes models the peer no

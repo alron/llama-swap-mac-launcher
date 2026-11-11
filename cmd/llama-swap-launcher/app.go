@@ -198,7 +198,7 @@ func (a *app) onReady() {
 		case err != nil:
 			a.problem("Couldn't read the preferences", err)
 		case a.currentPrefs().AutoStart && a.ctl != nil: // not without the lock; see main
-			a.startLlamaSwap()
+			a.startAtLaunch()
 		}
 	}()
 }
@@ -299,6 +299,46 @@ func (a *app) startLlamaSwap() {
 		return
 	}
 	_ = a.sup.Start(spec) // failures show up through the status
+}
+
+// launchWait is how long the app waits at launch for llama-swap's files.
+// A ZFS pool imported after login took 15 to 20 seconds on the Mac this
+// was made for.
+const launchWait = 5 * time.Minute
+
+// startAtLaunch starts llama-swap as the app opens, once its files are
+// there: on a disk that mounts after login, such as a ZFS pool, an external
+// drive or a network share, they may not be yet (TODO item 91). Meanwhile
+// the menu says what it's waiting for, and Stop ends the wait; after
+// launchWait it fails, naming the file. A Start from the menu doesn't wait,
+// so a mistyped path fails at once.
+func (a *app) startAtLaunch() {
+	if !a.sup.AwaitFiles(launchFiles(a.currentPrefs()), launchWait) {
+		return // the status says why, or Stop or Start ended the wait
+	}
+	spec, err := a.prepare()
+	if err != nil {
+		a.sup.Stop() // out of waiting, if it was
+		a.problem("Can't start llama-swap", err)
+		return
+	}
+	_ = a.sup.Start(spec) // failures show up through the status
+}
+
+// launchFiles are the files llama-swap starts with that the preferences
+// name: its binary (unless the app finds it), its config, and the user's
+// own config folder. The app's managed folder is the app's own.
+func launchFiles(p prefs.Prefs) []string {
+	var files []string
+	for _, path := range []string{p.BinaryPath(), p.ConfigPath()} {
+		if path != "" {
+			files = append(files, path)
+		}
+	}
+	if dir := p.ConfigDirPath(""); p.ConfigDirSetting() == prefs.ConfigDirOwn && dir != "" {
+		files = append(files, dir)
+	}
+	return files
 }
 
 // restartLlamaSwap validates the config first, so a broken config leaves
@@ -488,7 +528,7 @@ func (a *app) render() {
 		a.startStop.SetTitle("Start")
 	}
 	enable(a.startStop, idle && (up(st) || st.State == supervisor.Stopped || st.State == supervisor.Failed))
-	enable(a.restart, idle && up(st))
+	enable(a.restart, idle && up(st) && st.State != supervisor.Pending) // nothing to restart yet
 	// Pause All or Resume All, except for a llama-swap known to be too old
 	// to have them.
 	if n := supervisor.VersionNumber(st.Version); n > 0 && n < health.PauseVersion {
@@ -636,10 +676,10 @@ func disabledItem(title string) *systray.MenuItem {
 	return item
 }
 
-// up reports whether llama-swap is running, or about to be again after a
-// crash: what Stop and Restart act on.
+// up reports whether llama-swap is running, about to be again after a
+// crash, or waiting at launch for its files: what Stop acts on.
 func up(st supervisor.Status) bool {
-	return st.State == supervisor.Running || st.State == supervisor.Waiting
+	return st.State == supervisor.Running || st.State == supervisor.Waiting || st.State == supervisor.Pending
 }
 
 func enable(item *systray.MenuItem, on bool) {

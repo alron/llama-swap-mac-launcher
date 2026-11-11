@@ -25,7 +25,7 @@ func lookFor(st supervisor.Status, snap health.Snapshot) menuBarLook {
 		return menuBarLook{macos.ColorFaded, macos.ColorFaded}
 	case supervisor.Failed:
 		return normal(macos.ColorAlert)
-	case supervisor.Stopping, supervisor.Waiting:
+	case supervisor.Stopping, supervisor.Waiting, supervisor.Pending:
 		return normal(macos.ColorBusy)
 	}
 	// Running.
