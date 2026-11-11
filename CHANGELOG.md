@@ -3,7 +3,7 @@
 What changed in each release. Versions before 0.2.1 were shared privately,
 not published; they're listed for people who had them.
 
-## Unreleased
+## 0.3.6 (2026-11-10)
 
 - **llama-swap on a disk that mounts after login,** such as a ZFS pool, an
   external drive or a network share: when the app opens before the disk is
