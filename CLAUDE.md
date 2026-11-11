@@ -33,7 +33,6 @@ Each change to `llsl` or the preferences also needs `README.md` updated.
 
 The open items (2026-11-10):
 - **From 0.3:** 90 (what `brew uninstall` without `--zap` leaves of the wired limit's helper), whenever convenient.
-- **Released, to confirm:** 91 (waiting at launch for llama-swap's files), at the next login on the Mac with the ZFS pool.
 - **Blocked:** 53 (browser login through a form), on a llama-swap release that has it.
 - **0.4:** 47 (models, with the app's presets in place of macros, and routing, managed by the app).
 - **Later:** 35 (TLS) and 37 (Tailcat).

@@ -1355,6 +1355,20 @@ Two changes the maintainer asked for after 0.3.4, from using it (2026-11-07), bu
       - llama-swap frozen with `kill -STOP`: the app marked it not responding at its next health check (36 s), and the notification appeared about 10 seconds later, with its sound;
       - resumed with `kill -CONT`, it was ready at the following check (35 s), and the notification went away.
 
+## Item 91
+
+91. **Wait at launch for llama-swap's files** (the maintainer, 2026-11-10; decided the same day; **released in 0.3.6, confirmed on the Mac with the pool the same day**). On a Mac whose llama-swap, config and models are on a ZFS pool imported after login (15 to 20 seconds), the app opened first: its validation found no binary, it showed "Can't start llama-swap" in an alert, and left llama-swap stopped until someone clicked Start.
+    - **Decided** (from a suggestion the maintainer brought, adapted):
+      - At launch, the app waits for the files the preferences name: the binary (unless the app finds it itself), the config, and the user's own config folder. The binary itself is the marker file, so a bare mountpoint can't fool it.
+      - It checks once a second for up to 5 minutes.
+      - Meanwhile the state is `waiting for its files`, a new one, naming the missing path in the menu and in `llsl status`, with a busy arrow. Stop ends the wait, and `llsl start` waits along with it. After the timeout it fails, naming the path, as "llama-swap couldn't start".
+      - Only an opening waits (launch at login and the restart into an update included); a Start from the menu fails at once.
+      - No list of extra paths, and no Start Anyway: both only matter for models on another disk than the binary and config, which nobody has yet.
+    - **Built:** `supervisor.AwaitFiles` and the `Pending` state; `startAtLaunch` and `launchFiles` in the app.
+    - **Tested:** Go tests, five cases under the race detector, run 100 times (all there, appearing, a timeout, Stop, Start taking over), and the files waited for, a fresh install included (it names no binary or config, so it never waits). README and CHANGELOG say so.
+    - **Verified with the dev build (2026-11-10):** with its binary moved aside, the app showed `waiting for its files`, naming it, and a `llsl start -wait` waited along. When the binary came back 22 seconds later, the app started llama-swap within a second; it was ready 2 seconds after, and the `llsl` call exited 0.
+    - **Confirmed (2026-11-10)** on the Mac whose llama-swap, config and models are on a ZFS pool: after `brew upgrade` to 0.3.6 and a reboot, the menu showed "waiting for its files" after login, the pool's volumes mounted 10 to 15 seconds later, and llama-swap started by itself, with no alert and nothing to click.
+
 ## Milestone 7 results (2026-11-06)
 
 The Homebrew cask, from our own tap: the plans are in CLAUDE.md, "Signing, notarization, distribution". From our own tap only, with no submission to Homebrew's own repository, so installs and upgrades are managed by `brew`. **Done before 0.3.3's release** (the maintainer, 2026-11-01 and 2026-11-03), so that release tested `make publish` updating the cask in the tap, made public that day; its real tests were 0.3.3's and 0.3.4's upgrades (below).
