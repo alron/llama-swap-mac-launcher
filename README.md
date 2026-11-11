@@ -63,16 +63,7 @@ approval on.
 `brew upgrade` replaces the app while it runs, and the app restarts itself
 into the new version once llama-swap has no requests in flight (see
 [Updates](#updates)). Upgrading from 0.3.2, the app quits instead, and you
-open it again once. `brew uninstall --zap` also removes its settings and
-logs, and, with your password, the GPU memory limit's files. If you raised
-that limit, untick it before uninstalling (see [GPU memory](#gpu-memory)).
-Your API keys and secret variables stay in your login keychain, which
-Homebrew can't reach; Keychain Access can delete them (see [Files](#files)).
-macOS keeps the app listed in System Settings → General → Login Items &
-Extensions, with a blank icon, under Open at Login (if Launch at Login was
-on) and Allow in the Background (if you raised the limit); **−** removes the
-first. Installed again, the app asks once more to post notifications and
-for Local Network access, since macOS forgot both when it was deleted.
+open it again once. To remove it, see [Uninstalling](#uninstalling).
 
 If you installed the zip before, Homebrew can take over that copy in
 `/Applications`, when it's the same version as the cask:
@@ -111,6 +102,35 @@ Then follow steps 2 and 3 below.
    `/usr/local/bin` is on macOS's default `PATH`, and keeps the link out of
    Homebrew's own folder; the first line only creates it if it isn't there.
    `llsl` follows the symlink to find the app it belongs to.
+
+### Uninstalling
+
+First, while the app is still there, untick **Launch at Login** in its menu
+and, if you raised it, the GPU memory limit (Settings → Tweaks, then Save).
+Only the app can unregister itself from macOS's login items, and only while
+it's installed.
+
+- **With Homebrew:** `brew uninstall --cask llama-swap-launcher` quits the
+  app (stopping llama-swap first), removes it, and removes `llsl`'s link.
+  Add `--zap` to remove the app's files too (the first four rows below),
+  with your password for the GPU memory limit's, which are root's.
+- **From the zip:** quit the app, move it to the Trash, and remove `llsl`'s
+  link (`sudo rm /usr/local/bin/llsl`).
+
+Everything the app leaves, and how to remove it:
+
+| What | Where | Removed by |
+|---|---|---|
+| Settings, the managed config folder, the last update check | `~/Library/Application Support/com.my-wang.llama-swap-launcher/` | `--zap`, or delete the folder |
+| Logs | `~/Library/Logs/com.my-wang.llama-swap-launcher/`, or wherever you put them (see [Logs](#logs)) | `--zap`, or delete them |
+| macOS's own preferences file for the app (the file chooser's size and last folder) | `~/Library/Preferences/com.my-wang.llama-swap-launcher.plist` | `--zap`, or delete it |
+| The GPU memory limit's helper: the limit it keeps, and its log | `/Library/Application Support/com.my-wang.llama-swap-launcher.wired-limit/`, `/Library/Logs/com.my-wang.llama-swap-launcher.wired-limit.log` | `--zap`, or `sudo rm -r` both |
+| API keys and secret variables | Your login keychain (see [Files](#files)) | Keychain Access; Homebrew can't reach the keychain |
+| Login items | System Settings → General → Login Items & Extensions, with a blank icon once the app is gone: **Open at Login**, if Launch at Login was on, and **Allow in the Background**, if you ever raised the GPU memory limit | **−** removes an Open at Login entry. macOS gives no way to remove an Allow in the Background entry by hand; it's harmless, as it lost its permission with the app |
+| Permissions | Local Network, and notifications | Nothing to do: macOS forgets them when the app is deleted, so a reinstall asks again |
+
+Forgetting to untick the GPU memory limit is harmless: macOS drops the
+helper once the app is gone, and its default returns when the Mac restarts.
 
 ## The menu
 
@@ -866,6 +886,7 @@ Tweaks) does it for you, and again at every startup. Set it in whole GB.
 | The launcher log | `~/Library/Logs/com.my-wang.llama-swap-launcher/launcher.log` by default; see [Logs](#logs). |
 | llama-swap's own log | `~/Library/Logs/com.my-wang.llama-swap-launcher/llama-swap.log` by default, when its output has a file of its own. |
 | Preferences, control socket, pidfile, the last update check | `~/Library/Application Support/com.my-wang.llama-swap-launcher/` |
+| macOS's own preferences file for the app (the file chooser's size and last folder) | `~/Library/Preferences/com.my-wang.llama-swap-launcher.plist` |
 | The GPU memory limit's helper | Its limit in `/Library/Application Support/com.my-wang.llama-swap-launcher.wired-limit/`, its log in `/Library/Logs/com.my-wang.llama-swap-launcher.wired-limit.log`; root's (see [GPU memory](#gpu-memory)). |
 | API keys and secret variables | Your login keychain, as "Llama Swap Launcher: llama-swap API key LLSL_…" and "Llama Swap Launcher: secret environment variable …" (Keychain Access can show and delete them). |
 
