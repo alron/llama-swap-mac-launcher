@@ -111,7 +111,8 @@ Then follow steps 2 and 3 below.
 
 - **Status:** starting, ready, paused, not responding, running (but
   refusing the app; the line below says why, such as a missing API key),
-  stopping, restarting (after a crash), stopped or failed, with llama-swap's
+  stopping, restarting (after a crash), waiting for its files (at launch; see
+  [Good to know](#good-to-know)), stopped or failed, with llama-swap's
   pid.
 - **Last GPU fault**, once a model's GPU backend has failed since the app
   started: which model, when, and whether it was unloaded automatically. A
@@ -314,7 +315,8 @@ can't be reached at all by a newer `llsl`; it says that too, and exits 3.
 ```
 
 - `state` is one of `stopped`, `starting`, `ready`, `paused`, `not
-  responding`, `running`, `stopping`, `restarting` or `failed`. `paused`
+  responding`, `running`, `stopping`, `restarting`, `waiting for its files`
+  or `failed`. `paused`
   comes with `"paused": true`: llama-swap answers, but its inference is
   paused (see [`pause`](#what-each-command-does)), and `status` exits 8. `running` means
   llama-swap runs but refuses the app, so the app can't see its models or
@@ -873,6 +875,16 @@ Tweaks) does it for you, and again at every startup. Set it in whole GB.
   tells you, with the last lines llama-swap wrote, which usually say why. If
   the app itself crashes, llama-swap usually stops with it, but its model
   servers don't; the next time the app opens, it stops them first.
+- **llama-swap on a disk that mounts after login,** such as a ZFS pool, an
+  external drive or a network share: when the app opens and llama-swap's
+  binary, its config, or your own config folder isn't there yet, it waits for
+  them, for up to 5 minutes, with the menu showing `waiting for its files`
+  and the path; **Stop** ends the wait. Then it starts llama-swap as usual.
+  If they're still missing after 5 minutes, it says which, and you can
+  **Start** once the disk is mounted. `llsl start` waits along with it. Keep
+  models on the same disk as the binary or the config, so that once those
+  are there, the models are too. Only an opening waits: **Start** fails at
+  once if a file is missing.
 - **A llama-swap downloaded with a browser** may be blocked by Gatekeeper the
   first time. The app explains how to allow it.
 - **A path with spaces in a model's command** needs quotes in llama-swap's

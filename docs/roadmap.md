@@ -2,7 +2,7 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 91. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 92. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
@@ -10,6 +10,18 @@ Items keep their numbers; a new one takes the next, from 91. When one is done, i
 
 <!-- Item 90 starts a list of its own: the items above it are done. -->
 90. **What `brew uninstall` without `--zap` leaves of the helper** (from item 73, 2026-11-08; the second security review's live test, item 79; whenever convenient, on a Mac with the release app and the limit on). With the limit on, after `brew uninstall` without `--zap`: what `launchctl print system/<label>` and the system log show for the helper's job, and that nothing is applied at the next boot once the stored file is gone. The cask's caveats say to untick the limit first; this checks what happens when someone doesn't.
+
+### Storage that mounts after login (the maintainer, 2026-11-10)
+
+91. **Wait at launch for llama-swap's files** (the maintainer, 2026-11-10; decided the same day; built on `release/0.3.6`, to verify hands-on). On a Mac whose llama-swap, config and models are on a ZFS pool imported after login (15 to 20 seconds), the app opened first: its validation found no binary, it showed "Can't start llama-swap" in an alert, and left llama-swap stopped until someone clicked Start.
+    - **Decided** (from a suggestion the maintainer brought, adapted):
+      - At launch, the app waits for the files the preferences name: the binary (unless the app finds it itself), the config, and the user's own config folder. The binary itself is the marker file, so a bare mountpoint can't fool it.
+      - It checks once a second for up to 5 minutes.
+      - Meanwhile the state is `waiting for its files`, a new one, naming the missing path in the menu and in `llsl status`, with a busy arrow. Stop ends the wait, and `llsl start` waits along with it. After the timeout it fails, naming the path, as "llama-swap couldn't start".
+      - Only an opening waits (launch at login and the restart into an update included); a Start from the menu fails at once.
+      - No list of extra paths, and no Start Anyway: both only matter for models on another disk than the binary and config, which nobody has yet.
+    - **Built:** `supervisor.AwaitFiles` and the `Pending` state; `startAtLaunch` and `launchFiles` in the app.
+    - **Tested:** Go tests, five cases under the race detector (all there, appearing, a timeout, Stop, Start taking over), and the files waited for. README and CHANGELOG say so.
 
 ## Blocked
 

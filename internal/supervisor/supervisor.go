@@ -30,6 +30,7 @@ const (
 	Stopping       // waiting for it to exit
 	Waiting        // it crashed; a restart is scheduled
 	Failed         // it couldn't start or kept crashing, and needs the user
+	Pending        // at launch, waiting for its files to appear (AwaitFiles)
 )
 
 func (s State) String() string {
@@ -44,6 +45,8 @@ func (s State) String() string {
 		return "restarting"
 	case Failed:
 		return "failed"
+	case Pending:
+		return "waiting for its files"
 	}
 	return fmt.Sprintf("State(%d)", int(s))
 }
@@ -132,6 +135,7 @@ type Supervisor struct {
 	want    bool // whether llama-swap should be running
 	crashes crashes
 	timer   *time.Timer // pending restart after a crash
+	pending func()      // ends AwaitFiles' wait, while there is one
 }
 
 // run is one llama-swap process.
@@ -303,6 +307,7 @@ func (s *Supervisor) Stop() {
 
 // startLocked needs ops and mu held.
 func (s *Supervisor) startLocked(spec Spec) error {
+	s.cancelPending()
 	s.cancelTimer()
 	s.crashes.reset()
 	s.want = true
@@ -447,6 +452,7 @@ func (s *Supervisor) restartAfterCrash() {
 func (s *Supervisor) stop() {
 	s.mu.Lock()
 	s.want = false
+	s.cancelPending()
 	s.cancelTimer()
 	r := s.run
 	if r == nil {
@@ -470,6 +476,88 @@ func (s *Supervisor) stop() {
 		_ = r.cmd.Process.Kill() // if it has already exited, wait sees that
 	}
 	<-r.done
+}
+
+// cancelPending ends AwaitFiles' wait, if there is one. It needs mu held.
+func (s *Supervisor) cancelPending() {
+	if s.pending != nil {
+		s.pending()
+		s.pending = nil
+	}
+}
+
+// awaitEvery is how often AwaitFiles looks; tests make it shorter.
+var awaitEvery = time.Second
+
+// AwaitFiles waits until every one of paths exists, for up to timeout,
+// looking once every second: at launch, llama-swap's files may be on a disk
+// that's still mounting, such as a ZFS pool imported after login (TODO item
+// 91). It reports whether they all appeared. While it waits the state is
+// Pending, naming the first path missing; after the timeout it's Failed,
+// naming it; Stop, Start or Restart end the wait, and it returns false
+// without changing the state they set. With every path there already, it
+// returns true at once and leaves the state as it was. After a true, the
+// caller starts llama-swap, or calls Stop if it can't.
+func (s *Supervisor) AwaitFiles(paths []string, timeout time.Duration) bool {
+	missing := firstMissing(paths)
+	if missing == "" {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	s.mu.Lock()
+	s.cancelPending()
+	s.pending = cancel
+	s.setStatus(Status{State: Pending, Message: awaitMessage(missing)})
+	s.mu.Unlock()
+	s.Logf("waiting up to %s for %s, which isn't there yet: its disk may still be mounting", timeout, missing)
+
+	tick := time.NewTicker(awaitEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+		case <-tick.C:
+		}
+		now := firstMissing(paths)
+		s.mu.Lock()
+		switch {
+		case s.status.State != Pending || errors.Is(ctx.Err(), context.Canceled):
+			// Stop, Start or Restart ended the wait (or a newer one did), and
+			// set the state themselves.
+			s.mu.Unlock()
+			return false
+		case now == "":
+			s.pending = nil
+			s.mu.Unlock()
+			s.Logf("%s is there now", missing)
+			return true
+		case ctx.Err() != nil:
+			s.pending = nil
+			_ = s.fail(notStarted{fmt.Errorf("%s still isn't there after %s. Is the disk it's on mounted? Start llama-swap from the menu once it is",
+				now, timeout.Round(time.Second))})
+			s.mu.Unlock()
+			return false
+		case now != missing:
+			missing = now
+			s.setStatus(Status{State: Pending, Message: awaitMessage(missing)})
+		}
+		s.mu.Unlock()
+	}
+}
+
+func awaitMessage(path string) string {
+	return "waiting for " + path + " to appear, as the disk it's on may still be mounting"
+}
+
+// firstMissing returns the first of paths that doesn't exist, or "".
+func firstMissing(paths []string) string {
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			return path
+		}
+	}
+	return ""
 }
 
 // cancelTimer needs mu held.

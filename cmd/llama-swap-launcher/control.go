@@ -95,6 +95,20 @@ func (a *app) handle(ctx context.Context, req control.Request) control.Response 
 }
 
 func (a *app) controlStart(ctx context.Context, req control.Request) error {
+	// At launch the app may be waiting for llama-swap's files (TODO item
+	// 91): wait with it, rather than fail on a binary that isn't there yet.
+	if a.sup.Status().State == supervisor.Pending {
+		for a.sup.Status().State == supervisor.Pending {
+			select {
+			case <-ctx.Done():
+				return codeError{control.CodeTimeout, errors.New("the app is still waiting for llama-swap's files: " + a.sup.Status().Message)}
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
+		if st := a.sup.Status(); st.State == supervisor.Failed {
+			return codeError{control.CodeStartFailed, errors.New(st.Message)}
+		}
+	}
 	if req.Cmd == "restart" {
 		if err := a.refuseIfBusy(req); err != nil {
 			return err
