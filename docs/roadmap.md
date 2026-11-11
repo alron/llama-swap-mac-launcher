@@ -6,14 +6,14 @@ Items keep their numbers; a new one takes the next, from 92. When one is done, i
 
 ## Next release
 
-0.3.5 was published on 2026-11-08: Fetch Models removes models a peer no longer serves (item 88), a config reload no longer flashes a notification (item 89), and small fixes from three security reviews of 0.3.4 (items 81 to 87). 0.3.4 (2026-11-06) let item 51's GPU memory limit be turned on where it had never been used. 0.3.3 finished the 0.3 series: items 51 (after two security reviews, items 66 to 72 and 74 to 80) and 58 to 65, with milestone 7, the Homebrew cask from our own tap. All of them are in [done.md](done.md). The next big step is 0.4 ([below](#04), item 47). Still open from 0.3: item 90, what `brew uninstall` without `--zap` leaves of the helper.
+0.3.6 was published on 2026-11-10: the app waits at launch for llama-swap's files on a disk that mounts after login (item 91, to confirm on the real pool). 0.3.5 (2026-11-08): Fetch Models removes models a peer no longer serves (item 88), a config reload no longer flashes a notification (item 89), and small fixes from three security reviews of 0.3.4 (items 81 to 87). 0.3.4 (2026-11-06) let item 51's GPU memory limit be turned on where it had never been used. 0.3.3 finished the 0.3 series: items 51 (after two security reviews, items 66 to 72 and 74 to 80) and 58 to 65, with milestone 7, the Homebrew cask from our own tap. The finished ones are in [done.md](done.md). The next big step is 0.4 ([below](#04), item 47). Still open from 0.3: item 90, what `brew uninstall` without `--zap` leaves of the helper.
 
 <!-- Item 90 starts a list of its own: the items above it are done. -->
 90. **What `brew uninstall` without `--zap` leaves of the helper** (from item 73, 2026-11-08; the second security review's live test, item 79; whenever convenient, on a Mac with the release app and the limit on). With the limit on, after `brew uninstall` without `--zap`: what `launchctl print system/<label>` and the system log show for the helper's job, and that nothing is applied at the next boot once the stored file is gone. The cask's caveats say to untick the limit first; this checks what happens when someone doesn't.
 
 ### Storage that mounts after login (the maintainer, 2026-11-10)
 
-91. **Wait at launch for llama-swap's files** (the maintainer, 2026-11-10; decided the same day; built on `release/0.3.6`, to verify hands-on). On a Mac whose llama-swap, config and models are on a ZFS pool imported after login (15 to 20 seconds), the app opened first: its validation found no binary, it showed "Can't start llama-swap" in an alert, and left llama-swap stopped until someone clicked Start.
+91. **Wait at launch for llama-swap's files** (the maintainer, 2026-11-10; decided the same day; **released in 0.3.6**, verified with the dev build; to confirm at the next login on the Mac with the pool, then it moves to done.md). On a Mac whose llama-swap, config and models are on a ZFS pool imported after login (15 to 20 seconds), the app opened first: its validation found no binary, it showed "Can't start llama-swap" in an alert, and left llama-swap stopped until someone clicked Start.
     - **Decided** (from a suggestion the maintainer brought, adapted):
       - At launch, the app waits for the files the preferences name: the binary (unless the app finds it itself), the config, and the user's own config folder. The binary itself is the marker file, so a bare mountpoint can't fool it.
       - It checks once a second for up to 5 minutes.
@@ -21,7 +21,9 @@ Items keep their numbers; a new one takes the next, from 92. When one is done, i
       - Only an opening waits (launch at login and the restart into an update included); a Start from the menu fails at once.
       - No list of extra paths, and no Start Anyway: both only matter for models on another disk than the binary and config, which nobody has yet.
     - **Built:** `supervisor.AwaitFiles` and the `Pending` state; `startAtLaunch` and `launchFiles` in the app.
-    - **Tested:** Go tests, five cases under the race detector (all there, appearing, a timeout, Stop, Start taking over), and the files waited for. README and CHANGELOG say so.
+    - **Tested:** Go tests, five cases under the race detector, run 100 times (all there, appearing, a timeout, Stop, Start taking over), and the files waited for, a fresh install included (it names no binary or config, so it never waits). README and CHANGELOG say so.
+    - **Verified with the dev build (2026-11-10):** with its binary moved aside, the app showed `waiting for its files`, naming it, and a `llsl start -wait` waited along. When the binary came back 22 seconds later, the app started llama-swap within a second; it was ready 2 seconds after, and the `llsl` call exited 0.
+    - **To confirm:** after `brew upgrade` on the Mac whose llama-swap is on a ZFS pool, at the next login, the launcher log should show "waiting up to 5m0s for …" and then "… is there now", and llama-swap should start by itself.
 
 ## Blocked
 
