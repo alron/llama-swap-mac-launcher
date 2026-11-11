@@ -68,6 +68,11 @@ logs, and, with your password, the GPU memory limit's files. If you raised
 that limit, untick it before uninstalling (see [GPU memory](#gpu-memory)).
 Your API keys and secret variables stay in your login keychain, which
 Homebrew can't reach; Keychain Access can delete them (see [Files](#files)).
+macOS keeps the app listed in System Settings → General → Login Items &
+Extensions, with a blank icon, under Open at Login (if Launch at Login was
+on) and Allow in the Background (if you raised the limit); **−** removes the
+first. Installed again, the app asks once more to post notifications and
+for Local Network access, since macOS forgot both when it was deleted.
 
 If you installed the zip before, Homebrew can take over that copy in
 `/Applications`, when it's the same version as the cask:
@@ -835,8 +840,12 @@ Tweaks) does it for you, and again at every startup. Set it in whole GB.
   Allow in the Background, switched on: that's your permission,
   remembered, so turning the limit on again doesn't ask. Untick it before
   you delete the app, so the helper goes with it; `brew uninstall --zap`
-  deletes its files. If you forgot, install the app again, untick, Save,
-  then uninstall. Turned off while the helper couldn't run (switched off in
+  deletes its files. If you forgot, no harm is done: macOS drops the helper
+  once the app is gone, and its default returns when the Mac restarts. Only
+  the helper's file with the limit stays, which `--zap` removes (install
+  the app again first, if you've uninstalled it). Installed again, the app
+  starts with the box unticked, and turning the limit on asks for macOS's
+  approval again, as the first time did. Turned off while the helper couldn't run (switched off in
   System Settings, say), the helper keeps its last limit, and applies it
   when it next starts, a moment before the app sets the one you've just
   saved.

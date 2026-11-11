@@ -1355,6 +1355,19 @@ Two changes the maintainer asked for after 0.3.4, from using it (2026-11-07), bu
       - llama-swap frozen with `kill -STOP`: the app marked it not responding at its next health check (36 s), and the notification appeared about 10 seconds later, with its sound;
       - resumed with `kill -CONT`, it was ready at the following check (35 s), and the notification went away.
 
+## Item 90
+
+90. **What `brew uninstall` without `--zap` leaves of the helper** (from item 73, 2026-11-08; the second security review's live test, item 79; **checked 2026-11-10** on the Mac with the limit at 232 GB; the README's advice changed, nothing else). With the limit on, after `brew uninstall` without `--zap`: what `launchctl print system/<label>` and the system log show for the helper's job, and that nothing is applied at the next boot once the stored file is gone. The cask's caveats say to untick the limit first; this checks what happens when someone doesn't.
+    - **Checked (2026-11-10), with the release app 0.3.6 and the limit at 232 GB, the helper running since boot:**
+      - **`brew uninstall` without `--zap`:** Homebrew sent the app SIGTERM and removed it. The helper kept running from memory, launchd still had its job, and the limit stayed at 232 GB until the reboot. About a minute after the uninstall, Background Task Management's garbage collector removed the helper's daemon record by itself (`gc … removing … name=wired-limit, type=daemon`).
+      - **System Settings** kept both entries, Open at Login and Allow in the Background (switched on, "Not running in background"), with blank icons.
+      - **After a reboot:** launchd had no job ("Could not find service"), with no attempt to start it and no error. Nothing applied the stored limit, so it was macOS's default again. The stored file stayed, as only `--zap` removes it.
+      - **`brew install` again:** before the first open, still no job and no helper. The first open asked the usual first-open question, then for notifications and for Local Network access again: macOS had forgotten both when the app was deleted. The entries got their icon back. The Tweaks box came up unticked.
+      - **Another reboot, without touching Settings:** still no job, no helper, the limit at macOS's default. The leftover registration never brings the helper back; only a confirmed Save does.
+      - **Turned on again:** the Save's confirmation, then macOS asked again to allow the helper in the background, with an administrator's password, as on a fresh install. Unticking and ticking again keeps that approval; an uninstall doesn't, since Background Task Management dropped the helper's record. The helper then applied the stored 232 GB and set the 232 GB saved.
+    - **So** forgetting to untick before uninstalling is harmless. The README's "If you forgot, install the app again, untick, Save, then uninstall" was wrong (after a reinstall there's nothing to untick), and now says so; the cask's caveat says the same and changes with the next tap update.
+    - **Found with it:** the default the app shows with the limit at 0, Metal's figure, may not be macOS's default (item 92).
+
 ## Item 91
 
 91. **Wait at launch for llama-swap's files** (the maintainer, 2026-11-10; decided the same day; **released in 0.3.6, confirmed on the Mac with the pool the same day**). On a Mac whose llama-swap, config and models are on a ZFS pool imported after login (15 to 20 seconds), the app opened first: its validation found no binary, it showed "Can't start llama-swap" in an alert, and left llama-swap stopped until someone clicked Start.
