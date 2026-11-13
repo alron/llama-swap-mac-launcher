@@ -2,7 +2,7 @@
 
 The open TODO items, grouped by the release they're meant for. Finished items are in [done.md](done.md), and [CLAUDE.md](../CLAUDE.md) is the project's brief: a section named here (Components §1, "Signing, notarization, distribution") is CLAUDE.md's. An item cited by number that isn't here is in done.md.
 
-Items keep their numbers; a new one takes the next, from 93. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
+Items keep their numbers; a new one takes the next, from 94. When one is done, it moves to done.md, in number order, with what was built and how it was verified, and CLAUDE.md's list of open items changes with it. A review adds its findings here as a dated group, introduced by what it covered and how. Like CLAUDE.md, this file is public: keep personal details out of it.
 
 ## Next release
 
@@ -39,6 +39,23 @@ Items keep their numbers; a new one takes the next, from 93. When one is done, i
     - **Also:** Open llama-swap UI lands on the login page; the README's note that the browser asks for "any user name, and a key as the password" gets a form-mode version. Collect Diagnostics must redact a literal `sessionSecret` (check the redactor's names cover it). `llsl status` could show the mode. Session cookies cross the LAN unencrypted over plain HTTP, as keys do (item 28); llama-swap sets `Secure` only over HTTPS, which item 35 would bring.
     - **For the security review:** how `allowCredentials` (item 38) combines with session cookies, letting a listed page make requests with the browser's login.
     - **Tested by:** a `TestManagedAuthReal` against the release, like `TestManagedCORSReal`: the login page for a browser-like request, the app's Bearer and the keyless 401 unchanged, a session kept across a reload and, without a secret, lost across a restart.
+
+
+<!-- Item 93 starts a list of its own: 54 to 92 are elsewhere. -->
+93. **Keys for model servers, through llama-swap's `proxyApiKey`** (the maintainer, 2026-11-13; **blocked** on the maintainer's `proxy-api-key` branch of their llama-swap fork reaching a llama-swap release; it cites llama-swap's issue #1103, with no pull request yet).
+    - **What the branch adds:** `models.<id>.proxyApiKey`, the key llama-swap presents to a model's own server, for one started with a key of its own (llama-server reads `LLAMA_API_KEY`).
+      - It's sent as `Authorization: Bearer` and `x-api-key` on every request llama-swap makes to that server, health checks and capability detection included, and replaces any key the client sent.
+      - So a browser logged in with Basic auth (or item 53's form) can use the Playground and `/upstream/<model>/` against a server that requires a key.
+      - A key with whitespace is refused when the config loads, and llama-swap's redaction covers it.
+    - **Already fine in the app (checked 2026-11-13):**
+      - **Collect Diagnostics' redaction:** a literal `proxyApiKey` value is redacted, a `${env.…}` reference kept, and `LLAMA_API_KEY=…` in `env` redacted.
+      - **Usable by hand, and in use:** the maintainer's own config, run with a llama-swap built from the branch, gives every model one shared key. It's a secret variable under Settings → Secrets, which the app passes to llama-swap's environment. Each model passes it to its server under the engine's own variable in `env` (`LLAMA_API_KEY=${env.NAME}` for llama-server, `SPLASH_API_KEY=${env.NAME}` for Inco AI Splash, both checked by the maintainer), with `proxyApiKey: ${env.NAME}` beside it. The README's Secret environment variables section can say so once it's released.
+    - **For item 47, models managed by the app:**
+      - **A per-model option, "the server requires a key":** the app generates the key, keeps it in the keychain as it does its own API keys, and writes both lines.
+      - **Through `env`, never `--api-key` in `cmd`:** a command line is visible to every user on the Mac; a process's environment only to its owner and root.
+      - **Engine-specific:** the variable's name belongs in item 47's description of each engine: `LLAMA_API_KEY` for llama-server, `SPLASH_API_KEY` for Splash; an engine without one doesn't offer the option.
+      - **One shared key to start with,** as the maintainer uses: one keychain item for every model's server. A key per model only if someone asks for it.
+    - **Version gate:** llama-swap ignores config keys it doesn't know (checked with v272: a config with `proxyApiKey` validates), so on an older llama-swap a key-protected model would just fail with 401. Offer the option only for a llama-swap version that has it, as the menu hides Pause before v268. The version is known once it's released.
 
 ## 0.4
 

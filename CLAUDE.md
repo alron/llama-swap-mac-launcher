@@ -31,9 +31,9 @@ Items keep their numbers for good, since code comments and commit messages cite 
 
 Each change to `llsl` or the preferences also needs `README.md` updated.
 
-The open items (2026-11-10):
+The open items (2026-11-13):
 - **Next release:** 92 (don't show Metal's figure as macOS's default GPU memory limit).
-- **Blocked:** 53 (browser login through a form), on a llama-swap release that has it.
+- **Blocked:** 53 (browser login through a form) and 93 (keys for model servers, `proxyApiKey`, which item 47 would use), each on a llama-swap release that has it.
 - **0.4:** 47 (models, with the app's presets in place of macros, and routing, managed by the app).
 - **Later:** 35 (TLS) and 37 (Tailcat).
 
